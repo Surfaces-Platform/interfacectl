@@ -113,10 +113,12 @@ export function normalizeContract(contract) {
             }
             if (SET_LIKE_FIELDS.has("allowedColors")) {
                 const original = surface.allowedColors;
-                const sorted = normalizeSetField(original);
-                if (JSON.stringify(original) !== JSON.stringify(sorted)) {
-                    metadata.reorderedPaths.push(`surfaces[${surfaceIdx}].allowedColors`);
-                    normalizedSurface.allowedColors = sorted;
+                if (original) {
+                    const sorted = normalizeSetField(original);
+                    if (JSON.stringify(original) !== JSON.stringify(sorted)) {
+                        metadata.reorderedPaths.push(`surfaces[${surfaceIdx}].allowedColors`);
+                        normalizedSurface.allowedColors = sorted;
+                    }
                 }
             }
             if (surface.layout.requiredContainers &&

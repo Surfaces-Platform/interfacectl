@@ -103,7 +103,7 @@ test("interfacectl validate runs from tarball install", async () => {
     assert.equal(
       validateResult.exitCode,
       0,
-      `interfacectl validate failed: ${validateResult.stderr}`,
+      `interfacectl validate failed: ${validateResult.stderr}\n${validateResult.stdout}`,
     );
 
     const payload = JSON.parse(validateResult.stdout);

@@ -18,6 +18,105 @@ const __dirname = path.dirname(__filename);
 const cliPackageDir = path.resolve(__dirname, "..");
 const cliExecutable = path.resolve(cliPackageDir, "dist", "index.js");
 
+/**
+ * Creates a minimal valid workspace for testing.
+ * @param {string} tempRoot - Root directory for the workspace
+ * @param {object} contract - Contract object to write
+ * @param {string} surfaceId - Surface ID to create directory for
+ * @returns {Promise<string>} Path to the workspace root
+ */
+async function createTempWorkspace(tempRoot, contract, surfaceId) {
+  // Write contract file
+  const contractPath = path.join(tempRoot, "contract.json");
+  await writeFile(contractPath, JSON.stringify(contract, null, 2), "utf-8");
+
+  // Create surface directory structure
+  const surfaceDir = path.join(tempRoot, "apps", surfaceId);
+  await mkdir(surfaceDir, { recursive: true });
+  await writeFile(
+    path.join(surfaceDir, "package.json"),
+    JSON.stringify({ name: surfaceId }),
+    "utf-8"
+  );
+
+  // Create app directory with analysable files
+  const appDir = path.join(surfaceDir, "app");
+  await mkdir(appDir, { recursive: true });
+
+  // Get contract requirements
+  const surface = contract.surfaces[0];
+  const firstSection = surface?.requiredSections?.[0] || "header";
+  const maxWidth = surface?.layout?.maxContentWidth || 1200;
+  const allowedFonts = surface?.allowedFonts || ["Inter", "sans-serif"];
+  const allowedColors = surface?.allowedColors || [];
+  const motionDuration = contract.constraints?.motion?.allowedDurationsMs?.[0] || 200;
+  const motionTiming = contract.constraints?.motion?.allowedTimingFunctions?.[0] || "ease";
+
+  // Choose a color value - prefer first allowed color, or use CSS variable
+  const colorValue = allowedColors.length > 0
+    ? allowedColors[0]
+    : "var(--color-background)";
+
+  // Create globals.css with all required declarations
+  await writeFile(
+    path.join(appDir, "globals.css"),
+    `:root {
+  --contract-max-width: ${maxWidth}px;
+  --contract-motion-duration: ${motionDuration}ms;
+  --contract-motion-timing: ${motionTiming};
+  --color-background: #ffffff;
+}
+
+body {
+  font-family: ${allowedFonts.map(f => f.startsWith("var(") ? f : `"${f}"`).join(", ")};
+  background: ${colorValue};
+}
+
+.contract-container {
+  max-width: var(--contract-max-width);
+  transition: opacity var(--contract-motion-duration) var(--contract-motion-timing);
+  animation-duration: var(--contract-motion-duration);
+  animation-timing-function: var(--contract-motion-timing);
+}
+`,
+    "utf-8"
+  );
+
+  // Create layout.tsx with contract-container marker
+  await writeFile(
+    path.join(appDir, "layout.tsx"),
+    `import "./globals.css";
+
+export default function Layout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        <div className="contract-container">{children}</div>
+      </body>
+    </html>
+  );
+}
+`,
+    "utf-8"
+  );
+
+  // Create page.tsx with section marker
+  await writeFile(
+    path.join(appDir, "page.tsx"),
+    `export default function Page() {
+  return (
+    <main className="contract-container" data-contract-section="${firstSection}">
+      <h1>Test</h1>
+    </main>
+  );
+}
+`,
+    "utf-8"
+  );
+
+  return tempRoot;
+}
+
 async function runCommand(command, args, options = {}) {
   const proc = spawn(command, args, {
     ...options,
@@ -46,7 +145,6 @@ test("validate emits deprecation warning for allowedColors", async () => {
   );
 
   try {
-    const contractPath = path.join(tempRoot, "contract.json");
     const contract = {
       contractId: "test",
       version: "1.0.0",
@@ -78,39 +176,63 @@ test("validate emits deprecation warning for allowedColors", async () => {
       },
     };
 
-    await writeFile(contractPath, JSON.stringify(contract, null, 2), "utf-8");
+    await createTempWorkspace(tempRoot, contract, "test-surface");
 
-    // Create minimal surface directory structure with source files
-    const surfaceDir = path.join(tempRoot, "apps", "test-surface");
-    await mkdir(surfaceDir, { recursive: true });
-    await writeFile(path.join(surfaceDir, "package.json"), JSON.stringify({ name: "test-surface" }), "utf-8");
-    // Create minimal app structure for Next.js surface
-    const appDir = path.join(surfaceDir, "app");
-    await mkdir(appDir, { recursive: true });
-    await writeFile(path.join(appDir, "layout.tsx"), `export default function Layout({ children }) { return <div>{children}</div>; }`, "utf-8");
-    await writeFile(path.join(appDir, "page.tsx"), `export default function Page() { return <div>Test</div>; }`, "utf-8");
-
+    const contractPath = path.join(tempRoot, "contract.json");
     const result = await runCommand(
       "node",
-      [cliExecutable, "validate", "--contract", contractPath, "--workspace-root", tempRoot, "--format", "json", "--exit-codes", "v2"],
+      [
+        cliExecutable,
+        "validate",
+        "--contract",
+        contractPath,
+        "--workspace-root",
+        tempRoot,
+        "--format",
+        "json",
+        "--exit-codes",
+        "v2",
+      ],
       { cwd: tempRoot },
     );
 
     // Should pass schema validation (allowedColors is accepted but deprecated)
-    assert.equal(result.exitCode, 0, `Command failed: ${result.stderr}\n${result.stdout}`);
+    assert.equal(
+      result.exitCode,
+      0,
+      `Command failed: ${result.stderr}\n${result.stdout}`
+    );
 
     const output = JSON.parse(result.stdout);
     assert.ok(output.findings);
-    
+
+    // Should have at least one deprecation warning
+    assert.ok(
+      output.summary.warnings >= 1,
+      `Expected at least 1 warning, got ${output.summary.warnings}`
+    );
+
     // Should have deprecation warning
     const deprecationFinding = output.findings.find(
       (f) => f.code === "contract.deprecated-field",
     );
-    assert.ok(deprecationFinding, "Should emit contract.deprecated-field finding");
+    assert.ok(
+      deprecationFinding,
+      "Should emit contract.deprecated-field finding"
+    );
     assert.equal(deprecationFinding.severity, "warning");
-    assert(deprecationFinding.message.includes("allowedColors"));
-    assert(deprecationFinding.message.includes("deprecated"));
-    assert(deprecationFinding.location, "Should include jsonPointer location");
+    assert(
+      deprecationFinding.message.includes("allowedColors"),
+      "Deprecation message should mention allowedColors"
+    );
+    assert(
+      deprecationFinding.message.includes("deprecated"),
+      "Deprecation message should mention deprecated"
+    );
+    assert.ok(
+      deprecationFinding.location,
+      "Should include jsonPointer location"
+    );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -122,7 +244,6 @@ test("validate accepts contract with color policy", async () => {
   );
 
   try {
-    const contractPath = path.join(tempRoot, "contract.json");
     const contract = {
       contractId: "test",
       version: "1.0.0",
@@ -162,26 +283,51 @@ test("validate accepts contract with color policy", async () => {
       },
     };
 
-    await writeFile(contractPath, JSON.stringify(contract, null, 2), "utf-8");
+    await createTempWorkspace(tempRoot, contract, "test-surface");
 
-    // Create minimal surface directory structure with source files
-    const surfaceDir = path.join(tempRoot, "apps", "test-surface");
-    await mkdir(surfaceDir, { recursive: true });
-    await writeFile(path.join(surfaceDir, "package.json"), JSON.stringify({ name: "test-surface" }), "utf-8");
-    // Create minimal app structure for Next.js surface
-    const appDir = path.join(surfaceDir, "app");
-    await mkdir(appDir, { recursive: true });
-    await writeFile(path.join(appDir, "layout.tsx"), `export default function Layout({ children }) { return <div>{children}</div>; }`, "utf-8");
-    await writeFile(path.join(appDir, "page.tsx"), `export default function Page() { return <div>Test</div>; }`, "utf-8");
-
+    const contractPath = path.join(tempRoot, "contract.json");
     const result = await runCommand(
       "node",
-      [cliExecutable, "validate", "--contract", contractPath, "--workspace-root", tempRoot, "--format", "json", "--exit-codes", "v2"],
+      [
+        cliExecutable,
+        "validate",
+        "--contract",
+        contractPath,
+        "--workspace-root",
+        tempRoot,
+        "--format",
+        "json",
+        "--exit-codes",
+        "v2",
+      ],
       { cwd: tempRoot },
     );
 
     // Should pass schema validation
-    assert.equal(result.exitCode, 0, `Command failed: ${result.stderr}\n${result.stdout}`);
+    assert.equal(
+      result.exitCode,
+      0,
+      `Command failed: ${result.stderr}\n${result.stdout}`
+    );
+
+    const output = JSON.parse(result.stdout);
+
+    // Assert there are no contract.schema-error findings
+    const schemaErrors = output.findings.filter(
+      (f) => f.code === "contract.schema-error"
+    );
+    assert.equal(
+      schemaErrors.length,
+      0,
+      `Expected no schema errors, got: ${JSON.stringify(schemaErrors, null, 2)}`
+    );
+
+    // Optionally assert the contract is accepted and surfaces validate
+    assert.equal(
+      output.summary.errors,
+      0,
+      `Expected no errors, got: ${output.summary.errors}`
+    );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

@@ -1,0 +1,4 @@
+[data-contract="page-container"] {
+  max-width: 1200px;
+  padding-inline: clamp(16px, 2vw, 24px);
+}
