@@ -43,6 +43,9 @@
     },
     "constraints": {
       "$ref": "#/$defs/constraints"
+    },
+    "color": {
+      "$ref": "#/$defs/color"
     }
   },
   "$defs": {
@@ -55,7 +58,6 @@
         "type",
         "requiredSections",
         "allowedFonts",
-        "allowedColors",
         "layout"
       ],
       "properties": {
@@ -99,7 +101,8 @@
             "type": "string",
             "minLength": 1
           },
-          "uniqueItems": true
+          "uniqueItems": true,
+          "description": "Deprecated: Use color.sourceOfTruth and color.rawValues instead. This field will be removed in a future version."
         },
         "layout": {
           "type": "object",
@@ -217,6 +220,156 @@
           "type": "string",
           "enum": ["strict", "warn"],
           "default": "strict"
+        }
+      }
+    },
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sourceOfTruth": {
+          "$ref": "#/$defs/colorSourceOfTruth"
+        },
+        "rawValues": {
+          "$ref": "#/$defs/colorRawValues"
+        },
+        "semantics": {
+          "$ref": "#/$defs/colorSemantics"
+        },
+        "consistency": {
+          "$ref": "#/$defs/colorConsistency"
+        }
+      }
+    },
+    "colorSourceOfTruth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["tokens", "none"]
+        },
+        "tokenNamespaces": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "tokens"
+          }
+        }
+      },
+      "then": {
+        "required": ["tokenNamespaces"]
+      }
+    },
+    "colorRawValues": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy"],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": ["off", "warn", "strict"]
+        },
+        "allowlist": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "denylist": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "colorSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "roles": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enforcement": {
+                  "type": "string",
+                  "enum": ["off", "warn", "strict"]
+                }
+              }
+            },
+            "text": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enforcement": {
+                  "type": "string",
+                  "enum": ["off", "warn", "strict"]
+                }
+              }
+            },
+            "background": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enforcement": {
+                  "type": "string",
+                  "enum": ["off", "warn", "strict"]
+                }
+              }
+            },
+            "border": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enforcement": {
+                  "type": "string",
+                  "enum": ["off", "warn", "strict"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "colorConsistency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "acrossSurfaces": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enforcement": {
+              "type": "string",
+              "enum": ["off", "warn", "strict"]
+            },
+            "signals": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["token-name", "css-var-name", "class-fragment"]
+              },
+              "uniqueItems": true
+            }
+          }
         }
       }
     }

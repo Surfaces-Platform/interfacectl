@@ -10,6 +10,8 @@ export function classifyViolationType(type) {
         "color-not-allowed",
         "motion-duration-not-allowed",
         "motion-timing-not-allowed",
+        "color-raw-value-used",
+        "color-token-namespace-violation",
     ];
     if (e1Types.includes(type)) {
         return "E1";
