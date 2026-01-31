@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { runValidateCommand } from "./commands/validate.js";
 import { runDiffCommand } from "./commands/diff.js";
 import { runEnforceCommand } from "./commands/enforce.js";
+import { runCompileCommand } from "./commands/compile.js";
 import pkg from "../package.json" with { type: "json" };
 
 const program = new Command();
@@ -248,6 +249,26 @@ program
       exitCodes: exitCodeVersion,
     });
 
+    process.exitCode = exitCode;
+  });
+
+program
+  .command("compile")
+  .description("Produce a deterministic directory bundle for runtime consumption")
+  .requiredOption("--contract <path>", "Path to the contract JSON file")
+  .requiredOption("--out <dir>", "Output directory for the bundle")
+  .option("--schema <path>", "Optional path to the contract schema JSON file")
+  .option("--format <format>", "Output format (json)")
+  .action(async (options) => {
+    const exitCode = await runCompileCommand(
+      {
+        contractPath: options.contract,
+        outDir: options.out,
+        schemaPath: options.schema,
+        format: options.format,
+      },
+      pkg.version ?? "0.0.0",
+    );
     process.exitCode = exitCode;
   });
 

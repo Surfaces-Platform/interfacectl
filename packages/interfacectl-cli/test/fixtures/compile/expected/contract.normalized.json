@@ -1,0 +1,33 @@
+{
+  "constraints": {
+    "motion": {
+      "allowedDurationsMs": [120],
+      "allowedTimingFunctions": ["linear"]
+    }
+  },
+  "contractId": "demo-ui",
+  "sections": [
+    {
+      "description": "Demo hero section",
+      "id": "main.hero",
+      "intent": "primary-intro"
+    }
+  ],
+  "surfaces": [
+    {
+      "allowedFonts": [
+        "Demo Sans",
+        "sans-serif",
+        "var(--font-demo)"
+      ],
+      "displayName": "Demo Surface",
+      "id": "demo-surface",
+      "layout": {
+        "maxContentWidth": 960
+      },
+      "requiredSections": ["main.hero"],
+      "type": "web"
+    }
+  ],
+  "version": "1.0.0"
+}
