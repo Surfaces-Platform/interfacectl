@@ -28,6 +28,7 @@ import { loadPolicy } from "../utils/policy.js";
 import { getExitCodeVersion, type ExitCodeVersion } from "../utils/exit-codes.js";
 import { getMaxSeverity } from "../utils/violation-classifier.js";
 import { applyPolicySeverityOverrides } from "../utils/apply-policy-severity.js";
+import { enrichDiffEntry } from "../utils/traceability.js";
 
 type OutputFormat = "text" | "json";
 
@@ -188,9 +189,12 @@ function ensureRelativePaths(
     : contractPath;
 
   const observedRoot = output.observed.root;
-  const relativeObservedRoot = path.isAbsolute(observedRoot)
+  let relativeObservedRoot = path.isAbsolute(observedRoot)
     ? path.relative(workspaceRoot, observedRoot)
     : observedRoot;
+  if (!relativeObservedRoot) {
+    relativeObservedRoot = ".";
+  }
 
   return {
     ...output,
@@ -522,6 +526,11 @@ export async function runDiffCommand(
   // Filter diff-noise entries (formatting/reorder-only changes)
   const filteredEntries = detectDiffNoise(entriesWithOverrides);
 
+  // Enrich entries with traceability fields (Phase 2)
+  const enrichedEntries = sortDiffEntries(
+    filteredEntries.map((e) => enrichDiffEntry(e, "diff")),
+  );
+
   // Build output
   const output: DiffOutput = {
     schemaVersion: "1.0.0",
@@ -542,20 +551,20 @@ export async function runDiffCommand(
       strippedPaths: normalizedContract.metadata.strippedPaths,
     },
     summary: {
-      totalChanges: filteredEntries.length,
+      totalChanges: enrichedEntries.length,
       byType: {
-        added: filteredEntries.filter((e) => e.type === "added").length,
-        removed: filteredEntries.filter((e) => e.type === "removed").length,
-        modified: filteredEntries.filter((e) => e.type === "modified").length,
-        renamed: filteredEntries.filter((e) => e.type === "renamed").length,
+        added: enrichedEntries.filter((e) => e.type === "added").length,
+        removed: enrichedEntries.filter((e) => e.type === "removed").length,
+        modified: enrichedEntries.filter((e) => e.type === "modified").length,
+        renamed: enrichedEntries.filter((e) => e.type === "renamed").length,
       },
       bySeverity: {
-        error: filteredEntries.filter((e) => e.severity === "error").length,
-        warning: filteredEntries.filter((e) => e.severity === "warning").length,
-        info: filteredEntries.filter((e) => e.severity === "info").length,
+        error: enrichedEntries.filter((e) => e.severity === "error").length,
+        warning: enrichedEntries.filter((e) => e.severity === "warning").length,
+        info: enrichedEntries.filter((e) => e.severity === "info").length,
       },
     },
-    entries: sortDiffEntries(filteredEntries),
+    entries: enrichedEntries,
     repro: {
       command: `interfacectl diff --contract "${contractPath}" --root "${workspaceRoot}"`,
     },
@@ -578,11 +587,11 @@ export async function runDiffCommand(
     }
   }
 
-  // Determine exit code based on filtered entries and severity
-  const exitCode = getDiffExitCode(filteredEntries, exitCodeVersion);
+  // Determine exit code based on enriched entries and severity
+  const exitCode = getDiffExitCode(enrichedEntries, exitCodeVersion);
 
   // Print deprecation warning for v1 when diffs exist
-  if (exitCodeVersion === "v1" && filteredEntries.length > 0) {
+  if (exitCodeVersion === "v1" && enrichedEntries.length > 0) {
     process.stderr.write(
       "Deprecation: default exit codes will change. Use --exit-codes v2 to opt in.\n",
     );

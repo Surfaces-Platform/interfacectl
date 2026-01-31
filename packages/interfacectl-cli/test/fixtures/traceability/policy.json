@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+  "modes": {
+    "fail": {
+      "exitOnAny": true,
+      "severityThreshold": "error"
+    },
+    "fix": {
+      "rules": ["layout-maxwidth"],
+      "dryRun": true
+    },
+    "pr": {
+      "patchFormat": "json"
+    }
+  },
+  "autofixRules": [
+    {
+      "id": "layout-maxwidth",
+      "pattern": "surfaces/*/layout.maxContentWidth",
+      "autofixable": true,
+      "description": "Align maxContentWidth to contract",
+      "safetyLevel": "mechanical"
+    }
+  ]
+}

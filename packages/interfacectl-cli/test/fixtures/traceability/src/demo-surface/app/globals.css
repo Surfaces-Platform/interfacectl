@@ -1,0 +1,23 @@
+:root {
+  --contract-max-width: 960px;
+  --contract-motion-duration: 120ms;
+  --contract-motion-timing: linear;
+  --color-primary: #000000;
+  --color-background: #ffffff;
+}
+
+.fixture-body {
+  --font-demo: "Demo Sans";
+  font-family: var(--font-demo), "Demo Sans", sans-serif;
+  color: var(--color-primary);
+  background-color: var(--color-background);
+}
+
+.contract-container {
+  max-width: var(--contract-max-width);
+  transition: opacity var(--contract-motion-duration)
+    var(--contract-motion-timing);
+  animation-duration: var(--contract-motion-duration);
+  animation-timing-function: var(--contract-motion-timing);
+}
+

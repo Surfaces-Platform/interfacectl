@@ -132,6 +132,27 @@
       "type": "string",
       "enum": ["added", "removed", "modified", "renamed"]
     },
+    "ContractRef": {
+      "type": "object",
+      "description": "Reference to contract structure when deterministically derivable.",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "description": "JSON pointer style path into the contract." },
+        "surfaceId": { "type": "string", "description": "Surface identifier when available." },
+        "sectionId": { "type": "string", "description": "Section identifier when available." },
+        "constraintId": { "type": "string", "description": "Constraint category when applicable (e.g. motion)." }
+      }
+    },
+    "RuleRef": {
+      "type": "object",
+      "description": "Reference to the rule that produced this entry.",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Stable rule identifier." },
+        "version": { "type": "string", "description": "Optional rule version when catalog exists." }
+      }
+    },
     "DiffEntry": {
       "type": "object",
       "additionalProperties": false,
@@ -170,7 +191,14 @@
             "toPath": { "type": "string", "minLength": 1 },
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
           }
-        }
+        },
+        "stableId": {
+          "type": "string",
+          "description": "Deterministic id for correlation across runs.",
+          "minLength": 1
+        },
+        "contractRef": { "$ref": "#/$defs/ContractRef" },
+        "ruleRef": { "$ref": "#/$defs/RuleRef" }
       },
       "allOf": [
         {

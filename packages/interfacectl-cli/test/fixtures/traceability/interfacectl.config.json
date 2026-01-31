@@ -1,0 +1,5 @@
+{
+  "surfaceRoots": {
+    "demo-surface": "src/demo-surface"
+  }
+}

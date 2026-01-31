@@ -629,6 +629,8 @@ export type {
   DriftViolation,
   ValidationSummary,
   DriftViolationType,
+  ContractRef,
+  RuleRef,
   DiffOutput,
   DiffEntry,
   DiffChangeType,
