@@ -1,0 +1,51 @@
+name: Feature
+description: Propose a feature aligned to Surfaces strategy
+title: "[Feature] "
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read docs/strategy.md before filing.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the feature in 2 to 4 sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: alignment
+    attributes:
+      label: Strategy alignment
+      description: Explain how this strengthens the decision filter sentence in docs/strategy.md.
+    validations:
+      required: true
+  - type: dropdown
+    id: enforcement_timing
+    attributes:
+      label: Enforcement timing
+      options:
+        - Generation time
+        - Runtime
+        - Both
+    validations:
+      required: true
+  - type: dropdown
+    id: violation_handling
+    attributes:
+      label: Violation handling
+      options:
+        - Block
+        - Correct
+        - Constrain
+        - Signal only
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide 5 to 10 testable criteria.
+    validations:
+      required: true
