@@ -4,6 +4,10 @@
 
 `interfacectl` is a command-line tool for managing interface contracts in the Surfaces ecosystem. It validates, compares, and enforces compliance between defined interface contracts and actual implementation artifacts across multiple surfaces.
 
+## Generation-time gating
+
+`interfacectl validate` is the canonical command for contract compliance. Use it to gate changes before merge or deployment. For deterministic, category-based exit codes, use `--exit-codes v2` or set `INTERFACECTL_EXIT_CODES=v2`. The command `enforce --mode fail` runs a structural diff and applies a policy threshold. It is optional and useful when you want to block on diff severity separately from compliance. For the minimal contract format and where contract semantics live in the repo, see [docs/contract-baseline.md](docs/contract-baseline.md).
+
 ## Commands
 
 ### `validate`
@@ -79,7 +83,7 @@ Performs comprehensive validation of surface implementations against an interfac
     {
       "code": "string",
       "severity": "error | warning",
-      "category": "E0 | E1 | E2 | E3",
+      "category": "E0 | E1 | E2",
       "surface": "string",
       "message": "string",
       "expected": "unknown",
@@ -139,8 +143,8 @@ Performs a structural comparison between the contract definition and observed su
 **Note:** E3 (non-blocking drift) only exists in v2 and requires policy-driven severity downgrades to `info`. v1 always exits `1` if any entries exist, regardless of severity. A deprecation warning is printed in v1 mode when diffs exist.
 
 **Diff Entry Types:**
-- `added`: Path exists in contract but not in observed
-- `removed`: Path exists in observed but not in contract
+- `added`: Path exists in observed but not in contract
+- `removed`: Path exists in contract but not in observed
 - `modified`: Path exists in both but values differ
 - `renamed`: Path was renamed (detected via similarity threshold)
 
@@ -242,8 +246,8 @@ interfacectl enforce [options]
 
 **Description:**
 Applies enforcement policies to interface contracts through three modes:
-- **fail**: Validates compliance and exits with error code on violations
-- **fix**: Automatically applies safe, mechanical fixes to non-compliant code
+- **fail**: Runs a structural diff and exits with an error code when differences exceed the policy threshold
+- **fix**: Applies safe, mechanical fixes based on policy rules
 - **pr**: Generates patches for review (unified diff or JSON patch format)
 
 **Options:**
@@ -266,10 +270,10 @@ Applies enforcement policies to interface contracts through three modes:
 **Enforcement Modes:**
 
 1. **fail** (default):
-   - Checks for contract violations
-   - Exits with error code if violations exceed policy threshold
+   - Runs a structural diff between the contract and observed descriptors
+   - Exits with an error code if differences exceed the policy threshold
    - Does not modify files
-   - Suitable for CI/CD validation
+   - Suitable for CI when you want policy-based blocking on diff severity
 
 2. **fix**:
    - Automatically applies safe fixes matching autofix rules
@@ -293,7 +297,7 @@ Applies enforcement policies to interface contracts through three modes:
 **v2 (new contract, opt-in via `--exit-codes v2` or `INTERFACECTL_EXIT_CODES=v2`):**
 - `0`: Enforcement passed (no violations or fixes applied successfully)
 - `10`: E0 - Artifact invalid (config/policy load failures, internal errors)
-- `30`: E2 - Violations remaining (does not distinguish E1 vs E2 for exit codes)
+- `30`: E2 - Differences exceed policy threshold (does not distinguish E1 vs E2 for exit codes)
 
 **Note:** enforce does not distinguish E1 (token policy) vs E2 (interface contract) violations for exit codes - both return `30` in v2. However, JSON findings still carry `category: "E1"` or `category: "E2"` so downstream tools can see what happened. A deprecation warning is printed in v1 mode when violations exist.
 
@@ -301,7 +305,7 @@ Applies enforcement policies to interface contracts through three modes:
 ```json
 {
   "schemaVersion": "1.0.0",
-  "mode": "fix | pr",
+  "mode": "fail | fix | pr",
   "policy": {
     "version": "string",
     "fingerprint": "string"
@@ -385,7 +389,7 @@ Enforcement policies define:
 - Rename detection via similarity thresholds
 - Drift risk identification and reporting
 
-### Policy Enforcement
+### Policy-based enforcement
 - Rule-based autofix system
 - Safety level enforcement (only mechanical changes)
 - Confidence scoring for applied fixes
@@ -405,14 +409,22 @@ Enforcement policies define:
 
 ## Integration Examples
 
-### CI/CD Validation
+### CI/CD Validation (canonical gate)
+
+Use validate with v2 exit codes for contract compliance in CI:
+
 ```bash
-interfacectl validate --root . --contract ./contracts/ui.contract.json --format json
+interfacectl validate --root . --contract ./contracts/ui.contract.json --format json --exit-codes v2
 ```
 
-### Pre-commit Hook
+Or set the environment variable: `INTERFACECTL_EXIT_CODES=v2`.
+
+### Pre-commit Hook (optional: policy-on-diff)
+
+To block on structural diff severity in addition to validate:
+
 ```bash
-interfacectl enforce --mode fail --strict
+interfacectl enforce --mode fail
 ```
 
 ### Automated Fixing
@@ -455,7 +467,7 @@ When using `--exit-codes v2` or `INTERFACECTL_EXIT_CODES=v2`:
 **enforce v2**: 0 / 10 / 30
 - `0`: Enforcement passed (no violations or fixes applied successfully)
 - `10`: E0 - Artifact invalid
-- `30`: E2 - Violations remaining (does not distinguish E1 vs E2)
+- `30`: E2 - Differences exceed policy threshold (does not distinguish E1 vs E2 for exit codes)
 
 **Note on v1 internal errors:** v1 internal errors may be `2` or `3` depending on command (diff uses `3` if it currently does); v2 unifies to `10`.
 
