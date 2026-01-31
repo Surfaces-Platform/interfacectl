@@ -7,6 +7,7 @@ import { loadPolicy, loadDefaultPolicy } from "../utils/policy.js";
 import { canAutofix, applyFix } from "../utils/autofix.js";
 import { generateUnifiedPatch, generateJsonPatch, } from "../utils/file-mutator.js";
 import { getExitCodeVersion } from "../utils/exit-codes.js";
+import { enrichFixEntry } from "../utils/traceability.js";
 async function writeFileWithParents(filePath, contents) {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, contents, "utf8");
@@ -211,24 +212,26 @@ export async function runEnforceCommand(options) {
         const rule = matchingRules[0];
         const fix = applyFix(entry, rule);
         if (!fix) {
-            skipped.push({
+            const skipEntry = {
                 ruleId: rule.id,
                 path: entry.path,
                 oldValue: entry.observedValue,
                 newValue: entry.contractValue,
                 confidence: 0.5,
-            });
+            };
+            skipped.push(enrichFixEntry(skipEntry, entry, "enforce"));
             continue;
         }
         // Apply fix if not dry run
+        const enrichedFix = enrichFixEntry(fix, entry, "enforce");
         if (!dryRun && mode === "fix") {
             // In fix mode, actually apply the fix
             // For now, we'll mark it as applied (actual file mutation would happen here)
-            applied.push(fix);
+            applied.push(enrichedFix);
         }
         else {
             // In pr mode or dry run, just collect fixes
-            applied.push(fix);
+            applied.push(enrichedFix);
         }
     }
     // Generate patch for pr mode

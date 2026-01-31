@@ -34,6 +34,26 @@
     }
   },
   "$defs": {
+    "ContractRef": {
+      "type": "object",
+      "description": "Reference to contract structure when deterministically derivable.",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "surfaceId": { "type": "string" },
+        "sectionId": { "type": "string" },
+        "constraintId": { "type": "string" }
+      }
+    },
+    "RuleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string" }
+      }
+    },
     "FixEntry": {
       "type": "object",
       "additionalProperties": false,
@@ -51,7 +71,10 @@
         "lineDelta": {
           "type": "integer",
           "description": "Optional net line change count for patch summaries."
-        }
+        },
+        "stableId": { "type": "string", "minLength": 1 },
+        "contractRef": { "$ref": "#/$defs/ContractRef" },
+        "ruleRef": { "$ref": "#/$defs/RuleRef" }
       }
     },
     "FixError": {
@@ -61,7 +84,10 @@
       "properties": {
         "ruleId": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 },
-        "message": { "type": "string", "minLength": 1 }
+        "message": { "type": "string", "minLength": 1 },
+        "stableId": { "type": "string", "minLength": 1 },
+        "contractRef": { "$ref": "#/$defs/ContractRef" },
+        "ruleRef": { "$ref": "#/$defs/RuleRef" }
       }
     }
   }

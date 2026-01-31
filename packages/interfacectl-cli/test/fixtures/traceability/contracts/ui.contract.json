@@ -1,0 +1,30 @@
+{
+  "$schema": "https://contracts.surfaces.local/surfaces.web.contract.schema.json",
+  "contractId": "traceability.fixture",
+  "version": "0.0.1",
+  "surfaces": [
+    {
+      "id": "demo-surface",
+      "displayName": "Demo Surface",
+      "type": "web",
+      "requiredSections": ["main.hero"],
+      "allowedFonts": ["var(--font-demo)", "sans-serif"],
+      "layout": {
+        "maxContentWidth": 800
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": "main.hero",
+      "intent": "primary-intro",
+      "description": "Demo hero section"
+    }
+  ],
+  "constraints": {
+    "motion": {
+      "allowedDurationsMs": [120],
+      "allowedTimingFunctions": ["linear"]
+    }
+  }
+}

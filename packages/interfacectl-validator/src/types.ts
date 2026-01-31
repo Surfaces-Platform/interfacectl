@@ -177,6 +177,18 @@ export type Severity = "error" | "warning" | "info";
 export type SafetyLevel = "safe" | "mechanical" | "semantic";
 export type EnforcementMode = "fail" | "fix" | "pr";
 
+export interface ContractRef {
+  path?: string;
+  surfaceId?: string;
+  sectionId?: string;
+  constraintId?: string;
+}
+
+export interface RuleRef {
+  id: string;
+  version?: string;
+}
+
 export interface DiffEntry {
   surfaceId?: string;
   type: DiffChangeType;
@@ -191,6 +203,12 @@ export interface DiffEntry {
     toPath: string;
     confidence: number; // 0-1
   }; // Only present when type=renamed
+  /** Deterministic id for correlation across runs (Phase 2 traceability) */
+  stableId?: string;
+  /** Reference to contract structure when deterministically derivable */
+  contractRef?: ContractRef;
+  /** Reference to the rule that produced this entry */
+  ruleRef?: RuleRef;
 }
 
 export interface DriftRisk {
@@ -264,12 +282,24 @@ export interface FixEntry {
   confidence: number; // 0-1
   file?: string; // Relative path only
   lineDelta?: number;
+  /** Deterministic id for correlation across runs (Phase 2 traceability) */
+  stableId?: string;
+  /** Reference to contract structure when deterministically derivable */
+  contractRef?: ContractRef;
+  /** Reference to the rule that produced this entry */
+  ruleRef?: RuleRef;
 }
 
 export interface FixError {
   ruleId: string;
   path: string;
   message: string;
+  /** Deterministic id for correlation across runs (Phase 2 traceability) */
+  stableId?: string;
+  /** Reference to contract structure when deterministically derivable */
+  contractRef?: ContractRef;
+  /** Reference to the rule that produced this entry */
+  ruleRef?: RuleRef;
 }
 
 export interface FixSummary {

@@ -153,6 +153,8 @@ Performs a structural comparison between the contract definition and observed su
 - `warning`: Non-critical issue that may indicate drift
 - `info`: Informational difference
 
+Includes traceability fields.
+
 **Drift Risks Detected:**
 - `diff-noise`: Formatting-only or reorder-only changes filtered
 - `semantic-ambiguity`: Diff entries lack rule/clause references
@@ -212,6 +214,9 @@ Performs a structural comparison between the contract definition and observed su
       "contractValue": "unknown",
       "observedValue": "unknown",
       "rule": "string",
+      "stableId": "string",
+      "contractRef": { "path": "string", "surfaceId": "string", "sectionId": "string", "constraintId": "string" },
+      "ruleRef": { "id": "string", "version": "string" },
       "rename": {
         "fromPath": "string",
         "toPath": "string",
@@ -281,6 +286,8 @@ Applies enforcement policies to interface contracts through three modes:
    - Respects safety levels and rule patterns
    - Can run in `--dry-run` mode to preview changes
 
+Includes traceability fields.
+
 3. **pr**:
    - Generates patch files for review
    - Supports unified diff or JSON patch formats
@@ -316,7 +323,10 @@ Applies enforcement policies to interface contracts through three modes:
       "path": "string",
       "oldValue": "unknown",
       "newValue": "unknown",
-      "confidence": "number"
+      "confidence": "number",
+      "stableId": "string",
+      "contractRef": { "path": "string", "surfaceId": "string", "sectionId": "string", "constraintId": "string" },
+      "ruleRef": { "id": "string", "version": "string" }
     }
   ],
   "skipped": [
@@ -325,18 +335,33 @@ Applies enforcement policies to interface contracts through three modes:
       "path": "string",
       "oldValue": "unknown",
       "newValue": "unknown",
-      "confidence": "number"
+      "confidence": "number",
+      "stableId": "string",
+      "contractRef": { "path": "string", "surfaceId": "string", "sectionId": "string", "constraintId": "string" },
+      "ruleRef": { "id": "string", "version": "string" }
     }
   ],
   "errors": [
     {
       "ruleId": "string",
       "path": "string",
-      "message": "string"
+      "message": "string",
+      "stableId": "string",
+      "ruleRef": { "id": "string", "version": "string" }
     }
   ]
 }
 ```
+
+---
+
+## Traceability fields (Phase 2)
+
+Diff and enforce JSON output include optional traceability fields for correlation and debugging. These fields are additive and optional; existing consumers should keep working.
+
+- **stableId**: Deterministic correlation id (64-bit). Use for deduplication and change tracking within a repo or CI workflow. NOT a globally unique identifier. For cross-repo or large-fleet indexing, consider extending to 128 bits in a future phase.
+- **contractRef**: Reference to contract structure when deterministically derivable. Fields: `path` (JSON pointer style), `surfaceId`, `sectionId`, `constraintId`. `contractRef.path` is omitted when the mapping is ambiguous or the node does not exist in the contract (e.g. surface-missing).
+- **ruleRef**: `id` (and optional `version`) of the rule that produced the entry.
 
 ---
 

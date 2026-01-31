@@ -20,6 +20,7 @@ import {
   generateJsonPatch,
 } from "../utils/file-mutator.js";
 import { getExitCodeVersion, type ExitCodeVersion } from "../utils/exit-codes.js";
+import { enrichFixEntry, enrichFixError } from "../utils/traceability.js";
 
 type OutputFormat = "text" | "json";
 
@@ -279,24 +280,26 @@ export async function runEnforceCommand(
     const fix = applyFix(entry, rule);
 
     if (!fix) {
-      skipped.push({
+      const skipEntry: FixEntry = {
         ruleId: rule.id,
         path: entry.path,
         oldValue: entry.observedValue,
         newValue: entry.contractValue,
         confidence: 0.5,
-      });
+      };
+      skipped.push(enrichFixEntry(skipEntry, entry, "enforce"));
       continue;
     }
 
     // Apply fix if not dry run
+    const enrichedFix = enrichFixEntry(fix, entry, "enforce");
     if (!dryRun && mode === "fix") {
       // In fix mode, actually apply the fix
       // For now, we'll mark it as applied (actual file mutation would happen here)
-      applied.push(fix);
+      applied.push(enrichedFix);
     } else {
       // In pr mode or dry run, just collect fixes
-      applied.push(fix);
+      applied.push(enrichedFix);
     }
   }
 
