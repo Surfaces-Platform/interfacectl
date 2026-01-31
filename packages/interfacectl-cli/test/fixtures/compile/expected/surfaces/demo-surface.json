@@ -1,0 +1,14 @@
+{
+  "allowedFonts": [
+    "Demo Sans",
+    "sans-serif",
+    "var(--font-demo)"
+  ],
+  "displayName": "Demo Surface",
+  "id": "demo-surface",
+  "layout": {
+    "maxContentWidth": 960
+  },
+  "requiredSections": ["main.hero"],
+  "type": "web"
+}

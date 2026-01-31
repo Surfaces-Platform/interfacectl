@@ -1,0 +1,28 @@
+{
+  "bundleVersion": "1.0",
+  "contractId": "demo-ui",
+  "contractVersion": "1.0.0",
+  "schemaVersion": "surfaces.web.contract@1",
+  "tool": {
+    "name": "interfacectl",
+    "version": "0.1.0"
+  },
+  "inputs": {
+    "contractPath": "contracts/ui.contract.json",
+    "schemaPath": null
+  },
+  "files": [
+    {
+      "path": "constraints/motion.json",
+      "sha256": "<deterministic-hash>"
+    },
+    {
+      "path": "contract.normalized.json",
+      "sha256": "<deterministic-hash>"
+    },
+    {
+      "path": "surfaces/demo-surface.json",
+      "sha256": "<deterministic-hash>"
+    }
+  ]
+}

@@ -355,6 +355,61 @@ Includes traceability fields.
 
 ---
 
+### `compile`
+
+Produces a deterministic directory bundle from a contract for runtime consumption. The bundle is readable, composable, and diffable. This is a build artifact, not an enforcement engine.
+
+**Synopsis:**
+```bash
+interfacectl compile --contract <path> --out <dir> [--schema <path>] [--format json]
+```
+
+**Description:**
+- Loads and validates the contract structure using the same validator as `validate`.
+- Writes a bundle directory at `--out` with stable key ordering and deterministic JSON.
+- Writes files atomically (temp then rename) where possible to avoid partial bundles.
+- Exits non-zero on invalid contract or write failure.
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--contract <path>` | Path to the contract JSON file (required) |
+| `--out <dir>` | Output directory for the bundle (required) |
+| `--schema <path>` | Optional path to the contract schema JSON file |
+| `--format <format>` | Output format (e.g. json) |
+
+**Exit Codes:**
+- `0`: Bundle written successfully
+- `1`: Invalid contract (schema validation failed), missing file, or write failure
+
+**Bundle structure**
+
+The output directory contains:
+
+| Path | Description |
+|------|-------------|
+| `manifest.json` | Bundle manifest with version, contract id/version, tool info, inputs, and file hashes |
+| `contract.normalized.json` | Normalized full contract (stable key order, same information as source) |
+| `surfaces/<surfaceId>.json` | One file per surface; surface data plus minimal metadata for runtime loading |
+| `constraints/motion.json` | Motion constraint category (other categories may be added later) |
+
+**Manifest fields**
+
+| Field | Description |
+|-------|-------------|
+| `bundleVersion` | Format version for this bundle (e.g. `"1.0"`) |
+| `contractId` | From the contract |
+| `contractVersion` | From the contract (`version` field) |
+| `schemaVersion` | Schema bundle identifier used by the CLI (e.g. `surfaces.web.contract@1`) |
+| `tool` | `{ name: "interfacectl", version: "<version>" }` |
+| `inputs` | `{ contractPath: string, schemaPath: string or null }` |
+| `files` | Array of `{ path, sha256 }` for all bundle files except `manifest.json`, sorted lexicographically by `path`. Hashes are SHA-256 hex strings. |
+
+No timestamps are included in the manifest so that bundles remain deterministic.
+
+---
+
 ## Traceability fields (Phase 2)
 
 Diff and enforce JSON output include optional traceability fields for correlation and debugging. These fields are additive and optional; existing consumers should keep working.

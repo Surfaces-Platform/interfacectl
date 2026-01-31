@@ -1,0 +1,4 @@
+{
+  "allowedDurationsMs": [120],
+  "allowedTimingFunctions": ["linear"]
+}
