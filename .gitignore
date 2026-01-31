@@ -2,4 +2,7 @@ node_modules
 .pnpm-store
 .DS_Store
 .changeset/*-changes.md
-scratch/
+# WIP planning and local artifacts; directory exists, contents ignored
+scratch/*
+!scratch/.gitkeep
+.cursor/
