@@ -43,7 +43,7 @@ For detailed command documentation, see [API.md](API.md).
 
 ## Commands Overview
 
-The CLI provides three main commands:
+The CLI provides four main commands:
 
 ### `validate`
 
@@ -69,9 +69,78 @@ Enforces policy on interface contracts using configurable enforcement modes: `fa
 interfacectl enforce [options]
 ```
 
+### `compile`
+
+Compiles a validated interface contract into a deterministic, runtime-readable bundle. The bundle includes a manifest, a normalized contract, per-surface files, and per-constraint files for downstream tools to consume.
+
+This command does **not** perform enforcement or runtime gating. It produces a stable artifact intended for inspection, tooling, or future runtime consumption.
+
+```bash
+interfacectl compile --contract <path> --out <dir>
+```
+
 For complete command documentation with all options, exit codes, and output formats, see [API.md](API.md).
 
 **Generation-time gating:** `interfacectl validate` is the canonical command for contract compliance. Use it to gate changes before merge or deployment. For local use and CI, run validate with your contract path and, for deterministic exit codes, use `--exit-codes v2`. The command `enforce --mode fail` is optional; it runs a structural diff then applies a policy threshold and is useful when you want to block on diff severity separately from compliance.
+
+## Lifecycle overview
+
+interfacectl separates interface governance into clear phases:
+
+- **Validate**  
+  Enforces contract compliance at generation time.
+
+- **Diff / Enforce**  
+  Detects and classifies drift with traceability (stableId, contractRef, ruleRef).
+
+- **Compile**  
+  Produces a deterministic, runtime-readable bundle (manifest, normalized contract, surfaces, constraints) that serves as the handoff point to other tools.
+
+- **Runtime consumption (framing only)**  
+  Consumption semantics are documented in Phase 4. No runtime enforcement or loaders exist in this repo.
+
+See:
+- `docs/plans/phase-3-compile-directory-bundle.md`
+- `docs/plans/phase-4-runtime-consumption-framing.md`
+
+### Lifecycle diagram
+
+```
+Design / Generation time
+────────────────────────
+
+  Contract
+     │
+     ▼
+  validate
+     │
+     ▼
+  diff / enforce
+     │
+     ▼
+  compile
+     │
+     ▼
+  ┌─────────────────────────────┐
+  │ Deterministic bundle         │
+  │ - manifest.json              │
+  │ - contract.normalized.json   │
+  │ - surfaces/*.json            │
+  │ - constraints/*.json         │
+  └─────────────────────────────┘
+
+Runtime (not implemented here)
+──────────────────────────────
+
+  bundle
+     │
+     ▼
+  [consumer]
+     │
+     ├─ read / reference
+     ├─ observe / compare
+     └─ explain (future)
+```
 
 ## Usage Examples
 
