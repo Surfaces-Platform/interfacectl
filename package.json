@@ -22,6 +22,7 @@
   },
   "pnpm": {
     "overrides": {
+      "@surfaces/interfacectl-extractor": "link:packages/interfacectl-extractor",
       "@surfaces/interfacectl-validator": "link:packages/interfacectl-validator"
     }
   },

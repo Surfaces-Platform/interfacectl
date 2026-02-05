@@ -11,13 +11,14 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build:deps": "pnpm --filter @surfaces/interfacectl-validator run build",
+    "build:deps": "pnpm --filter @surfaces/interfacectl-validator run build && pnpm --filter @surfaces/interfacectl-extractor run build",
     "build": "pnpm run build:deps && pnpm run clean && tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "validate": "node dist/index.js validate --root test/fixtures/minimal-project --contract test/fixtures/minimal-project/contracts/ui.contract.json",
     "test": "node --test test/index.mjs"
   },
   "dependencies": {
+    "@surfaces/interfacectl-extractor": "^0.1.0",
     "@surfaces/interfacectl-validator": "^0.1.0",
     "commander": "^12.1.0",
     "globby": "^14.0.2",

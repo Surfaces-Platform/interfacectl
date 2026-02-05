@@ -4,6 +4,7 @@ import { runValidateCommand } from "./commands/validate.js";
 import { runDiffCommand } from "./commands/diff.js";
 import { runEnforceCommand } from "./commands/enforce.js";
 import { runCompileCommand } from "./commands/compile.js";
+import { runGenerateContractCommand } from "./commands/generate-contract.js";
 import pkg from "../package.json" with { type: "json" };
 const program = new Command();
 program
@@ -179,6 +180,24 @@ program
         schemaPath: options.schema,
         format: options.format,
     }, pkg.version ?? "0.0.0");
+    process.exitCode = exitCode;
+});
+program
+    .command("generate-contract")
+    .description("Extract a contract from a Next.js app (Phase 0: extraction only)")
+    .requiredOption("--app-root <path>", "Path to the Next.js app root (directory containing app/)")
+    .requiredOption("--surface <id>", "Surface identifier (e.g. surfaces-web)")
+    .option("--out <path>", `Output path for contract JSON (default: contracts/generated/<surfaceId>.contract.json)`)
+    .option("--report-out <path>", `Output path for extraction report (default: contracts/generated/<surfaceId>.extraction.json)`)
+    .option("--schema <path>", "Optional path to the contract schema JSON file")
+    .action(async (options) => {
+    const exitCode = await runGenerateContractCommand({
+        appRoot: options.appRoot,
+        surfaceId: options.surface,
+        outPath: options.out,
+        reportOutPath: options.reportOut,
+        schemaPath: options.schema,
+    });
     process.exitCode = exitCode;
 });
 program.parseAsync(process.argv).catch((error) => {

@@ -12,11 +12,13 @@ Before planning or implementing any feature, read "docs/strategy.md" and produce
 
 See "docs/feature-plan.template.md".
 
-This repository contains two packages:
+This repository contains three packages:
 
 - **`@surfaces/interfacectl-validator`** — Core validation library with TypeScript types, schema validation, and bundled contract schema definitions. Provides the foundation for contract validation.
 
 - **`@surfaces/interfacectl-cli`** — Command-line interface that consumes the validator to run contract checks from any repository. Most users only need this package.
+
+- **`@surfaces/interfacectl-extractor`** — Library that extracts a contract from a Next.js app (Phase 0). Used by the CLI `generate-contract` command. Exports `extractContractFromNextApp({ appRoot, surfaceId })`.
 
 ## Requirements
 
@@ -78,6 +80,23 @@ This command does **not** perform enforcement or runtime gating. It produces a s
 ```bash
 interfacectl compile --contract <path> --out <dir>
 ```
+
+### `generate-contract` (Phase 0)
+
+Extracts a **deterministic contract artifact** from a Next.js app by analyzing app code and config. This is **contract extraction only** — no enforcement, no network calls.
+
+**Phase 0 scope:** Routes (app router), layout shell presence (`app/layout.tsx` or `app/(shell)/layout.tsx`), design system usage (`@surfaces/ui` component imports), and auth posture (`/auth` routes). Values that cannot be extracted safely are omitted and reported as warnings in the extraction report.
+
+Outputs:
+
+- **Contract:** `contracts/generated/<surfaceId>.contract.json` — schema-valid contract with extracted data under `x_extracted`.
+- **Report:** `contracts/generated/<surfaceId>.extraction.json` — machine-readable extraction summary and warnings for debugging.
+
+```bash
+interfacectl generate-contract --app-root <path> --surface <surfaceId> [--out <path>] [--report-out <path>]
+```
+
+Running the command twice produces identical contract and report (stable key order, no timestamps). See [API.md](API.md) for full options.
 
 For complete command documentation with all options, exit codes, and output formats, see [API.md](API.md).
 
