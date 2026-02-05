@@ -2,6 +2,15 @@
 
 **Scope:** Contract extraction from Next.js app code (`interfacectl generate-contract`). Phase-scoped and revisitable.
 
+## How extraction works
+
+- **Input:** Next.js app directory (contains `app/`).
+- **Method:** Filesystem walk + regex. No JSX, TypeScript, or CSS parsing.
+- **Output:**
+  - `contracts/generated/<surface>.contract.json` — schema-valid contract with extracted facts under `x_extracted`.
+  - `contracts/generated/<surface>.extraction.json` — machine-readable extraction report and warnings.
+- **Validation:** `validate-extracted` compares policy expectations (`surfaces[].phase0` in the policy contract) to extracted reality and fails CI on mismatch.
+
 ---
 
 ## No heavy AST in Phase 0
