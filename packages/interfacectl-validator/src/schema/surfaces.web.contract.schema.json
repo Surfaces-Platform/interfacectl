@@ -152,6 +152,10 @@
             "expectsAuthRoutes": { "type": "boolean" },
             "expectsDesignSystem": { "type": "boolean" }
           }
+        },
+        "domain": {
+          "type": "string",
+          "description": "Informational: production domain (e.g. www.surfaces.systems)."
         }
       }
     },
