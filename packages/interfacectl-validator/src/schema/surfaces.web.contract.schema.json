@@ -46,6 +46,17 @@
     },
     "color": {
       "$ref": "#/$defs/color"
+    },
+    "x_extracted": {
+      "type": "object",
+      "description": "Phase 0: fields extracted from app code; not used by validator semantics.",
+      "additionalProperties": true,
+      "properties": {
+        "routes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "hasShell": { "type": "boolean" },
+        "designSystemComponents": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "authAware": { "type": "boolean" }
+      }
     }
   },
   "$defs": {

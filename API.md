@@ -410,6 +410,40 @@ No timestamps are included in the manifest so that bundles remain deterministic.
 
 ---
 
+### `generate-contract` (Phase 0)
+
+Extracts a deterministic contract artifact from a Next.js app by analyzing app code. **Extraction only** — no enforcement, no network calls. Output is schema-valid; extracted-only fields live under `x_extracted`.
+
+**Synopsis:**
+```bash
+interfacectl generate-contract --app-root <path> --surface <id> [--out <path>] [--report-out <path>] [--schema <path>]
+```
+
+**Description:**
+- Scans the app directory for routes (app router), layout shell (`app/layout.tsx` or `app/(shell)/layout.tsx`), `@surfaces/ui` component imports, and `/auth` routes.
+- Writes a contract JSON (default `contracts/generated/<surfaceId>.contract.json`) and an extraction report (default `contracts/generated/<surfaceId>.extraction.json`).
+- Validates the generated contract against the schema before writing. Running the command twice produces identical output (stable key order, no timestamps).
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--app-root <path>` | Path to the Next.js app root (directory containing `app/`) | (required) |
+| `--surface <id>` | Surface identifier (e.g. `surfaces-web`) | (required) |
+| `--out <path>` | Output path for contract JSON | `contracts/generated/<surfaceId>.contract.json` |
+| `--report-out <path>` | Output path for extraction report | `contracts/generated/<surfaceId>.extraction.json` |
+| `--schema <path>` | Optional path to the contract schema JSON file | Bundled schema |
+
+**Exit Codes:**
+- `0`: Contract and report written successfully
+- `1`: Schema validation failed for generated contract
+
+**Phase 0 scope:** Routes, hasShell, designSystemComponents (from `@surfaces/ui`), authAware. Other fields use placeholders or defaults; the report lists warnings for any omitted extraction.
+
+**Phase 0 guardrails:** No Babel or heavy AST. Uses filesystem + regex for determinism, debuggability, and minimal deps. See [docs/plans/phase-0-extraction-guardrails.md](docs/plans/phase-0-extraction-guardrails.md) for extraction limits and when AST tooling may be added.
+
+---
+
 ## Traceability fields (Phase 2)
 
 Diff and enforce JSON output include optional traceability fields for correlation and debugging. These fields are additive and optional; existing consumers should keep working.

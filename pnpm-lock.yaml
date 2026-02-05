@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@surfaces/interfacectl-extractor': link:packages/interfacectl-extractor
   '@surfaces/interfacectl-validator': link:packages/interfacectl-validator
 
 importers:
@@ -23,6 +24,9 @@ importers:
 
   packages/interfacectl-cli:
     dependencies:
+      '@surfaces/interfacectl-extractor':
+        specifier: link:../interfacectl-extractor
+        version: link:../interfacectl-extractor
       '@surfaces/interfacectl-validator':
         specifier: link:../interfacectl-validator
         version: link:../interfacectl-validator
@@ -35,6 +39,15 @@ importers:
       picocolors:
         specifier: ^1.0.0
         version: 1.1.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.9
+        version: 20.19.27
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
+  packages/interfacectl-extractor:
     devDependencies:
       '@types/node':
         specifier: ^20.14.9
