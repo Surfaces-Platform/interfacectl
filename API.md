@@ -444,6 +444,36 @@ interfacectl generate-contract --app-root <path> --surface <id> [--out <path>] [
 
 ---
 
+### `validate-extracted` (Phase 0.5)
+
+Fails if the contract’s Phase 0 expectations (`surfaces[].phase0`) conflict with extracted reality. Use after `generate-contract` to gate policy vs. code.
+
+**Synopsis:**
+```bash
+interfacectl validate-extracted --contract <path> --extracted <path> [--surface <id>] [--format text|json] [--exit-codes v1|v2]
+```
+
+**Contract shape (policy only; no x_* in policy):**  
+Optional per-surface block `surfaces[].phase0`:
+- `authPosture`: `"public"` | `"auth-aware"` | `"auth-first"`
+- `requiresShell`: boolean
+- `expectsAuthRoutes`: boolean
+- `expectsDesignSystem`: boolean
+
+**Extracted input:** (1) Extraction report: `{ surfaceId, extracted: { routes, hasShell, designSystemComponents, authAware } }`. (2) Generated contract with `x_extracted`; use `--surface <id>` when surfaceId cannot be inferred.
+
+**Validation rules:**  
+Auth posture: auth-first ⇒ authAware true and all four auth routes; auth-aware ⇒ authAware true. Shell: requiresShell true and hasShell false ⇒ mismatch. Auth routes: when expectsAuthRoutes true, requires `/auth/login`, `/auth/callback`, `/auth/session`, `/auth/logout`. Design system: expectsDesignSystem true and empty designSystemComponents ⇒ mismatch.
+
+**Findings:** Deterministic order (surfaceId, then code). Codes: `phase0.authPosture.mismatch`, `phase0.authRoutes.missing`, `phase0.shell.mismatch`, `phase0.designSystem.missing`. Category E2 for mismatches, E0 for load/parse errors.
+
+**Exit codes (v2):**
+- `0`: Success (no phase0 block or no mismatches).
+- `10`: E0 (load/parse/schema or internal error).
+- `30`: E2 (one or more mismatches).
+
+---
+
 ## Traceability fields (Phase 2)
 
 Diff and enforce JSON output include optional traceability fields for correlation and debugging. These fields are additive and optional; existing consumers should keep working.

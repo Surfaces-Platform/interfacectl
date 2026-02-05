@@ -1,0 +1,9 @@
+{
+  "surfaceId": "surfaces-web",
+  "extracted": {
+    "authAware": true,
+    "hasShell": false,
+    "routes": ["/", "/auth/callback", "/auth/login", "/auth/logout", "/auth/session"],
+    "designSystemComponents": ["Navigation"]
+  }
+}

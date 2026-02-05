@@ -1,0 +1,16 @@
+{
+  "contractId": "test",
+  "version": "0.1.0",
+  "surfaces": [
+    {
+      "id": "surfaces-web",
+      "displayName": "Test",
+      "type": "web",
+      "requiredSections": ["landing.hero"],
+      "allowedFonts": ["sans-serif"],
+      "layout": { "maxContentWidth": 1120 }
+    }
+  ],
+  "sections": [{ "id": "landing.hero", "intent": "primary", "description": "Hero" }],
+  "constraints": { "motion": { "allowedDurationsMs": [120], "allowedTimingFunctions": ["linear"] } }
+}

@@ -100,6 +100,16 @@ interfacectl generate-contract --app-root <path> --surface <surfaceId> [--out <p
 
 Running the command twice produces identical contract and report (stable key order, no timestamps). See [API.md](API.md) for full options.
 
+### `validate-extracted` (Phase 0.5)
+
+Validates that the **declared policy** (contract `surfaces[].phase0`) matches **extracted reality** (from the extraction report or generated contract). Use after `generate-contract` in CI to fail when auth posture, shell, auth routes, or design-system expectations disagree with what was extracted.
+
+```bash
+interfacectl validate-extracted --contract <path> --extracted <path> [--surface <id>] [--format text|json] [--exit-codes v2]
+```
+
+Add optional `phase0` to each surface in your policy contract: `authPosture` (public | auth-aware | auth-first), `requiresShell`, `expectsAuthRoutes`, `expectsDesignSystem`. v2 exit codes: 0 success, 10 E0 (load/parse error), 30 E2 (mismatch). See [API.md](API.md#validate-extracted-phase-05) for rules and finding codes.
+
 For complete command documentation with all options, exit codes, and output formats, see [API.md](API.md).
 
 **Generation-time gating:** `interfacectl validate` is the canonical command for contract compliance. Use it to gate changes before merge or deployment. For local use and CI, run validate with your contract path and, for deterministic exit codes, use `--exit-codes v2`. The command `enforce --mode fail` is optional; it runs a structural diff then applies a policy threshold and is useful when you want to block on diff severity separately from compliance.

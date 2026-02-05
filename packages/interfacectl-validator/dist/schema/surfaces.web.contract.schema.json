@@ -138,6 +138,20 @@
               "$ref": "#/$defs/pageFrame"
             }
           }
+        },
+        "phase0": {
+          "type": "object",
+          "description": "Phase 0.5: optional expectations for extracted reality (routes, auth, shell, design system).",
+          "additionalProperties": false,
+          "properties": {
+            "authPosture": {
+              "type": "string",
+              "enum": ["public", "auth-aware", "auth-first"]
+            },
+            "requiresShell": { "type": "boolean" },
+            "expectsAuthRoutes": { "type": "boolean" },
+            "expectsDesignSystem": { "type": "boolean" }
+          }
         }
       }
     },
