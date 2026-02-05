@@ -9,6 +9,7 @@ import {
   mkdtemp,
   mkdir,
   writeFile,
+  readFile,
   rm,
   cp as copy,
   realpath,
@@ -29,7 +30,45 @@ const fixtureRoot = path.resolve(
   "minimal-project",
 );
 
-test("interfacectl validate runs from tarball install", async () => {
+// This test verifies that published packages can be installed from a tarball.
+// It is skipped when internal workspace-only deps (e.g. @surfaces/interfacectl-extractor)
+// are not yet published to npm, so CI stays green during early phases.
+
+const NPM_VIEW_TIMEOUT_MS = 5000;
+
+async function getUnpublishedSurfacesDeps() {
+  const pkgPath = path.join(cliPackageDir, "package.json");
+  const raw = await readFile(pkgPath, "utf-8");
+  const pkg = JSON.parse(raw);
+  const deps = new Set([
+    ...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.optionalDependencies ?? {}),
+    ...Object.keys(pkg.peerDependencies ?? {}),
+  ].filter((name) => name.startsWith("@surfaces/")));
+
+  const unpublished = [];
+  for (const name of deps) {
+    const result = await runCommand(
+      "npm",
+      ["view", name, "version", "--json"],
+      { timeout: NPM_VIEW_TIMEOUT_MS },
+    );
+    if (result.exitCode !== 0) {
+      unpublished.push(name);
+    }
+  }
+  return unpublished;
+}
+
+test("interfacectl validate runs from tarball install", async (t) => {
+  const unpublished = await getUnpublishedSurfacesDeps();
+  if (unpublished.length > 0) {
+    const reason = `unpublished dependency ${unpublished.join(", ")}`;
+    console.log(`SKIP tarball portability: ${reason}`);
+    t.skip(reason);
+    return;
+  }
+
   const tempRoot = await mkdtemp(
     path.join(os.tmpdir(), "interfacectl-portable-"),
   );
@@ -154,9 +193,10 @@ async function packPackage(packageDir, destinationDir) {
 }
 
 async function runCommand(command, args, options = {}) {
+  const { timeout, ...spawnOptions } = options;
   const child = spawn(command, args, {
     stdio: ["ignore", "pipe", "pipe"],
-    ...options,
+    ...spawnOptions,
   });
 
   let stdout = "";
@@ -176,12 +216,24 @@ async function runCommand(command, args, options = {}) {
     });
   }
 
-  const [exitCode] = await once(child, "exit");
+  let exitCode;
+  if (timeout != null && timeout > 0) {
+    const timeoutId = setTimeout(() => {
+      child.kill("SIGTERM");
+    }, timeout);
+    try {
+      [exitCode] = await once(child, "exit");
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  } else {
+    [exitCode] = await once(child, "exit");
+  }
 
   return {
     stdout: stdout.trim(),
     stderr: stderr.trim(),
-    exitCode: Number(exitCode),
+    exitCode: exitCode === null ? 1 : Number(exitCode),
   };
 }
 
