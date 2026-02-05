@@ -87,6 +87,8 @@ Extracts a **deterministic contract artifact** from a Next.js app by analyzing a
 
 **Phase 0 scope:** Routes (app router), layout shell presence (`app/layout.tsx` or `app/(shell)/layout.tsx`), design system usage (`@surfaces/ui` component imports), and auth posture (`/auth` routes). Values that cannot be extracted safely are omitted and reported as warnings in the extraction report.
 
+**Phase 0 guardrails:** No Babel or heavy AST frameworks. Extraction uses filesystem walks and regex for determinism, debuggability, and minimal dependency surface. See [docs/plans/phase-0-extraction-guardrails.md](docs/plans/phase-0-extraction-guardrails.md) for what we extract, what we omit, and when AST tooling may be added in a later phase.
+
 Outputs:
 
 - **Contract:** `contracts/generated/<surfaceId>.contract.json` — schema-valid contract with extracted data under `x_extracted`.

@@ -440,6 +440,8 @@ interfacectl generate-contract --app-root <path> --surface <id> [--out <path>] [
 
 **Phase 0 scope:** Routes, hasShell, designSystemComponents (from `@surfaces/ui`), authAware. Other fields use placeholders or defaults; the report lists warnings for any omitted extraction.
 
+**Phase 0 guardrails:** No Babel or heavy AST. Uses filesystem + regex for determinism, debuggability, and minimal deps. See [docs/plans/phase-0-extraction-guardrails.md](docs/plans/phase-0-extraction-guardrails.md) for extraction limits and when AST tooling may be added.
+
 ---
 
 ## Traceability fields (Phase 2)
