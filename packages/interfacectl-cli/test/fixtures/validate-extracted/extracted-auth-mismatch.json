@@ -1,0 +1,9 @@
+{
+  "surfaceId": "surfaces-web",
+  "extracted": {
+    "authAware": false,
+    "hasShell": true,
+    "routes": ["/"],
+    "designSystemComponents": ["Navigation"]
+  }
+}

@@ -6,6 +6,7 @@ import { runDiffCommand } from "./commands/diff.js";
 import { runEnforceCommand } from "./commands/enforce.js";
 import { runCompileCommand } from "./commands/compile.js";
 import { runGenerateContractCommand } from "./commands/generate-contract.js";
+import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
 import pkg from "../package.json" with { type: "json" };
 
 const program = new Command();
@@ -294,6 +295,27 @@ program
       outPath: options.out,
       reportOutPath: options.reportOut,
       schemaPath: options.schema,
+    });
+    process.exitCode = exitCode;
+  });
+
+program
+  .command("validate-extracted")
+  .description("Fail if contract phase0 expectations conflict with extracted reality (Phase 0.5)")
+  .requiredOption("--contract <path>", "Path to the declared policy contract JSON")
+  .requiredOption("--extracted <path>", "Path to extraction report or generated contract with x_extracted")
+  .option("--surface <id>", "Surface id when not inferrable from extracted file")
+  .option("--format <format>", "Output format (text|json)", "text")
+  .option("--exit-codes <v1|v2>", "Exit code version (default: v1; v2: 0 success, 10 E0, 30 E2)")
+  .action(async (options) => {
+    const exitCodeVersion =
+      options.exitCodes === "v1" || options.exitCodes === "v2" ? options.exitCodes : undefined;
+    const exitCode = await runValidateExtractedCommand({
+      contractPath: options.contract,
+      extractedPath: options.extracted,
+      surfaceId: options.surface,
+      format: (options.format ?? "text").toLowerCase() === "json" ? "json" : "text",
+      exitCodes: exitCodeVersion,
     });
     process.exitCode = exitCode;
   });
