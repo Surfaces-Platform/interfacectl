@@ -5,14 +5,16 @@ alwaysApply: true
 
 # interfacectl Development
 
-This repo (`/Users/mike/Cursor/interfacectl/`) is the canonical location for interfacectl development. Do not edit the submodule copy at `surfaces-monorepo/tools/interfacectl/` for source changes—edit here, then update the submodule reference after merging.
+**Pairs with:** `surfaces-webapps/.cursor/rules/interfacectl-dev-path.mdc` — both repos share the same workflow.
+
+This repo (`/Users/mike/Cursor/interfacectl/`) is the canonical location for interfacectl development. Do not edit the submodule copy at `/Users/mike/Cursor/surfaces-webapps/tools/interfacectl/` for source changes—edit here, then update the submodule reference after merging.
 
 ## Dogfooding
 
-When testing against surfaces-monorepo: build here, then run the CLI with `--workspace-root /Users/mike/Cursor/surfaces-monorepo`. Do not copy dist into the submodule.
+When testing against surfaces-webapps: build here, then run the CLI with `--workspace-root /Users/mike/Cursor/surfaces-webapps`. Do not copy dist into the submodule.
 
 ## Order of operations (release)
 
-1. Edit here → build → dogfood (run CLI with `--workspace-root` surfaces-monorepo)
+1. Edit here → build → dogfood (run CLI with `--workspace-root /Users/mike/Cursor/surfaces-webapps`)
 2. Commit and push interfacectl; merge PR
-3. In surfaces-monorepo: update submodule to new commit, commit, push
+3. In surfaces-webapps: update submodule to new commit, commit, push
