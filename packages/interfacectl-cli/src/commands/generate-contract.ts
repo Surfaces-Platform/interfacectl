@@ -64,7 +64,11 @@ export async function runGenerateContractCommand(
   await mkdir(path.dirname(reportPath), { recursive: true });
 
   const contractJson = stableStringify(contract);
-  const reportJson = stableStringify(report);
+  const reportForOutput = {
+    ...report,
+    appRoot: path.relative(cwd, report.appRoot),
+  };
+  const reportJson = stableStringify(reportForOutput);
   await writeFile(contractPath, `${contractJson}\n`, "utf-8");
   await writeFile(reportPath, `${reportJson}\n`, "utf-8");
 
