@@ -156,6 +156,10 @@
         "domain": {
           "type": "string",
           "description": "Informational: production domain (e.g. www.surfaces.systems)."
+        },
+        "owner": {
+          "type": "string",
+          "description": "Phase 2: informational owner (email or GitHub handle). No enforcement."
         }
       }
     },
