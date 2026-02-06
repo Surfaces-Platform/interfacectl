@@ -1,5 +1,5 @@
 {
-  "$schema": "https://contracts.surfaces.local/surfaces.web.contract.schema.json",
+  "$schema": "https://contracts.surfaces.local/web.surface.contract.schema.json",
   "contractId": "traceability.fixture",
   "version": "0.0.1",
   "surfaces": [

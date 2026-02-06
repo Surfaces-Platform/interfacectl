@@ -10,7 +10,7 @@ import {
   ContractSurface,
   PageFrameLayoutDescriptor,
 } from "./types.js";
-import bundledSchema from "./schema/surfaces.web.contract.schema.json" with {
+import bundledSchema from "./schema/web.surface.contract.schema.json" with {
   type: "json",
 };
 

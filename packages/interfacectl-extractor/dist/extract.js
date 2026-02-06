@@ -78,7 +78,7 @@ function buildContract(surfaceId, extracted) {
         ? "Surfaces Web"
         : surfaceId.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     return {
-        $schema: "https://contracts.surfaces.local/surfaces.web.contract.schema.json",
+        $schema: "https://contracts.surfaces.local/web.surface.contract.schema.json",
         contractId: `${surfaceId}.generated`,
         version: "0.1.0",
         description: "Extracted from Next.js app (Phase 0).",

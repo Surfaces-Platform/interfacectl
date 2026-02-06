@@ -1,6 +1,6 @@
 import AjvModule from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import bundledSchema from "./schema/surfaces.web.contract.schema.json" with {
+import bundledSchema from "./schema/web.surface.contract.schema.json" with {
     type: "json"
 };
 const frozenBundledSchema = Object.freeze(bundledSchema);

@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const schemas = [
-  "surfaces.web.contract.schema.json",
+  "web.surface.contract.schema.json",
   "interfacectl.diff.schema.json",
   "interfacectl.policy.schema.json",
   "interfacectl.fix-summary.schema.json",

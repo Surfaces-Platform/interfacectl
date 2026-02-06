@@ -102,7 +102,7 @@ function buildContract(
 
   return {
     $schema:
-      "https://contracts.surfaces.local/surfaces.web.contract.schema.json",
+      "https://contracts.surfaces.local/web.surface.contract.schema.json",
     contractId: `${surfaceId}.generated`,
     version: "0.1.0",
     description: "Extracted from Next.js app (Phase 0).",
