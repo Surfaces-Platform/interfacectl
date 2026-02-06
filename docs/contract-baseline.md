@@ -46,7 +46,7 @@ The top-level **color** object is optional. When present it can include:
 
 ## Where contract semantics live in the repo
 
-- **Schema file:** `packages/interfacectl-validator/src/schema/surfaces.web.contract.schema.json`. This is the authoritative JSON Schema. The CLI uses a bundled copy of this schema by default. You may override it with `--schema <path>` if needed.
+- **Schema file:** `packages/interfacectl-validator/src/schema/web.surface.contract.schema.json`. This is the authoritative JSON Schema. The CLI uses a bundled copy of this schema by default. You may override it with `--schema <path>` if needed. Built-in contract schemas are named by surface runtime and contract type (e.g. `web.surface.contract.schema.json`), not by application.
 - **Structure validation:** The function **validateContractStructure** in `packages/interfacectl-validator/src/index.ts` loads the schema and validates contract JSON (via AJV). It returns errors or the parsed contract.
 - **Compliance evaluation:** The function **evaluateContractCompliance** in the same file takes a validated contract and a list of surface descriptors. It returns a validation summary with per-surface reports and violations. Compliance rules for fonts, colors, layout, motion, sections, and pageFrame are implemented in **evaluateSurfaceCompliance** in the same file.
 - **CLI entry point:** The validate command is implemented in `packages/interfacectl-cli/src/commands/validate.ts`. It calls **collectSurfaceDescriptors** (in `packages/interfacectl-cli/src/descriptors/static-analysis.ts`) to gather descriptors from the codebase, then passes the contract and descriptors to **evaluateContractCompliance**. The CLI maps violation types to stable codes in this command implementation.

@@ -34,7 +34,7 @@ Interfacectl enforces this by:
 ## Contract Impact  
 
 ### 1. Contract definition  
-The authoritative contract schema lives in `packages/interfacectl-validator/src/schema/surfaces.web.contract.schema.json`. Contracts are JSON files (default path `contracts/surfaces.web.contract.json` or `SURFACES_CONTRACT`). The schema already includes:
+The authoritative contract schema lives in `packages/interfacectl-validator/src/schema/web.surface.contract.schema.json`. Contracts are JSON files (default path `contracts/surfaces.web.contract.json` or `SURFACES_CONTRACT`). The schema already includes:
 - **Version and scope:** `contractId`, `version` (semver pattern).
 - **Surfaces:** per-surface `requiredSections`, `allowedFonts`, `layout` (maxContentWidth, requiredContainers, optional pageFrame), deprecated `allowedColors`.
 - **Sections:** `id`, `intent`, `description` (intent is present but not yet a first-class enforcement hook).
@@ -122,7 +122,7 @@ Migration: `allowedColors` is deprecated in favor of `color.sourceOfTruth` and `
 ## Implementation Outline  
 
 ### Phase 0. Contract baseline (mostly done; align and document)  
-- **Reuse:** Contract schema is in `packages/interfacectl-validator/src/schema/surfaces.web.contract.schema.json`. Validation is `validateContractStructure` in `packages/interfacectl-validator/src/index.ts` (AJV). Error taxonomy is `DriftViolationType` and the code map in `packages/interfacectl-cli/src/commands/validate.ts` (e.g. `font.disallowed`).  
+- **Reuse:** Contract schema is in `packages/interfacectl-validator/src/schema/web.surface.contract.schema.json`. Validation is `validateContractStructure` in `packages/interfacectl-validator/src/index.ts` (AJV). Error taxonomy is `DriftViolationType` and the code map in `packages/interfacectl-cli/src/commands/validate.ts` (e.g. `font.disallowed`).  
 - **New/minimal:** Document the minimal authoritative contract (required fields, optional color policy, deprecated allowedColors). Optionally add a short "contract concepts" section to API.md or docs. No schema change required unless adding breaking/non-breaking metadata later.
 
 ### Phase 1. Generation-time gating (map to existing commands; optional alias)  
@@ -167,7 +167,7 @@ Work in this phase is contingent on observing Phase 4 consumption patterns.
 ## Builder Checklist  
 
 Before implementation begins:
-- **Contract location:** Canonical schema is `packages/interfacectl-validator/src/schema/surfaces.web.contract.schema.json`. Contract files are project-specific (default `contracts/surfaces.web.contract.json` or `SURFACES_CONTRACT`). Ownership is repo; surfaces.systems is the intended source of canonical definitions per strategy.
+- **Contract location:** Canonical schema is `packages/interfacectl-validator/src/schema/web.surface.contract.schema.json`. Contract files are project-specific (default `contracts/surfaces.web.contract.json` or `SURFACES_CONTRACT`). Ownership is repo; surfaces.systems is the intended source of canonical definitions per strategy.
 - **Generation-time gating:** Current CI (`.github/workflows/ci.yml`) runs verify, build, test only. Gating fits as an optional job (e.g. `interfacectl validate` or `enforce --mode fail` against a repo contract). Confirm with maintainers where to add it (e.g. on PR, on main, or as an optional job).
 - **Runtime consumers:** No runtime consumers for compiled bundles exist yet. Before implementing `compile`, confirm at least one consumer or a concrete bundle format requirement; otherwise defer or define a minimal format and document it for future consumers.
 
