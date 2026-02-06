@@ -1,5 +1,7 @@
 # Phase 0 Extraction Guardrails
 
+**Status:** Framing doc.
+
 **Scope:** Contract extraction from Next.js app code (`interfacectl generate-contract`). Phase-scoped and revisitable.
 
 ---

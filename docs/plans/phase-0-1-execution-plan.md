@@ -1,5 +1,6 @@
 # Phase 0 and Phase 1 Execution Plan
 
+**Status:** Execution plan.
 
 ## Purpose and scope
 
@@ -9,7 +10,7 @@ This document defines the scope of Phase 0 and Phase 1 from docs/plans/contract-
 
 **In scope:** Phase 0 (contract baseline documentation and alignment) and Phase 1 (generation-time gating documentation and optional alias). No new enforcement logic; only documentation and, if chosen, a thin gate command.
 
-**Out of scope for this plan:** Phase 2 (drift-relevant enforcement tightening), Phase 3 (runtime compile), Phase 4 (explain, contract diff breaking classification). Any code that implements compile, explain, or new validation rules is out of scope until a follow-up plan is approved.
+**Out of scope for this plan:** Phase 2 (traceability), Phase 3 (runtime compile), Phase 4 (runtime consumption framing). Any code that implements compile or new validation rules is out of scope until a follow-up plan is approved.
 
 ---
 

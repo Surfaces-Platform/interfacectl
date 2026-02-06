@@ -1,5 +1,7 @@
 # Phase 3 Compile Directory Bundle
 
+**Status:** Execution plan.
+
 ## Purpose
 Add `interfacectl compile` to produce a deterministic directory bundle for runtime consumption. The bundle must be readable, composable, and diffable. This is a build artifact, not an enforcement engine.
 

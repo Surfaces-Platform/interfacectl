@@ -1,8 +1,19 @@
 # Feature Plan  
 Interfacectl — Contract-First Enforcement Alignment
 
+**Status:** Execution plan (parent).
+
+## Document scope
+
+This plan defines phases for the interfacectl CLI and its artifacts only.
+It governs contract schema, validation, enforcement semantics, and compile output.
+UI behavior, human actionability, and operational workflows are out of scope.
+Downstream consumers may define their own phased lifecycles independently.
+
+---
+
 ## Summary  
-Evolve interfacectl into a contract-first enforcement CLI that gates agent-driven interface changes at generation time and produces runtime-consumable enforcement artifacts. The repo already provides deterministic contract validation (`validate`), contract-vs-observed diff (`diff`), and policy-based enforcement (`enforce` with fail/fix/pr). Missing pieces: a single gating workflow that teams can adopt (e.g. `gate` or a clear recommendation), runtime bundle compilation (`compile`), and violation explainability (`explain`). The plan aligns existing behavior with the strategy and adds only what is needed for contract-first gating and runtime consumption. Interfacectl does not generate UI, act as a linter without contracts, or function as an observability tool.
+Evolve interfacectl into a contract-first enforcement CLI that gates agent-driven interface changes at generation time and produces runtime-consumable enforcement artifacts. The repo already provides deterministic contract validation (`validate`), contract-vs-observed diff (`diff`), and policy-based enforcement (`enforce` with fail/fix/pr). Missing pieces: a single gating workflow that teams can adopt (e.g. `gate` or a clear recommendation) and runtime bundle compilation (`compile`). Violation explainability is deferred to Phase 5. The plan aligns existing behavior with the strategy and adds only what is needed for contract-first gating and runtime consumption. Interfacectl does not generate UI, act as a linter without contracts, or function as an observability tool.
 
 ---
 
@@ -43,7 +54,7 @@ Migration: `allowedColors` is deprecated in favor of `color.sourceOfTruth` and `
 ### 3. Violation handling  
 - Violations are reported and, when used as a gate, cause non-zero exit codes (v1: 1/2; v2: 10/20/30 by category).
 - Each violation already has a stable code (e.g. `font.disallowed`, `section.missing`) and maps to a category (E0/E1/E2). The validator emits `DriftViolation` with `type`, `message`, and optional `details` (including `jsonPointer` for some checks).
-- There is no `interfacectl explain` today; human-readable text is in command output and in the `message` field of JSON findings. Adding a dedicated explain command would centralize violation-code documentation.
+- There is no `interfacectl explain` today; human-readable text is in command output and in the `message` field of JSON findings. Explainability is a possible Phase 5 scope.
 - Fail mode is the default for enforce; no silent failures. Advisory-only would require an explicit policy or flag, not the default.
 
 ---
@@ -78,7 +89,7 @@ Migration: `allowedColors` is deprecated in favor of `color.sourceOfTruth` and `
 3. **Violation mapping:** Every finding in validate/diff/enforce JSON output includes a stable `code` and, where applicable, `category` (E0/E1/E2/E3). Violation types in `DriftViolationType` and the code map in `validate.ts` (e.g. `font.disallowed`) remain the single source of truth.  
 4. **Runtime bundle (new):** A command (e.g. `interfacectl compile`) produces a versioned artifact (format TBD) that runtime or edge systems can consume. Verifiable by running the command and checking output exists and passes a minimal schema check.  
 5. **Semantics consistency:** The same contract schema and compliance logic in `@surfaces/interfacectl-validator` are used for validate and for any future compile output; no duplicate semantics.  
-6. **Output:** All current commands support `--format json` and text; any new commands (gate, compile, explain) must support both where applicable.  
+6. **Output:** All current commands support `--format json` and text; any new commands (gate, compile) must support both where applicable.  
 7. **Fail fast:** Contract load failure, schema validation failure, or config load failure exits immediately with E0 (e.g. exit 10 in v2); no partial success. Already true in validate and enforce; preserve in new code.
 
 ---
@@ -95,7 +106,7 @@ Migration: `allowedColors` is deprecated in favor of `color.sourceOfTruth` and `
    Mitigation: Enforce only what the contract declares (surfaces, sections, constraints, color policy). Existing checks (fonts, colors, layout, motion, pageFrame) are all contract-defined.
 
 4. **Command surface sprawl:** New commands could duplicate or blur semantics.  
-   Mitigation: Keep core surface to validate, diff, enforce, and any new gate/compile/explain. Document in API.md which command to use for gating (validate vs enforce --mode fail) so "gate" is either an alias or a single recommended workflow.
+   Mitigation: Keep core surface to validate, diff, enforce, and any new gate/compile. Document in API.md which command to use for gating (validate vs enforce --mode fail) so "gate" is either an alias or a single recommended workflow.
 
 5. **Repo-specific: two gating paths.** Validate runs contract compliance against descriptors; enforce --mode fail runs diff then policy. They can disagree (e.g. validate passes but diff has entries).  
    Mitigation: Decide and document the canonical gating workflow (e.g. "use validate for compliance; use enforce for policy-on-diff") and, if adding `gate`, make it a thin wrapper that calls one or both explicitly.
@@ -119,19 +130,37 @@ Migration: `allowedColors` is deprecated in favor of `color.sourceOfTruth` and `
 - **New:** Either (a) add `interfacectl gate` as an alias that runs validate (and optionally enforce fail) with a fixed set of options, or (b) document in README/API.md the recommended gating command (e.g. "for CI, run `interfacectl validate --exit-codes v2`"). If adding `gate`, wire it in `packages/interfacectl-cli/src/index.ts` and keep it thin (no duplicate logic).  
 - **CI:** Out of scope for this plan; follow-up can add an optional CI job that runs validate or enforce against a repo contract.
 
-### Phase 2. Drift-relevant enforcement (already present; tighten semantics)  
+### Phase 2. Traceability and output stability  
 - **Reuse:** Contract-backed checks exist in `evaluateSurfaceCompliance` (validator) and in diff (contract vs observed descriptors). Structured violation signals are already emitted: validate/diff/enforce JSON output with `code`, `category`, `findings`/`entries`. Drift risks are in `DiffOutput.driftRisks`.  
-- **New/minimal:** Ensure every diff entry that affects enforcement has a `rule` or contract path where possible (already in types; some entries may leave `rule` unset). No new checks unless they are deterministic and contract-backed.
+- **New/minimal:** Phase 2 ensures all diff and enforce outputs are deterministically correlatable via `stableId`, `contractRef`, and `ruleRef` fields, without changing validation semantics or the contract schema. Ensure every diff entry that affects enforcement has a `rule` or contract path where possible (already in types; some entries may leave `rule` unset). No new checks unless they are deterministic and contract-backed.
 
 ### Phase 3. Runtime compilation (new work)  
 - **New:** Implement a command (e.g. `interfacectl compile`) in `packages/interfacectl-cli`. Input: contract path (and optionally config). Output: a versioned bundle (e.g. JSON or a small artifact) that runtime or edge systems can load. Reuse: load contract and schema via same paths as validate; reuse `validateContractStructure` so only valid contracts compile.  
 - **Scope:** Define bundle format (e.g. contract + metadata, no new semantics). One target initially; "multiple runtime targets" can be a later phase if needed.  
 - **Location:** New command in `src/commands/compile.ts`, registered in `src/index.ts`. Validator may expose a small helper (e.g. "canonical contract shape for runtime") if useful; no duplicate compliance logic.
 
-### Phase 4. Ergonomics and explainability (new and small improvements)  
-- **New:** Add `interfacectl explain <code>` (or similar) that prints a short description and remediation for a violation code. Data can live in a static map (code to text) in the CLI or in a small JSON file; no network call. Register in `src/index.ts`.  
-- **Optional:** Contract diffing with explicit breaking vs non-breaking classification would require defining rules (e.g. removal of required section = breaking) and adding a classification step to diff output; can be a follow-up.  
-- **Reuse:** Failure messages already exist in validator (`DriftViolation.message`) and in validate text output; improve only where unclear (e.g. add one-line remediation for common codes in explain).
+### Phase 4. Runtime consumption semantics (framing only)  
+
+Phase 4 defines who consumes the compiled bundle and what the contract means at runtime. This phase is framing-only.
+
+**In scope:**
+- Documenting runtime consumption semantics.
+- Clarifying how compiled artifacts may be interpreted by consumers.
+
+**Out of scope:**
+- New CLI commands.
+- Enforcement behavior at runtime.
+- Explainability or ergonomics.
+- Policy evaluation, remediation, or agent orchestration.
+
+See `phase-4-runtime-consumption-framing.md` for authoritative scope.
+
+### Phase 5. Ergonomics and developer affordances (tentative)
+
+Possible future scope includes explainability and developer tooling.
+No scope is approved.
+No implementation is planned.
+Work in this phase is contingent on observing Phase 4 consumption patterns.
 
 ---
 

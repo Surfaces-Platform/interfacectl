@@ -1,5 +1,7 @@
 # Phase 2 Traceability and Output Stability
 
+**Status:** Execution plan.
+
 ## Purpose
 Make diff and enforce outputs explainable and machine-correlatable over time. Reduce ambiguity without changing validation semantics or contract schema.
 
