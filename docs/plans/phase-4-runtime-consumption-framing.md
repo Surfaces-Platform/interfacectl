@@ -1,6 +1,6 @@
 # Phase 4: Runtime consumption framing
 
-**Framing doc only.** No implementation. Defines what Phase 4 is allowed to be before any code exists, so the compile bundle does not quietly turn into runtime enforcement.
+**Status:** Framing doc. No implementation. Defines what Phase 4 is allowed to be before any code exists, so the compile bundle does not quietly turn into runtime enforcement.
 
 If runtime consumption is implemented, it may live in a separate repository or consumer-specific project rather than in interfacectl itself. This document defines semantics only, not ownership of runtime code.
 
