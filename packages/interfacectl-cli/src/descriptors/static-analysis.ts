@@ -10,6 +10,7 @@ import {
   type SurfaceMotionDescriptor,
   type SurfaceSectionDescriptor,
   type PageFrameLayoutDescriptor,
+  type SurfacePrimitiveDescriptor,
 } from "@surfaces/interfacectl-validator";
 
 const SECTION_ATTRIBUTE_REGEX =
@@ -69,6 +70,15 @@ const TRANSITION_DECL_REGEX = /transition[^:]*:\s*([^;]+);/gi;
 const DURATION_DECL_REGEX = /(animation|transition)-duration\s*:\s*([^;]+);/gi;
 const TIMING_DECL_REGEX =
   /(animation|transition)-timing-function\s*:\s*([^;]+);/gi;
+
+const NAV_REGEX = /<nav\b/gi;
+const HEADER_REGEX = /<header\b/gi;
+const ASIDE_REGEX = /<aside\b/gi;
+const PRIMITIVE_PATTERNS: Array<{ role: string; regex: RegExp }> = [
+  { role: "nav", regex: NAV_REGEX },
+  { role: "header", regex: HEADER_REGEX },
+  { role: "sidebar", regex: ASIDE_REGEX },
+];
 
 export interface DescriptorIssue {
   surfaceId?: string;
@@ -243,6 +253,8 @@ async function extractSurfaceDescriptor(
     });
   }
 
+  const primitives = await extractPrimitives(sectionFiles, workspaceRoot, fileContentCache);
+
   const structuralSurfaceDescriptor: SurfaceDescriptor = {
     surfaceId,
     sections,
@@ -250,6 +262,7 @@ async function extractSurfaceDescriptor(
     colors,
     layout,
     motion,
+    primitives,
   };
 
   return { descriptor: structuralSurfaceDescriptor, warnings, errors };
@@ -916,6 +929,36 @@ function collectColorsFromContent(
   }
 }
 
+async function extractPrimitives(
+  sectionFiles: string[],
+  workspaceRoot: string,
+  fileContentCache: Map<string, string>,
+): Promise<SurfacePrimitiveDescriptor[]> {
+  const counts = new Map<string, { count: number; sources: Set<string> }>();
+
+  for (const filePath of sectionFiles) {
+    const content = await readFileCached(filePath, fileContentCache);
+    for (const { role, regex } of PRIMITIVE_PATTERNS) {
+      regex.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(content)) !== null) {
+        const entry = counts.get(role) ?? { count: 0, sources: new Set<string>() };
+        entry.count += 1;
+        entry.sources.add(path.relative(workspaceRoot, filePath));
+        counts.set(role, entry);
+      }
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([role, { count, sources }]) => ({
+      role,
+      count,
+      sources: [...sources],
+    }))
+    .sort((a, b) => a.role.localeCompare(b.role));
+}
+
 function parseColorValue(value: string): string[] {
   const colors: string[] = [];
   const trimmed = value.trim();
@@ -1166,4 +1209,3 @@ function isTimingFunction(token: string): boolean {
 function toMotionKey(durationMs: number, timing: string): string {
   return `${durationMs}:${timing}`;
 }
-

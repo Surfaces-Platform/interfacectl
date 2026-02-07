@@ -40,6 +40,17 @@ The top-level **color** object is optional. When present it can include:
 - **semantics**: Optional **roles** (accent, text, background, border) each with **enforcement** (`"off"`, `"warn"`, `"strict"`).
 - **consistency**: Optional **acrossSurfaces** object with **enforcement** level and **signals** used for reporting.
 
+## Optional: shell ownership boundary (new)
+
+Add these when a shell provides global layout so generators cannot recreate it inside surfaces:
+
+- **shell** (object):
+  - **owns** (array of strings): Shell-owned primitives (e.g. `nav`, `header`, `sidebar`, `authWrapper`, `appChrome`). Generation should not emit these inside surfaces.
+  - **contentSlot** (string): Identifier for the shell’s content mount point (frame name or DOM id).
+- **surface.mustNotEmit** (array of strings, per-surface): Optional explicit ban list. If omitted, generators should default this to **shell.owns**.
+
+Backwards compatibility: `shell` is optional; existing contracts remain valid. Generators and validators should default an undefined **mustNotEmit** to **shell.owns** when present.
+
 ## Deprecated fields
 
 - **allowedColors** (per-surface): Deprecated. The schema still accepts it for compatibility. Prefer the top-level **color** policy with **sourceOfTruth** and **rawValues**. Migration: move per-surface color allowlists into **color.sourceOfTruth** (e.g. token namespaces) or **color.rawValues** (allowlist/denylist). The CLI emits a deprecation warning when allowedColors is present. Deprecated fields are accepted for compatibility but may be removed in a future major version.

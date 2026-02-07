@@ -278,6 +278,31 @@ export function evaluateSurfaceCompliance(
     }
   }
 
+  // Shell-owned primitives check
+  const banList = new Set(
+    (surface.mustNotEmit && surface.mustNotEmit.length > 0
+      ? surface.mustNotEmit
+      : contract.shell?.owns ?? []),
+  );
+  if (banList.size > 0 && descriptor.primitives) {
+    for (const primitive of descriptor.primitives) {
+      if (banList.has(primitive.role) && primitive.count > 0) {
+        violations.push({
+          surfaceId: descriptor.surfaceId,
+          type: "shell-owned-primitive-emitted",
+          message: `Primitive "${primitive.role}" is shell-owned and must not be emitted. Count: ${primitive.count}.`,
+          details: {
+            role: primitive.role,
+            count: primitive.count,
+            sources: primitive.sources,
+            banList: [...banList],
+            jsonPointer: "/shell/owns",
+          },
+        });
+      }
+    }
+  }
+
   // New color policy validation
   if (contract.color) {
     validateColorPolicy(contract, descriptor, violations);
