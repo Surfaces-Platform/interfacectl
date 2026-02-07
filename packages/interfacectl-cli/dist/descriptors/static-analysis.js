@@ -46,6 +46,14 @@ const MOTION_TIMING_VAR_REGEX = /--contract-motion-timing\s*:\s*([a-z-]+)\s*;/i;
 const TRANSITION_DECL_REGEX = /transition[^:]*:\s*([^;]+);/gi;
 const DURATION_DECL_REGEX = /(animation|transition)-duration\s*:\s*([^;]+);/gi;
 const TIMING_DECL_REGEX = /(animation|transition)-timing-function\s*:\s*([^;]+);/gi;
+const NAV_REGEX = /<nav\b/gi;
+const HEADER_REGEX = /<header\b/gi;
+const ASIDE_REGEX = /<aside\b/gi;
+const PRIMITIVE_PATTERNS = [
+    { role: "nav", regex: NAV_REGEX },
+    { role: "header", regex: HEADER_REGEX },
+    { role: "sidebar", regex: ASIDE_REGEX },
+];
 export async function collectSurfaceDescriptors(options) {
     const structuralDescriptors = [];
     const warnings = [];
@@ -136,6 +144,7 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
             message: `No motion declarations detected for surface "${surfaceId}".`,
         });
     }
+    const primitives = await extractPrimitives(sectionFiles, workspaceRoot, fileContentCache);
     const structuralSurfaceDescriptor = {
         surfaceId,
         sections,
@@ -143,6 +152,7 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
         colors,
         layout,
         motion,
+        primitives,
     };
     return { descriptor: structuralSurfaceDescriptor, warnings, errors };
 }
@@ -667,6 +677,29 @@ function collectColorsFromContent(content, source, colorValues) {
             }
         }
     }
+}
+async function extractPrimitives(sectionFiles, workspaceRoot, fileContentCache) {
+    const counts = new Map();
+    for (const filePath of sectionFiles) {
+        const content = await readFileCached(filePath, fileContentCache);
+        for (const { role, regex } of PRIMITIVE_PATTERNS) {
+            regex.lastIndex = 0;
+            let match;
+            while ((match = regex.exec(content)) !== null) {
+                const entry = counts.get(role) ?? { count: 0, sources: new Set() };
+                entry.count += 1;
+                entry.sources.add(path.relative(workspaceRoot, filePath));
+                counts.set(role, entry);
+            }
+        }
+    }
+    return [...counts.entries()]
+        .map(([role, { count, sources }]) => ({
+        role,
+        count,
+        sources: [...sources],
+    }))
+        .sort((a, b) => a.role.localeCompare(b.role));
 }
 function parseColorValue(value) {
     const colors = [];

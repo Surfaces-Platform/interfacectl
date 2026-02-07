@@ -310,6 +310,7 @@ function mapViolationsToFindings(summary) {
         "motion-timing-not-allowed": "motion.timing",
         "color-raw-value-used": "color.raw-value.used",
         "color-token-namespace-violation": "color.token.namespace.violation",
+        "shell-owned-primitive-emitted": "shell.primitive.disallowed",
     };
     for (const report of summary.surfaceReports) {
         for (const violation of report.violations) {

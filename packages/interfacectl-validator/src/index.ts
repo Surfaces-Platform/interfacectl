@@ -650,6 +650,7 @@ export type {
   SurfaceMotionDescriptor,
   SurfaceLayoutDescriptor,
   PageFrameLayoutDescriptor,
+  SurfacePrimitiveDescriptor,
   SurfaceReport,
   DriftViolation,
   ValidationSummary,
