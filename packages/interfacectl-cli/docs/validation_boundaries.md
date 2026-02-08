@@ -2,6 +2,11 @@
 
 This document defines **what Surfaces enforces**, **what it deliberately does not**, and **how validation responsibilities are layered** across the interface governance stack.
 
+Timing terms in this document follow `docs/taxonomy.md`:
+- `Generation time`
+- `CI/CD time`
+- `Runtime (edge)`
+
 The goal is to keep Surfaces focused on **contract authority and enforcement**, while avoiding scope creep into lower-level primitives such as token authoring or schema tooling.
 
 ---
@@ -46,6 +51,33 @@ SurfaceOps + interfacectl
   class B,C surfaces;
   class D ops;
 ```
+
+## Lifecycle Contexts (Where decisions happen)
+
+```mermaid
+flowchart LR
+  A[Generation time
+Tooling authors code
+Decision: can output be generated?] --> B[CI/CD time
+Pipeline validates contracts
+Decision: can change ship?]
+  B --> C[Runtime (edge)
+Request-time adaptation checks
+Decision: can adaptation render now?]
+
+  classDef gen fill:#eef6ff,stroke:#4a90e2,stroke-width:1px;
+  classDef cicd fill:#f1fff1,stroke:#2d8a2d,stroke-width:1px;
+  classDef edge fill:#fff6e9,stroke:#cc8a00,stroke-width:1px;
+
+  class A gen;
+  class B cicd;
+  class C edge;
+```
+
+The lifecycle flow is additive:
+- `Generation time` is primary prevention.
+- `CI/CD time` is the primary shipping gate.
+- `Runtime (edge)` is defense-in-depth and request-time control.
 
 
 ### Layer 0 — Artifact Validity (Prerequisite)
@@ -246,4 +278,3 @@ By enforcing these boundaries, Surfaces:
 - Preserves contract authority
 - Supports heterogeneous inputs (human and AI)
 - Remains focused on enforcement rather than authoring
-

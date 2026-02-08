@@ -9,6 +9,7 @@ This plan defines phases for the interfacectl CLI and its artifacts only.
 It governs contract schema, validation, enforcement semantics, and compile output.
 UI behavior, human actionability, and operational workflows are out of scope.
 Downstream consumers may define their own phased lifecycles independently.
+Timing terminology in this document follows `docs/taxonomy.md`.
 
 ---
 
@@ -48,8 +49,9 @@ Missing or implicit today:
 Migration: `allowedColors` is deprecated in favor of `color.sourceOfTruth` and `color.rawValues`; existing contracts may need a one-time migration. New schema fields should remain additive where possible.
 
 ### 2. Enforcement timing  
-- **Generation time:** Today gating is achieved by running `interfacectl validate` or `interfacectl enforce --mode fail`. Validate checks contract compliance against descriptors collected from the codebase; enforce fail runs diff then evaluates against policy. CI does not yet run interfacectl; adding a step is repo-specific.
-- **Runtime:** No compiled bundles yet. `interfacectl compile` (or equivalent) does not exist; runtime consumers would need a defined bundle format and output location.
+- **Generation time:** Contract-aware generators can use contracts to constrain authored output. This plan does not define generator implementations.
+- **CI/CD time:** Today gating is achieved by running `interfacectl validate` or `interfacectl enforce --mode fail` in development/pipeline contexts. Validate checks contract compliance against descriptors collected from the codebase; enforce fail runs diff then evaluates against policy. CI does not yet run interfacectl; adding a step is repo-specific.
+- **Runtime (edge):** No compiled bundles yet. `interfacectl compile` (or equivalent) does not exist; runtime consumers would need a defined bundle format and output location.
 
 ### 3. Violation handling  
 - Violations are reported and, when used as a gate, cause non-zero exit codes (v1: 1/2; v2: 10/20/30 by category).

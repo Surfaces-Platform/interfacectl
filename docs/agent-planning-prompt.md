@@ -11,6 +11,6 @@ Task:
 
 Hard constraints:
 - Contracts must be explicit and machine-enforceable.
-- Enforcement timing must be generation time, runtime, or both.
+- Enforcement timing must be stated using `docs/taxonomy.md`: generation time, CI/CD time, runtime (edge), or a combination.
 - Violation handling must be defined and implemented.
 - Avoid observability-only solutions.

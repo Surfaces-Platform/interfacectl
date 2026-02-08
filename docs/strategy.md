@@ -11,6 +11,8 @@ These are designed to be copied, shared, and used as working constraints.
 
 ## 1. One-Page Strategy Snapshot
 
+Terminology note: this document follows `docs/taxonomy.md` for `Generation time`, `CI/CD time`, and `Runtime (edge)`.
+
 ### Purpose
 Surfaces exists to ensure AI- and system-driven interfaces remain understandable, predictable, and accountable as agents increasingly shape user experience.
 
@@ -40,7 +42,7 @@ This happens before users experience failure.
 
 ### How It Works
 - Interface contracts define intent, allowed change, and invariants.
-- Contracts are enforced at generation time and runtime.
+- Contracts are applied at generation time, CI/CD time, and runtime (edge).
 - Feedback from live systems improves contracts over time.
 - One contract model compiles once and applies across multiple enforcement surfaces.
 
@@ -66,7 +68,7 @@ Surfaces governs behavioral correctness, not creative output.
 ## 2. Builder-Facing Execution Plan
 
 ### Objective
-Implement Surfaces as a contract-first enforcement layer that governs agent-driven interface behavior at generation time and runtime.
+Implement Surfaces as a contract-first enforcement layer that governs agent-driven interface behavior at generation time, CI/CD time, and runtime (edge).
 
 ---
 
@@ -87,7 +89,11 @@ Each contract must specify:
 - Validate UI produced by designers, systems, or agents.
 - Prevent invalid or out-of-bounds output from existing.
 
-#### Runtime
+#### CI/CD Time
+- Gate contract compliance in pull request and release pipelines.
+- Block merges/deploys when contract checks fail.
+
+#### Runtime (Edge)
 - Evaluate agent-proposed adaptations.
 - Block, correct, or constrain changes before users see them.
 

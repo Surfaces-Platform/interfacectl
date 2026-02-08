@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Read docs/strategy.md before filing.
+        Read docs/strategy.md and docs/taxonomy.md before filing.
   - type: textarea
     id: summary
     attributes:
@@ -27,8 +27,12 @@ body:
       label: Enforcement timing
       options:
         - Generation time
-        - Runtime
-        - Both
+        - CI/CD time
+        - Runtime (edge)
+        - Generation + CI/CD
+        - CI/CD + Runtime (edge)
+        - Generation + Runtime (edge)
+        - Generation + CI/CD + Runtime (edge)
     validations:
       required: true
   - type: dropdown

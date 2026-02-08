@@ -9,6 +9,7 @@ All feature work must align with docs/plans/contract-first-enforcement-alignment
 ## Feature planning requirement
 
 Before planning or implementing any feature, read "docs/strategy.md" and produce a short "Feature Plan" that explicitly maps the work to the strategy decision filter and enforcement model.
+Use timing terms from "docs/taxonomy.md" (generation time, CI/CD time, runtime (edge)).
 
 See "docs/feature-plan.template.md".
 

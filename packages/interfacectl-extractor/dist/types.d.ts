@@ -8,6 +8,11 @@ export interface ExtractedContractFields {
     designSystemComponents: string[];
     authAware: boolean;
 }
+export interface ExtractedPrimitives {
+    role: string;
+    count: number;
+    sources?: string[];
+}
 export interface ExtractionWarning {
     code: string;
     message: string;

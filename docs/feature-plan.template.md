@@ -14,7 +14,8 @@ Decision filter sentence
 What contract fields or semantics are added or changed. Include intent, invariants, allowed change surface, contextual conditions.
 
 2. Enforcement timing
-Which enforcement points apply. Generation time, runtime, or both.
+Which enforcement points apply. Generation time, CI/CD time, runtime (edge), or a combination.
+Use terminology from `docs/taxonomy.md`.
 
 3. Violation handling
 What happens on violation. Blocked, corrected, constrained, or signaled.

@@ -3,6 +3,7 @@
 Docs cleanup complete as of 2025-02-06. Further changes require intent.
 
 These phases apply only to the interfacectl CLI and its artifacts.
+Timing terminology for phase docs is defined in `docs/taxonomy.md`.
 
 - **Phase 0:** Contract baseline and extraction guardrails
 - **Phase 1:** Generation-time gating (validate as canonical gate)

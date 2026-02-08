@@ -7,6 +7,7 @@
 _Approval note:_ This section is approved as written. Scope is intentionally constrained to documentation and alias-level changes to prevent premature expansion.
 
 This document defines the scope of Phase 0 and Phase 1 from docs/plans/contract-first-enforcement-alignment.md. It records the chosen gating workflow, exit code decision, and testable acceptance criteria so implementation PRs can be reviewed against a single source of truth.
+Timing terminology follows `docs/taxonomy.md`.
 
 **In scope:** Phase 0 (contract baseline documentation and alignment) and Phase 1 (generation-time gating documentation and optional alias). No new enforcement logic; only documentation and, if chosen, a thin gate command.
 
