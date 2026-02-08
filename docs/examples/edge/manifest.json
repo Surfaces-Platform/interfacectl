@@ -1,0 +1,14 @@
+{
+  "contractId": "surfaces.web",
+  "version": "0.1.0",
+  "surfaceId": "surfaces-web",
+  "layout": { "maxContentWidth": 1160, "requiredContainers": ["contract-container"] },
+  "color": {
+    "sourceOfTruth": { "type": "tokens", "tokenNamespaces": ["--color-", "--background"] },
+    "rawValues": { "policy": "warn", "allowlist": [], "denylist": [] }
+  },
+  "motion": {
+    "allowedDurationsMs": [120, 160, 200, 240],
+    "allowedTimingFunctions": ["ease", "ease-in-out", "var(--contract-motion-timing)"]
+  }
+}
