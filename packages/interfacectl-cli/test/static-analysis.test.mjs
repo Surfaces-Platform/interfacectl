@@ -181,4 +181,89 @@ test("collectSurfaceDescriptors captures sections, containers, fonts, colors, an
   }
 });
 
+test("detects shell-owned primitives (navigation/footer/auth-shell) in descriptors", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-primitives-"));
+  const surfaceId = "demo-primitives";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "layout.tsx"),
+      `
+        import Navigation from "@surfaces/ui/components/Navigation";
+        export default function RootLayout({ children }) {
+          return (
+            <html lang="en">
+              <body data-contract-container="primary-shell">
+                <Navigation />
+                {children}
+                <footer>footer content</footer>
+              </body>
+            </html>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        import AuthLayout from "@/components/AuthLayout";
+        export default function Page() {
+          return (
+            <AuthLayout>
+              <main data-contract-section="main.hero">Hello</main>
+            </AuthLayout>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "test.contract",
+      version: "1.0.0",
+      sections: [
+        { id: "main.hero", intent: "hero", description: "Hero section" },
+      ],
+      constraints: {
+        motion: { allowedDurationsMs: [120], allowedTimingFunctions: ["linear"] },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Demo Primitives",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 1120 },
+        },
+      ],
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor);
+
+    const roles = Object.fromEntries(
+      (descriptor.primitives ?? []).map((p) => [p.role, p.count]),
+    );
+
+    assert.equal(roles.navigation, 1, "should detect navigation primitive");
+    assert.equal(roles.footer, 1, "should detect footer primitive");
+    assert.equal(roles["auth-shell"], 1, "should detect auth-shell primitive");
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
 

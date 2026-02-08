@@ -47,12 +47,22 @@ const TRANSITION_DECL_REGEX = /transition[^:]*:\s*([^;]+);/gi;
 const DURATION_DECL_REGEX = /(animation|transition)-duration\s*:\s*([^;]+);/gi;
 const TIMING_DECL_REGEX = /(animation|transition)-timing-function\s*:\s*([^;]+);/gi;
 const NAV_REGEX = /<nav\b/gi;
+const NAV_COMPONENT_REGEX = /<Navigation\b/g;
 const HEADER_REGEX = /<header\b/gi;
+const HEADER_COMPONENT_REGEX = /<Header\b/g;
+const FOOTER_REGEX = /<footer\b/gi;
+const FOOTER_COMPONENT_REGEX = /<Footer\b/g;
 const ASIDE_REGEX = /<aside\b/gi;
+const AUTH_SHELL_REGEX = /<(AuthLayout|AuthShell|AuthWrapper|SessionProvider)\b/gi;
 const PRIMITIVE_PATTERNS = [
-    { role: "nav", regex: NAV_REGEX },
+    { role: "navigation", regex: NAV_REGEX },
+    { role: "navigation", regex: NAV_COMPONENT_REGEX },
     { role: "header", regex: HEADER_REGEX },
+    { role: "header", regex: HEADER_COMPONENT_REGEX },
+    { role: "footer", regex: FOOTER_REGEX },
+    { role: "footer", regex: FOOTER_COMPONENT_REGEX },
     { role: "sidebar", regex: ASIDE_REGEX },
+    { role: "auth-shell", regex: AUTH_SHELL_REGEX },
 ];
 export async function collectSurfaceDescriptors(options) {
     const structuralDescriptors = [];

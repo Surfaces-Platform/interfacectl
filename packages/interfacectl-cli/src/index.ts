@@ -7,6 +7,7 @@ import { runEnforceCommand } from "./commands/enforce.js";
 import { runCompileCommand } from "./commands/compile.js";
 import { runGenerateContractCommand } from "./commands/generate-contract.js";
 import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
+import { runDescribeCommand } from "./commands/describe.js";
 import pkg from "../package.json" with { type: "json" };
 
 const program = new Command();
@@ -295,6 +296,27 @@ program
       outPath: options.out,
       reportOutPath: options.reportOut,
       schemaPath: options.schema,
+    });
+    process.exitCode = exitCode;
+  });
+
+program
+  .command("describe")
+  .description("Produce descriptors with primitives for pre-emit guard (check-generation-boundaries)")
+  .requiredOption("--root <path>", "Project root (e.g. surfaces-webapps)")
+  .requiredOption("--contract <path>", "Path to the contract JSON file")
+  .requiredOption("--out <path>", "Output path for descriptor JSON array")
+  .option("--surface <id...>", "Limit to the provided surface identifiers")
+  .option("--schema <path>", "Optional path to contract schema JSON")
+  .option("--config <path>", "Path to interfacectl.config.json")
+  .action(async (options) => {
+    const exitCode = await runDescribeCommand({
+      contractPath: options.contract,
+      schemaPath: options.schema,
+      root: options.root,
+      surface: options.surface ?? [],
+      out: options.out,
+      configPath: options.config,
     });
     process.exitCode = exitCode;
   });

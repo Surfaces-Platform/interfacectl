@@ -19,7 +19,7 @@ test("flags shell-owned primitive emitted using shell.owns default", () => {
       },
     ],
     shell: {
-      owns: ["nav", "header"],
+      owns: ["navigation", "header"],
       contentSlot: "content",
     },
   };
@@ -32,7 +32,7 @@ test("flags shell-owned primitive emitted using shell.owns default", () => {
     layout: { maxContentWidth: 1200, containers: [], containerSources: [] },
     motion: [],
     primitives: [
-      { role: "nav", count: 2, sources: ["app/runs/page.tsx"] },
+      { role: "navigation", count: 2, sources: ["app/runs/page.tsx"] },
       { role: "header", count: 1 },
     ],
   };
@@ -40,7 +40,7 @@ test("flags shell-owned primitive emitted using shell.owns default", () => {
   const report = evaluateSurfaceCompliance(contract, descriptor);
   const violation = report.violations.find((v) => v.type === "shell-owned-primitive-emitted");
   assert.ok(violation, "expected violation for shell-owned primitive");
-  assert.equal(violation.details.role, "nav");
+  assert.equal(violation.details.role, "navigation");
   assert.equal(violation.details.count, 2);
 });
 
@@ -76,5 +76,5 @@ test("respects surface.mustNotEmit override when shell.owns missing", () => {
   const report = evaluateSurfaceCompliance(contract, descriptor);
   const violation = report.violations.find((v) => v.type === "shell-owned-primitive-emitted");
   assert.ok(violation, "expected violation for surface.mustNotEmit");
-  assert.equal(violation.details.role, "nav");
+  assert.equal(violation.details.role, "navigation");
 });

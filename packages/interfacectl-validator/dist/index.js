@@ -210,18 +210,37 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
         }
     }
     // Shell-owned primitives check
+    const normalizeRole = (role) => {
+        if (!role)
+            return undefined;
+        const r = role.toLowerCase();
+        if (r === "nav")
+            return "navigation";
+        if (r === "navigation")
+            return "navigation";
+        if (r === "auth" || r === "auth-shell" || r === "authwrapper")
+            return "auth-shell";
+        if (r === "header")
+            return "header";
+        if (r === "footer")
+            return "footer";
+        if (r === "sidebar")
+            return "sidebar";
+        return r;
+    };
     const banList = new Set((surface.mustNotEmit && surface.mustNotEmit.length > 0
         ? surface.mustNotEmit
-        : contract.shell?.owns ?? []));
+        : contract.shell?.owns ?? []).map(normalizeRole).filter(Boolean));
     if (banList.size > 0 && descriptor.primitives) {
         for (const primitive of descriptor.primitives) {
-            if (banList.has(primitive.role) && primitive.count > 0) {
+            const role = normalizeRole(primitive.role);
+            if (role && banList.has(role) && primitive.count > 0) {
                 violations.push({
                     surfaceId: descriptor.surfaceId,
                     type: "shell-owned-primitive-emitted",
                     message: `Primitive "${primitive.role}" is shell-owned and must not be emitted. Count: ${primitive.count}.`,
                     details: {
-                        role: primitive.role,
+                        role,
                         count: primitive.count,
                         sources: primitive.sources,
                         banList: [...banList],
