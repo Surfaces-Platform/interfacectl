@@ -228,13 +228,35 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
             return "sidebar";
         return r;
     };
+    const wildcardToRegex = (pattern) => {
+        const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+        const regexSource = escaped
+            .replace(/\*\*/g, "::DOUBLE_STAR::")
+            .replace(/\*/g, "[^/]*")
+            .replace(/::DOUBLE_STAR::/g, ".*");
+        return new RegExp(`^${regexSource}$`);
+    };
+    const sourceMatchesPattern = (source, pattern) => {
+        if (!pattern.includes("*")) {
+            return source === pattern;
+        }
+        return wildcardToRegex(pattern).test(source);
+    };
+    const sourceAllowed = (source, allowPatterns) => allowPatterns.some((pattern) => sourceMatchesPattern(source, pattern));
     const banList = new Set((surface.mustNotEmit && surface.mustNotEmit.length > 0
         ? surface.mustNotEmit
         : contract.shell?.owns ?? []).map(normalizeRole).filter(Boolean));
+    const allowSources = surface.shellOwnedPrimitiveAllowSources ?? [];
     if (banList.size > 0 && descriptor.primitives) {
         for (const primitive of descriptor.primitives) {
             const role = normalizeRole(primitive.role);
-            if (role && banList.has(role) && primitive.count > 0) {
+            const primitiveSources = primitive.sources ?? [];
+            const disallowedSources = primitiveSources.filter((source) => !sourceAllowed(source, allowSources));
+            const shouldReport = role &&
+                banList.has(role) &&
+                primitive.count > 0 &&
+                (primitiveSources.length === 0 || disallowedSources.length > 0);
+            if (shouldReport) {
                 violations.push({
                     surfaceId: descriptor.surfaceId,
                     type: "shell-owned-primitive-emitted",
@@ -243,6 +265,8 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
                         role,
                         count: primitive.count,
                         sources: primitive.sources,
+                        disallowedSources,
+                        allowSources,
                         banList: [...banList],
                         jsonPointer: "/shell/owns",
                     },

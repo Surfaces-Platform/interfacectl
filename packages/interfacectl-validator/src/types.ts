@@ -21,6 +21,7 @@ export interface ContractSurface {
     pageFrame?: PageFrameLayout;
   };
   mustNotEmit?: string[];
+  shellOwnedPrimitiveAllowSources?: string[];
 }
 
 export interface ContractSection {

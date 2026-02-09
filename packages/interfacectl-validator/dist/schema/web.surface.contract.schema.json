@@ -199,6 +199,15 @@
             "minLength": 1
           },
           "uniqueItems": true
+        },
+        "shellOwnedPrimitiveAllowSources": {
+          "type": "array",
+          "description": "Repo-relative source patterns where shell-owned primitives are allowed to exist (for shell/layout ownership). Supports exact paths and * / ** wildcards.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },

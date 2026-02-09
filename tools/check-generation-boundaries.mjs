@@ -19,6 +19,18 @@ function fail(code, msg) {
   process.exit(code);
 }
 
+function normalizeRole(role) {
+  if (!role) return undefined;
+  const r = role.toLowerCase();
+  if (r === "nav") return "navigation";
+  if (r === "navigation") return "navigation";
+  if (r === "auth" || r === "auth-shell" || r === "authwrapper") return "auth-shell";
+  if (r === "header") return "header";
+  if (r === "footer") return "footer";
+  if (r === "sidebar") return "sidebar";
+  return r;
+}
+
 function readJson(p) {
   try {
     return JSON.parse(fs.readFileSync(p, "utf8"));
@@ -48,9 +60,27 @@ function buildBanList(contract, surfaceId) {
   const surface = contract.surfaces.find((s) => s.id === surfaceId);
   if (!surface) return [];
   if (surface.mustNotEmit && surface.mustNotEmit.length > 0) {
-    return surface.mustNotEmit;
+    return surface.mustNotEmit.map(normalizeRole).filter(Boolean);
   }
-  return contract.shell?.owns ?? [];
+  return (contract.shell?.owns ?? []).map(normalizeRole).filter(Boolean);
+}
+
+function wildcardToRegex(pattern) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const regexSource = escaped
+    .replace(/\*\*/g, "::DOUBLE_STAR::")
+    .replace(/\*/g, "[^/]*")
+    .replace(/::DOUBLE_STAR::/g, ".*");
+  return new RegExp(`^${regexSource}$`);
+}
+
+function sourceMatchesPattern(source, pattern) {
+  if (!pattern.includes("*")) return source === pattern;
+  return wildcardToRegex(pattern).test(source);
+}
+
+function sourceAllowed(source, allowPatterns) {
+  return allowPatterns.some((pattern) => sourceMatchesPattern(source, pattern));
 }
 
 function main() {
@@ -74,15 +104,29 @@ function main() {
       continue;
     }
     const banList = new Set(buildBanList(contract, surfaceId));
+    const surface = contract.surfaces.find((s) => s.id === surfaceId);
+    const allowSources = surface?.shellOwnedPrimitiveAllowSources ?? [];
     if (banList.size === 0) continue;
     const primitives = desc.primitives ?? [];
     for (const p of primitives) {
-      if (banList.has(p.role) && (p.count ?? 0) > 0) {
+      const primitiveSources = p.sources ?? [];
+      const disallowedSources = primitiveSources.filter(
+        (source) => !sourceAllowed(source, allowSources),
+      );
+      const role = normalizeRole(p.role);
+      const shouldReport =
+        role &&
+        banList.has(role) &&
+        (p.count ?? 0) > 0 &&
+        (primitiveSources.length === 0 || disallowedSources.length > 0);
+      if (shouldReport) {
         violations.push({
           surfaceId,
-          role: p.role,
+          role,
           count: p.count,
           sources: p.sources ?? [],
+          disallowedSources,
+          allowSources,
         });
       }
     }
@@ -92,7 +136,7 @@ function main() {
     console.error("shell-owned-primitive-emitted detected:");
     for (const v of violations) {
       console.error(
-        `- surface=${v.surfaceId} role=${v.role} count=${v.count} sources=${(v.sources || []).join(",")}`,
+        `- surface=${v.surfaceId} role=${v.role} count=${v.count} sources=${(v.sources || []).join(",")} disallowedSources=${(v.disallowedSources || []).join(",")}`,
       );
     }
     process.exit(2);
