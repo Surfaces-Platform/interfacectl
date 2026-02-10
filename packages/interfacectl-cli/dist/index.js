@@ -7,6 +7,8 @@ import { runCompileCommand } from "./commands/compile.js";
 import { runGenerateContractCommand } from "./commands/generate-contract.js";
 import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
 import { runDescribeCommand } from "./commands/describe.js";
+import { runInitCommand } from "./commands/init.js";
+import { runAuthClearCommand, runAuthListCommandWithOptions, runAuthTestCommand, } from "./commands/auth.js";
 import pkg from "../package.json" with { type: "json" };
 const program = new Command();
 program
@@ -201,6 +203,86 @@ program
         schemaPath: options.schema,
     });
     process.exitCode = exitCode;
+});
+program
+    .command("init")
+    .description("Interactive onboarding for first-surface extraction")
+    .option("--url <url>", "Surface URL for onboarding")
+    .option("--surface <id>", "Surface identifier override")
+    .option("--surface-name <name>", "Surface display name override")
+    .option("--extract-mode <remote-url|local-root>", "Extraction mode", "remote-url")
+    .option("--app-root <path>", "Local app root (required when extract-mode is local-root)")
+    .option("--auth-profile <name>", "Auth profile name for browser-session onboarding")
+    .option("--non-interactive", "Run without prompts (requires --url)")
+    .option("--out-dir <path>", "Output directory for generated onboarding artifacts")
+    .action(async (options) => {
+    const extractMode = options.extractMode === "local-root" ? "local-root" : "remote-url";
+    const exitCode = await runInitCommand({
+        url: options.url,
+        surface: options.surface,
+        surfaceName: options.surfaceName,
+        extractMode,
+        appRoot: options.appRoot,
+        authProfile: options.authProfile,
+        nonInteractive: options.nonInteractive === true,
+        outDir: options.outDir,
+    });
+    process.exitCode = exitCode;
+});
+const auth = program
+    .command("auth")
+    .description("Manage onboarding browser-session auth profiles");
+auth
+    .command("list")
+    .description("List local auth profiles")
+    .option("--format <text|json>", "Output format", "text")
+    .action(async (options) => {
+    process.exitCode = await runAuthListCommandWithOptions({
+        format: options.format === "json" ? "json" : "text",
+    });
+});
+auth
+    .command("test")
+    .description("Validate a local auth profile by name")
+    .requiredOption("--profile <name>", "Profile name")
+    .option("--domain <domain>", "Optional domain scope")
+    .option("--format <text|json>", "Output format", "text")
+    .action(async (options) => {
+    process.exitCode = await runAuthTestCommand({
+        profile: options.profile,
+        domain: options.domain,
+        format: options.format === "json" ? "json" : "text",
+    });
+});
+auth
+    .command("clear")
+    .description("Clear local auth profiles")
+    .option("--profile <name>", "Profile name")
+    .option("--domain <domain>", "Domain scope")
+    .option("--all", "Clear all profiles")
+    .option("--format <text|json>", "Output format", "text")
+    .action(async (options) => {
+    process.exitCode = await runAuthClearCommand({
+        profile: options.profile,
+        domain: options.domain,
+        all: options.all,
+        format: options.format === "json" ? "json" : "text",
+    });
+});
+auth
+    .command("revoke")
+    .description("Revoke local auth profiles (alias for clear)")
+    .option("--profile <name>", "Profile name")
+    .option("--domain <domain>", "Domain scope")
+    .option("--all", "Clear all profiles")
+    .option("--format <text|json>", "Output format", "text")
+    .action(async (options) => {
+    process.exitCode = await runAuthClearCommand({
+        profile: options.profile,
+        domain: options.domain,
+        all: options.all,
+        format: options.format === "json" ? "json" : "text",
+    });
 });
 program
     .command("describe")
