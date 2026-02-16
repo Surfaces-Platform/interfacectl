@@ -84,6 +84,16 @@ test("validate v1: violations return exit code 1 with deprecation warning", asyn
         allowedTimingFunctions: ["ease"],
       },
     },
+    color: {
+      sourceOfTruth: {
+        type: "none",
+      },
+      rawValues: {
+        policy: "off",
+        allowlist: [],
+        denylist: [],
+      },
+    },
   };
 
   await writeFile(contractPath, JSON.stringify(contract, null, 2));

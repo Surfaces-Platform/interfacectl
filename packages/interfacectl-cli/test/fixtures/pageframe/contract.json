@@ -6,9 +6,15 @@
       "id": "test-surface",
       "displayName": "Test Surface",
       "type": "web",
-      "requiredSections": ["header"],
-      "allowedFonts": ["Inter"],
-      "allowedColors": ["#000000"],
+      "requiredSections": [
+        "header"
+      ],
+      "allowedFonts": [
+        "Inter"
+      ],
+      "allowedColors": [
+        "#000000"
+      ],
       "layout": {
         "maxContentWidth": 1200,
         "pageFrame": {
@@ -30,8 +36,24 @@
   ],
   "constraints": {
     "motion": {
-      "allowedDurationsMs": [200, 300],
-      "allowedTimingFunctions": ["ease", "ease-in-out"]
+      "allowedDurationsMs": [
+        200,
+        300
+      ],
+      "allowedTimingFunctions": [
+        "ease",
+        "ease-in-out"
+      ]
+    }
+  },
+  "color": {
+    "sourceOfTruth": {
+      "type": "none"
+    },
+    "rawValues": {
+      "policy": "off",
+      "allowlist": [],
+      "denylist": []
     }
   }
 }

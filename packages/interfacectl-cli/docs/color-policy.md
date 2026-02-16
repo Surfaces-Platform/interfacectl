@@ -4,7 +4,7 @@ The color policy section provides a flexible, evolution-friendly way to enforce 
 
 ## Overview
 
-The color policy is defined at the contract level and applies to all surfaces. It consists of four main sections:
+The color policy is required at the contract level and applies to all surfaces. Contracts must include `color.sourceOfTruth` and `color.rawValues`. It consists of four main sections:
 
 - **`sourceOfTruth`**: Defines where colors should come from (tokens vs. none)
 - **`rawValues`**: Controls detection and enforcement of raw color literals (hex, rgb, hsl)
@@ -13,7 +13,7 @@ The color policy is defined at the contract level and applies to all surfaces. I
 
 ## Migration from `allowedColors`
 
-The `allowedColors` field on surfaces is **deprecated** and will be removed in a future version. Migrate to the new color policy:
+The `allowedColors` field on surfaces is **deprecated** and accepted only during a one-release compatibility window. Migrate to the required color policy:
 
 ### Before (Deprecated)
 
@@ -49,9 +49,14 @@ The `allowedColors` field on surfaces is **deprecated** and will be removed in a
 }
 ```
 
-When `allowedColors` is present, interfacectl will emit a deprecation warning (`contract.deprecated-field`) but will not fail validation. The warning includes a JSON pointer to the deprecated field and guidance on migration.
+When `allowedColors` is present, interfacectl emits a deprecation warning (`contract.deprecated-field`) but does not fail validation during the compatibility window. The warning includes a JSON pointer to the deprecated field and guidance on migration.
 
 ## Configuration
+
+The following two blocks are required in contracts:
+
+- `color.sourceOfTruth`
+- `color.rawValues`
 
 ### `sourceOfTruth`
 

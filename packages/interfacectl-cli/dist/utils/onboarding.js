@@ -87,6 +87,16 @@ export function buildBootstrapContract(input) {
                 allowedTimingFunctions: ["linear"],
             },
         },
+        color: {
+            sourceOfTruth: {
+                type: "none",
+            },
+            rawValues: {
+                policy: "off",
+                allowlist: [],
+                denylist: [],
+            },
+        },
         x_extracted: {
             routes: [url.pathname || "/"],
             hasShell: false,

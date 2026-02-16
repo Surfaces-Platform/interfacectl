@@ -10,7 +10,8 @@
     "version",
     "surfaces",
     "sections",
-    "constraints"
+    "constraints",
+    "color"
   ],
   "properties": {
     "$schema": {
@@ -133,7 +134,7 @@
             "minLength": 1
           },
           "uniqueItems": true,
-          "description": "Deprecated: Use color.sourceOfTruth and color.rawValues instead. This field will be removed in a future version."
+          "description": "Deprecated: Use color.sourceOfTruth and color.rawValues instead. Accepted for one release compatibility window and will be removed in the next major version."
         },
         "layout": {
           "type": "object",
@@ -313,6 +314,10 @@
     "color": {
       "type": "object",
       "additionalProperties": false,
+      "required": [
+        "sourceOfTruth",
+        "rawValues"
+      ],
       "properties": {
         "sourceOfTruth": {
           "$ref": "#/$defs/colorSourceOfTruth"

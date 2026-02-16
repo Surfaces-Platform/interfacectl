@@ -6,8 +6,14 @@
       "id": "demo-surface",
       "displayName": "Demo Surface",
       "type": "web",
-      "requiredSections": ["main.hero"],
-      "allowedFonts": ["var(--font-demo)", "Demo Sans", "sans-serif"],
+      "requiredSections": [
+        "main.hero"
+      ],
+      "allowedFonts": [
+        "var(--font-demo)",
+        "Demo Sans",
+        "sans-serif"
+      ],
       "layout": {
         "maxContentWidth": 960
       }
@@ -22,8 +28,22 @@
   ],
   "constraints": {
     "motion": {
-      "allowedDurationsMs": [120],
-      "allowedTimingFunctions": ["linear"]
+      "allowedDurationsMs": [
+        120
+      ],
+      "allowedTimingFunctions": [
+        "linear"
+      ]
+    }
+  },
+  "color": {
+    "sourceOfTruth": {
+      "type": "none"
+    },
+    "rawValues": {
+      "policy": "off",
+      "allowlist": [],
+      "denylist": []
     }
   }
 }

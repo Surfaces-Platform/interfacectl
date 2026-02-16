@@ -6,9 +6,15 @@
       "id": "surfaces-web",
       "displayName": "Test",
       "type": "web",
-      "requiredSections": ["landing.hero"],
-      "allowedFonts": ["sans-serif"],
-      "layout": { "maxContentWidth": 1120 },
+      "requiredSections": [
+        "landing.hero"
+      ],
+      "allowedFonts": [
+        "sans-serif"
+      ],
+      "layout": {
+        "maxContentWidth": 1120
+      },
       "phase0": {
         "authPosture": "auth-aware",
         "requiresShell": true,
@@ -17,6 +23,31 @@
       }
     }
   ],
-  "sections": [{ "id": "landing.hero", "intent": "primary", "description": "Hero" }],
-  "constraints": { "motion": { "allowedDurationsMs": [120], "allowedTimingFunctions": ["linear"] } }
+  "sections": [
+    {
+      "id": "landing.hero",
+      "intent": "primary",
+      "description": "Hero"
+    }
+  ],
+  "constraints": {
+    "motion": {
+      "allowedDurationsMs": [
+        120
+      ],
+      "allowedTimingFunctions": [
+        "linear"
+      ]
+    }
+  },
+  "color": {
+    "sourceOfTruth": {
+      "type": "none"
+    },
+    "rawValues": {
+      "policy": "off",
+      "allowlist": [],
+      "denylist": []
+    }
+  }
 }

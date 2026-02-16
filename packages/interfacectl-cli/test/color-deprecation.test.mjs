@@ -17,6 +17,17 @@ const __dirname = path.dirname(__filename);
 
 const cliPackageDir = path.resolve(__dirname, "..");
 const cliExecutable = path.resolve(cliPackageDir, "dist", "index.js");
+const requiredColorPolicy = {
+  sourceOfTruth: {
+    type: "tokens",
+    tokenNamespaces: ["--color-"],
+  },
+  rawValues: {
+    policy: "warn",
+    allowlist: [],
+    denylist: [],
+  },
+};
 
 /**
  * Creates a minimal valid workspace for testing.
@@ -174,6 +185,7 @@ test("validate emits deprecation warning for allowedColors", async () => {
           allowedTimingFunctions: ["ease"],
         },
       },
+      color: requiredColorPolicy,
     };
 
     await createTempWorkspace(tempRoot, contract, "test-surface");
@@ -273,13 +285,7 @@ test("validate accepts contract with color policy", async () => {
         },
       },
       color: {
-        sourceOfTruth: {
-          type: "tokens",
-          tokenNamespaces: ["--color-"],
-        },
-        rawValues: {
-          policy: "warn",
-        },
+        ...requiredColorPolicy,
       },
     };
 
@@ -327,6 +333,195 @@ test("validate accepts contract with color policy", async () => {
       output.summary.errors,
       0,
       `Expected no errors, got: ${output.summary.errors}`
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("validate rejects contract missing required color", async () => {
+  const tempRoot = await mkdtemp(
+    path.join(os.tmpdir(), "interfacectl-color-required-"),
+  );
+
+  try {
+    const contract = {
+      contractId: "test",
+      version: "1.0.0",
+      surfaces: [
+        {
+          id: "test-surface",
+          displayName: "Test Surface",
+          type: "web",
+          requiredSections: ["header"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 1200 },
+        },
+      ],
+      sections: [
+        { id: "header", intent: "Page header", description: "Main header" },
+      ],
+      constraints: {
+        motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] },
+      },
+    };
+
+    await createTempWorkspace(tempRoot, contract, "test-surface");
+    const contractPath = path.join(tempRoot, "contract.json");
+    const result = await runCommand(
+      "node",
+      [
+        cliExecutable,
+        "validate",
+        "--contract",
+        contractPath,
+        "--workspace-root",
+        tempRoot,
+        "--format",
+        "json",
+        "--exit-codes",
+        "v2",
+      ],
+      { cwd: tempRoot },
+    );
+
+    assert.equal(result.exitCode, 10, `Expected E0 exit (10), got ${result.exitCode}`);
+    const output = JSON.parse(result.stdout);
+    const schemaErrors = output.findings.filter((f) => f.code === "contract.schema-error");
+    assert.ok(schemaErrors.length > 0, "Expected schema validation errors");
+    assert.ok(
+      schemaErrors.some(
+        (f) => f.message.toLowerCase().includes("required property") && f.message.includes("color"),
+      ),
+      `Expected missing color required-property error, got: ${JSON.stringify(schemaErrors)}`
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("validate rejects contract missing color.sourceOfTruth", async () => {
+  const tempRoot = await mkdtemp(
+    path.join(os.tmpdir(), "interfacectl-color-source-required-"),
+  );
+
+  try {
+    const contract = {
+      contractId: "test",
+      version: "1.0.0",
+      surfaces: [
+        {
+          id: "test-surface",
+          displayName: "Test Surface",
+          type: "web",
+          requiredSections: ["header"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 1200 },
+        },
+      ],
+      sections: [
+        { id: "header", intent: "Page header", description: "Main header" },
+      ],
+      constraints: {
+        motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] },
+      },
+      color: {
+        rawValues: {
+          policy: "warn",
+          allowlist: [],
+          denylist: [],
+        },
+      },
+    };
+
+    await createTempWorkspace(tempRoot, contract, "test-surface");
+    const contractPath = path.join(tempRoot, "contract.json");
+    const result = await runCommand(
+      "node",
+      [
+        cliExecutable,
+        "validate",
+        "--contract",
+        contractPath,
+        "--workspace-root",
+        tempRoot,
+        "--format",
+        "json",
+        "--exit-codes",
+        "v2",
+      ],
+      { cwd: tempRoot },
+    );
+
+    assert.equal(result.exitCode, 10, `Expected E0 exit (10), got ${result.exitCode}`);
+    const output = JSON.parse(result.stdout);
+    const schemaErrors = output.findings.filter((f) => f.code === "contract.schema-error");
+    assert.ok(
+      schemaErrors.some((f) => f.message.includes("sourceOfTruth")),
+      `Expected missing sourceOfTruth error, got: ${JSON.stringify(schemaErrors)}`
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("validate rejects contract missing color.rawValues", async () => {
+  const tempRoot = await mkdtemp(
+    path.join(os.tmpdir(), "interfacectl-color-raw-required-"),
+  );
+
+  try {
+    const contract = {
+      contractId: "test",
+      version: "1.0.0",
+      surfaces: [
+        {
+          id: "test-surface",
+          displayName: "Test Surface",
+          type: "web",
+          requiredSections: ["header"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 1200 },
+        },
+      ],
+      sections: [
+        { id: "header", intent: "Page header", description: "Main header" },
+      ],
+      constraints: {
+        motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] },
+      },
+      color: {
+        sourceOfTruth: {
+          type: "none",
+        },
+      },
+    };
+
+    await createTempWorkspace(tempRoot, contract, "test-surface");
+    const contractPath = path.join(tempRoot, "contract.json");
+    const result = await runCommand(
+      "node",
+      [
+        cliExecutable,
+        "validate",
+        "--contract",
+        contractPath,
+        "--workspace-root",
+        tempRoot,
+        "--format",
+        "json",
+        "--exit-codes",
+        "v2",
+      ],
+      { cwd: tempRoot },
+    );
+
+    assert.equal(result.exitCode, 10, `Expected E0 exit (10), got ${result.exitCode}`);
+    const output = JSON.parse(result.stdout);
+    const schemaErrors = output.findings.filter((f) => f.code === "contract.schema-error");
+    assert.ok(
+      schemaErrors.some((f) => f.message.includes("rawValues")),
+      `Expected missing rawValues error, got: ${JSON.stringify(schemaErrors)}`
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });

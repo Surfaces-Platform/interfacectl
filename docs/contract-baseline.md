@@ -11,6 +11,7 @@ Every contract must include:
 - **surfaces** (array, at least one item): List of surfaces (apps or UIs) that the contract governs. Each surface has its own required and allowed values.
 - **sections** (array, at least one item): List of sections that surfaces can implement. Each section has an id, intent, and description.
 - **constraints** (object): Global constraints. At present, the only required constraint is **motion**, defined as an object with **allowedDurationsMs** (array of integers, milliseconds) and **allowedTimingFunctions** (array of strings). Additional constraint categories may be added in future schema versions.
+- **color** (object): Required color policy. Must include **sourceOfTruth** and **rawValues**. This ensures contracts always declare color provenance and raw-literal handling.
 
 ## Per-surface required fields
 
@@ -31,12 +32,15 @@ Each entry in **sections** must have:
 - **intent** (string, non-empty): Purpose of the section. Documented for clarity. Not currently used as an enforcement input.
 - **description** (string, non-empty): Human-readable description.
 
-## Optional: color policy
+## Required: color policy
 
-The top-level **color** object is optional. When present it can include:
+The top-level **color** object is required and must include:
 
 - **sourceOfTruth**: If `type` is `"tokens"`, you must provide **tokenNamespaces** (array of strings). Used to allow or disallow CSS variable namespaces for colors.
 - **rawValues**: **policy** is required (`"off"`, `"warn"`, or `"strict"`). Optional **allowlist** and **denylist** arrays of color values. Controls whether raw color literals (hex, rgb, hsl) are permitted.
+
+The following remain optional sub-objects:
+
 - **semantics**: Optional **roles** (accent, text, background, border) each with **enforcement** (`"off"`, `"warn"`, `"strict"`).
 - **consistency**: Optional **acrossSurfaces** object with **enforcement** level and **signals** used for reporting.
 
@@ -53,7 +57,7 @@ Backwards compatibility: `shell` is optional; existing contracts remain valid. G
 
 ## Deprecated fields
 
-- **allowedColors** (per-surface): Deprecated. The schema still accepts it for compatibility. Prefer the top-level **color** policy with **sourceOfTruth** and **rawValues**. Migration: move per-surface color allowlists into **color.sourceOfTruth** (e.g. token namespaces) or **color.rawValues** (allowlist/denylist). The CLI emits a deprecation warning when allowedColors is present. Deprecated fields are accepted for compatibility but may be removed in a future major version.
+- **allowedColors** (per-surface): Deprecated. The schema still accepts it during a one-release compatibility window. Prefer the top-level **color** policy with **sourceOfTruth** and **rawValues**. Migration: move per-surface color allowlists into **color.sourceOfTruth** (e.g. token namespaces) or **color.rawValues** (allowlist/denylist). The CLI emits a deprecation warning when allowedColors is present. This field is scheduled for removal in the next major version.
 
 ## Where contract semantics live in the repo
 

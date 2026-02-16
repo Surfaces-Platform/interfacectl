@@ -105,6 +105,16 @@ function buildContract(surfaceId, extracted) {
                 allowedTimingFunctions: ["linear"],
             },
         },
+        color: {
+            sourceOfTruth: {
+                type: "none",
+            },
+            rawValues: {
+                policy: "off",
+                allowlist: [],
+                denylist: [],
+            },
+        },
         x_extracted: {
             routes: extracted.routes,
             hasShell: extracted.hasShell,

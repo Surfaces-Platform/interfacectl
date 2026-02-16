@@ -63,8 +63,8 @@ export interface ColorConsistency {
     };
 }
 export interface ColorPolicy {
-    sourceOfTruth?: ColorSourceOfTruth;
-    rawValues?: ColorRawValues;
+    sourceOfTruth: ColorSourceOfTruth;
+    rawValues: ColorRawValues;
     semantics?: ColorSemantics;
     consistency?: ColorConsistency;
 }
@@ -75,7 +75,7 @@ export interface InterfaceContract {
     surfaces: ContractSurface[];
     sections: ContractSection[];
     constraints: ContractConstraints;
-    color?: ColorPolicy;
+    color: ColorPolicy;
     shell?: ShellSpec;
 }
 export interface SurfaceSectionDescriptor {

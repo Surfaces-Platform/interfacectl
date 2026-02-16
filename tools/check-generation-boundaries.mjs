@@ -14,6 +14,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+const RAW_COLOR_REGEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
 function fail(code, msg) {
   console.error(msg);
   process.exit(code);
@@ -83,6 +85,19 @@ function sourceAllowed(source, allowPatterns) {
   return allowPatterns.some((pattern) => sourceMatchesPattern(source, pattern));
 }
 
+function isRawColorLiteral(value) {
+  const trimmed = String(value ?? "").trim().toLowerCase();
+  if (RAW_COLOR_REGEX.test(trimmed)) return true;
+  if (/^rgba?\s*\(/.test(trimmed)) return true;
+  if (/^hsla?\s*\(/.test(trimmed)) return true;
+  return false;
+}
+
+function extractCssVarName(value) {
+  const match = String(value ?? "").match(/var\((--[^)]+)\)/);
+  return match ? match[1] : null;
+}
+
 function main() {
   const { contract: contractPath, descriptor: descriptorPath } = parseArgs();
   const contract = readJson(path.resolve(contractPath));
@@ -95,50 +110,151 @@ function main() {
     fail(1, "Descriptor must be an array of per-surface descriptors.");
   }
 
-  const violations = [];
+  const primitiveViolations = [];
+  const blockingColorViolations = [];
+  const warningColorViolations = [];
 
   for (const desc of descriptors) {
     const surfaceId = desc.surfaceId;
     if (!surfaceId) {
-      violations.push({ surfaceId: "<unknown>", role: "<unknown>", count: 0, reason: "descriptor missing surfaceId" });
+      primitiveViolations.push({ surfaceId: "<unknown>", role: "<unknown>", count: 0, reason: "descriptor missing surfaceId" });
       continue;
     }
     const banList = new Set(buildBanList(contract, surfaceId));
     const surface = contract.surfaces.find((s) => s.id === surfaceId);
     const allowSources = surface?.shellOwnedPrimitiveAllowSources ?? [];
-    if (banList.size === 0) continue;
-    const primitives = desc.primitives ?? [];
-    for (const p of primitives) {
-      const primitiveSources = p.sources ?? [];
-      const disallowedSources = primitiveSources.filter(
-        (source) => !sourceAllowed(source, allowSources),
-      );
-      const role = normalizeRole(p.role);
-      const shouldReport =
-        role &&
-        banList.has(role) &&
-        (p.count ?? 0) > 0 &&
-        (primitiveSources.length === 0 || disallowedSources.length > 0);
-      if (shouldReport) {
-        violations.push({
+    if (banList.size > 0) {
+      const primitives = desc.primitives ?? [];
+      for (const p of primitives) {
+        const primitiveSources = p.sources ?? [];
+        const disallowedSources = primitiveSources.filter(
+          (source) => !sourceAllowed(source, allowSources),
+        );
+        const role = normalizeRole(p.role);
+        const shouldReport =
+          role &&
+          banList.has(role) &&
+          (p.count ?? 0) > 0 &&
+          (primitiveSources.length === 0 || disallowedSources.length > 0);
+        if (shouldReport) {
+          primitiveViolations.push({
+            surfaceId,
+            role,
+            count: p.count,
+            sources: p.sources ?? [],
+            disallowedSources,
+            allowSources,
+          });
+        }
+      }
+    }
+
+    const colorPolicy = contract.color;
+    if (!colorPolicy) {
+      continue;
+    }
+
+    const rawPolicy = colorPolicy.rawValues?.policy ?? "off";
+    const allowlist = new Set(colorPolicy.rawValues?.allowlist ?? []);
+    const denylist = new Set(colorPolicy.rawValues?.denylist ?? []);
+    const allowedNamespaces =
+      colorPolicy.sourceOfTruth?.type === "tokens"
+        ? colorPolicy.sourceOfTruth.tokenNamespaces ?? []
+        : [];
+
+    for (const color of desc.colors ?? []) {
+      const colorValue = color?.value;
+      const source = color?.source;
+      if (!colorValue) continue;
+
+      if (denylist.has(colorValue)) {
+        blockingColorViolations.push({
           surfaceId,
-          role,
-          count: p.count,
-          sources: p.sources ?? [],
-          disallowedSources,
-          allowSources,
+          rule: "color.rawValues.denylist",
+          value: colorValue,
+          policy: rawPolicy,
+          source,
+          message: `Raw color "${colorValue}" is denylisted.`,
+        });
+        continue;
+      }
+
+      const varName = extractCssVarName(colorValue);
+      if (varName) {
+        if (allowedNamespaces.length > 0) {
+          const hasAllowedNamespace = allowedNamespaces.some((namespace) =>
+            varName.startsWith(namespace),
+          );
+          if (!hasAllowedNamespace) {
+            warningColorViolations.push({
+              surfaceId,
+              rule: "color.token.namespace",
+              value: varName,
+              source,
+              message: `Token "${varName}" does not match allowed namespaces: ${allowedNamespaces.join(", ")}.`,
+            });
+          }
+        }
+        continue;
+      }
+
+      if (!isRawColorLiteral(colorValue)) {
+        continue;
+      }
+
+      if (allowlist.has(colorValue)) {
+        continue;
+      }
+
+      if (rawPolicy === "strict") {
+        blockingColorViolations.push({
+          surfaceId,
+          rule: "color.rawValues",
+          value: colorValue,
+          policy: rawPolicy,
+          source,
+          message: `Raw color "${colorValue}" violates strict rawValues policy.`,
+        });
+      } else if (rawPolicy === "warn") {
+        warningColorViolations.push({
+          surfaceId,
+          rule: "color.rawValues",
+          value: colorValue,
+          source,
+          message: `Raw color "${colorValue}" detected (warn policy).`,
         });
       }
     }
   }
 
-  if (violations.length > 0) {
+  if (primitiveViolations.length > 0) {
     console.error("shell-owned-primitive-emitted detected:");
-    for (const v of violations) {
+    for (const v of primitiveViolations) {
       console.error(
         `- surface=${v.surfaceId} role=${v.role} count=${v.count} sources=${(v.sources || []).join(",")} disallowedSources=${(v.disallowedSources || []).join(",")}`,
       );
     }
+  }
+
+  if (blockingColorViolations.length > 0) {
+    console.error("color-policy-blocking detected:");
+    for (const v of blockingColorViolations) {
+      console.error(
+        `- surface=${v.surfaceId} rule=${v.rule} value=${v.value} policy=${v.policy} source=${v.source || ""} message=${v.message}`,
+      );
+    }
+  }
+
+  if (warningColorViolations.length > 0) {
+    console.error("color-policy-warning detected:");
+    for (const v of warningColorViolations) {
+      console.error(
+        `- surface=${v.surfaceId} rule=${v.rule} value=${v.value} source=${v.source || ""} message=${v.message}`,
+      );
+    }
+  }
+
+  if (primitiveViolations.length > 0 || blockingColorViolations.length > 0) {
     process.exit(2);
   }
 

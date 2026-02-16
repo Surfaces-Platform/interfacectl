@@ -36,6 +36,15 @@
         "linear"
       ]
     }
+  },
+  "color": {
+    "sourceOfTruth": {
+      "type": "none"
+    },
+    "rawValues": {
+      "policy": "off",
+      "allowlist": [],
+      "denylist": []
+    }
   }
 }
-
