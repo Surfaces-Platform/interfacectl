@@ -6,6 +6,7 @@ import { runDiffCommand } from "./commands/diff.js";
 import { runEnforceCommand } from "./commands/enforce.js";
 import { runCompileCommand } from "./commands/compile.js";
 import { runGenerateContractCommand } from "./commands/generate-contract.js";
+import { runMigrateColorPolicyCommand } from "./commands/migrate-color-policy.js";
 import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
 import { runDescribeCommand } from "./commands/describe.js";
 import { runInitCommand } from "./commands/init.js";
@@ -302,6 +303,30 @@ program
       outPath: options.out,
       reportOutPath: options.reportOut,
       schemaPath: options.schema,
+    });
+    process.exitCode = exitCode;
+  });
+
+program
+  .command("migrate-color-policy")
+  .description("Migrate legacy color contract fields to unified color.policy + color.allowedValues")
+  .requiredOption("--contract <path>", "Path to the contract JSON file to migrate")
+  .option("--out <path>", "Optional output path (default: overwrite input contract)")
+  .option(
+    "--include-observed",
+    "Union observed colors from static analysis into color.allowedValues",
+  )
+  .option("--root <path>", "Workspace root for observed descriptor collection")
+  .option("--app-root <path>", "App root for observed descriptor collection")
+  .option("--surface <id>", "Surface id for observed descriptor collection")
+  .action(async (options) => {
+    const exitCode = await runMigrateColorPolicyCommand({
+      contractPath: options.contract,
+      outPath: options.out,
+      includeObserved: options.includeObserved === true,
+      root: options.root,
+      appRoot: options.appRoot,
+      surfaceId: options.surface,
     });
     process.exitCode = exitCode;
   });

@@ -26,7 +26,7 @@
     },
     {
       "id": "color-format",
-      "pattern": "surfaces/*/allowedColors/*",
+      "pattern": "color/allowedValues/*",
       "autofixable": true,
       "description": "Allow automatic format conversion of color values",
       "safetyLevel": "safe"

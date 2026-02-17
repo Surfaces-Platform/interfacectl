@@ -1,3 +1,4 @@
+import { normalizeColorValue } from "@surfaces/interfacectl-validator";
 /**
  * Build a stable JSON Pointer-style path
  */
@@ -109,7 +110,7 @@ function determineSeverity(changeType, path, surface) {
         return "warning";
     }
     // Font/color violations are errors (design system constraints)
-    if (path.includes("allowedFonts") || path.includes("allowedColors")) {
+    if (path.includes("allowedFonts") || path.includes("color/allowedValues")) {
         return "error";
     }
     // Layout width exceeded is error
@@ -194,16 +195,17 @@ export function compareContractToDescriptor(contract, descriptor, surfaceId) {
         }
     }
     // Compare allowed colors
-    const contractColors = new Set(surface.allowedColors);
+    const contractColors = new Set(contract.contract.color.allowedValues);
     for (const color of desc.colors) {
-        if (!contractColors.has(color.value)) {
+        const normalizedColor = normalizeColorValue(color.value);
+        if (!contractColors.has(normalizedColor)) {
             entries.push({
                 surfaceId,
                 type: "added",
-                path: buildDiffPath(`surfaces/${surfaceId}`, "allowedColors"),
-                observedValue: color.value,
+                path: "color/allowedValues",
+                observedValue: normalizedColor,
                 severity: "error",
-                rule: `contract.surfaces[${surfaceId}].allowedColors`,
+                rule: "contract.color.allowedValues",
             });
         }
     }

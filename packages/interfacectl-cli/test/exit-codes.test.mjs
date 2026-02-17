@@ -70,7 +70,6 @@ test("validate v1: violations return exit code 1 with deprecation warning", asyn
         type: "web",
         requiredSections: ["header", "footer"],
         allowedFonts: ["Inter"],
-        allowedColors: ["#000000"],
         layout: { maxContentWidth: 1200 },
       },
     ],
@@ -85,14 +84,8 @@ test("validate v1: violations return exit code 1 with deprecation warning", asyn
       },
     },
     color: {
-      sourceOfTruth: {
-        type: "none",
-      },
-      rawValues: {
-        policy: "off",
-        allowlist: [],
-        denylist: [],
-      },
+      policy: "off",
+      allowedValues: [],
     },
   };
 

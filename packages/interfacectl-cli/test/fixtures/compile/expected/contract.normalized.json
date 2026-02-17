@@ -37,13 +37,7 @@
   ],
   "version": "1.0.0",
   "color": {
-    "sourceOfTruth": {
-      "type": "none"
-    },
-    "rawValues": {
-      "policy": "off",
-      "allowlist": [],
-      "denylist": []
-    }
+    "policy": "off",
+    "allowedValues": []
   }
 }

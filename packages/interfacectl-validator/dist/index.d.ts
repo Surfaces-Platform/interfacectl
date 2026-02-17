@@ -10,4 +10,5 @@ export declare function evaluateSurfaceCompliance(contract: InterfaceContract, d
 export declare function evaluateContractCompliance(contract: InterfaceContract, descriptors: SurfaceDescriptor[]): ValidationSummary;
 export type { InterfaceContract, ContractSurface, ContractSection, ContractConstraints, SurfaceDescriptor, SurfaceSectionDescriptor, SurfaceFontDescriptor, SurfaceColorDescriptor, SurfaceMotionDescriptor, SurfaceLayoutDescriptor, PageFrameLayoutDescriptor, SurfacePrimitiveDescriptor, SurfaceReport, DriftViolation, ValidationSummary, DriftViolationType, ContractRef, RuleRef, DiffOutput, DiffEntry, DiffChangeType, DriftRisk, Severity, SafetyLevel, EnforcementPolicy, EnforcementMode, AutofixRule, FixSummary, FixEntry, FixError, } from "./types.js";
 export { getBundledDiffSchema, getBundledPolicySchema, getBundledFixSummarySchema, validateDiffOutput, validatePolicy, validateFixSummary, type ValidationResult, } from "./schema-validate.js";
+export { normalizeColorValue, normalizeColorValues, } from "./color-policy.js";
 //# sourceMappingURL=index.d.ts.map

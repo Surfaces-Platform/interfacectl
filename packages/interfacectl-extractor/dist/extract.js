@@ -106,14 +106,8 @@ function buildContract(surfaceId, extracted) {
             },
         },
         color: {
-            sourceOfTruth: {
-                type: "none",
-            },
-            rawValues: {
-                policy: "off",
-                allowlist: [],
-                denylist: [],
-            },
+            policy: "warn",
+            allowedValues: [],
         },
         x_extracted: {
             routes: extracted.routes,

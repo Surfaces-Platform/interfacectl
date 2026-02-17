@@ -13,6 +13,7 @@ import {
 import bundledSchema from "./schema/web.surface.contract.schema.json" with {
   type: "json",
 };
+import { normalizeColorValue } from "./color-policy.js";
 
 const frozenBundledSchema = Object.freeze(bundledSchema) as object;
 
@@ -62,136 +63,33 @@ function validateColorPolicy(
   violations: DriftViolation[],
 ): void {
   const colorPolicy = contract.color;
-  if (!colorPolicy) {
+  if (!colorPolicy || colorPolicy.policy === "off") {
     return;
   }
 
-  // Validate raw color literals
-  if (colorPolicy.rawValues) {
-    const policy = colorPolicy.rawValues.policy;
-    const allowlist = new Set(colorPolicy.rawValues.allowlist ?? []);
-    const denylist = new Set(colorPolicy.rawValues.denylist ?? []);
+  const allowedValues = new Set(
+    colorPolicy.allowedValues.map(normalizeColorValue),
+  );
 
-    for (const color of descriptor.colors) {
-      const colorValue = color.value;
-      
-      // Skip CSS variables
-      if (colorValue.startsWith("var(")) {
-        continue;
-      }
-
-      // Check if it's a raw color literal (hex, rgb, hsl)
-      const isRawLiteral = isRawColorLiteral(colorValue);
-      if (!isRawLiteral) {
-        continue;
-      }
-
-      // Check denylist first (denylist takes precedence, even when policy is "off")
-      if (denylist.has(colorValue)) {
-        violations.push({
-          surfaceId: descriptor.surfaceId,
-          type: "color-raw-value-used",
-          message: `Raw color literal "${colorValue}" is not allowed (denylist). Use design tokens instead.`,
-          details: {
-            colorValue,
-            source: color.source,
-            policy: policy ?? "off",
-            jsonPointer: "/color/rawValues",
-          },
-        });
-        continue;
-      }
-
-      // Only check allowlist and policy violations when policy is not "off"
-      if (policy !== "off") {
-        // Check allowlist
-        if (allowlist.has(colorValue)) {
-          continue; // Allowlisted, skip
-        }
-
-        // Emit violation based on policy
-        if (policy === "warn" || policy === "strict") {
-          violations.push({
-            surfaceId: descriptor.surfaceId,
-            type: "color-raw-value-used",
-            message: `Raw color literal "${colorValue}" detected. Use design tokens instead.`,
-            details: {
-              colorValue,
-              source: color.source,
-              policy,
-              jsonPointer: "/color/rawValues",
-            },
-          });
-        }
-      }
+  for (const color of descriptor.colors) {
+    const normalizedColorValue = normalizeColorValue(color.value);
+    if (allowedValues.has(normalizedColorValue)) {
+      continue;
     }
+
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "color-not-allowed",
+      message: `Color "${normalizedColorValue}" is not allowed for surface "${descriptor.surfaceId}".`,
+      details: {
+        color: normalizedColorValue,
+        source: color.source,
+        allowedValues: [...allowedValues],
+        policy: colorPolicy.policy,
+        jsonPointer: "/color/allowedValues",
+      },
+    });
   }
-
-  // Validate token namespaces
-  if (
-    colorPolicy.sourceOfTruth &&
-    colorPolicy.sourceOfTruth.type === "tokens" &&
-    colorPolicy.sourceOfTruth.tokenNamespaces
-  ) {
-    const allowedNamespaces = colorPolicy.sourceOfTruth.tokenNamespaces;
-    
-    for (const color of descriptor.colors) {
-      const colorValue = color.value;
-      
-      // Only check CSS variables
-      if (!colorValue.startsWith("var(")) {
-        continue;
-      }
-
-      // Extract variable name from var(--name)
-      const varMatch = colorValue.match(/var\((--[^)]+)\)/);
-      if (!varMatch) {
-        continue;
-      }
-
-      const varName = varMatch[1];
-      
-      // Check if variable name starts with any allowed namespace
-      const hasAllowedNamespace = allowedNamespaces.some((namespace) =>
-        varName.startsWith(namespace),
-      );
-
-      if (!hasAllowedNamespace) {
-        violations.push({
-          surfaceId: descriptor.surfaceId,
-          type: "color-token-namespace-violation",
-          message: `Color token "${varName}" does not start with any allowed namespace. Allowed namespaces: ${allowedNamespaces.join(", ")}.`,
-          details: {
-            tokenName: varName,
-            allowedNamespaces,
-            source: color.source,
-            jsonPointer: "/color/sourceOfTruth/tokenNamespaces",
-          },
-        });
-      }
-    }
-  }
-}
-
-function isRawColorLiteral(value: string): boolean {
-  const trimmed = value.trim().toLowerCase();
-  
-  // Hex colors (#rgb, #rrggbb, #rrggbbaa)
-  if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(trimmed)) {
-    return true;
-  }
-
-  // rgb/rgba colors
-  if (/^rgba?\s*\(/.test(trimmed)) {
-    return true;
-  }
-
-  // hsl/hsla colors
-  if (/^hsla?\s*\(/.test(trimmed)) {
-    return true;
-  }
-
-  return false;
 }
 
 export function evaluateSurfaceCompliance(
@@ -256,25 +154,6 @@ export function evaluateSurfaceCompliance(
           allowedFonts: [...allowedFonts],
         },
       });
-    }
-  }
-
-  // Legacy allowedColors check (deprecated)
-  if (surface.allowedColors) {
-    const allowedColors = new Set(surface.allowedColors);
-    for (const color of descriptor.colors) {
-      if (!allowedColors.has(color.value)) {
-        violations.push({
-          surfaceId: descriptor.surfaceId,
-          type: "color-not-allowed",
-          message: `Color "${color.value}" is not allowed for surface "${descriptor.surfaceId}".`,
-          details: {
-            color: color.value,
-            source: color.source,
-            allowedColors: [...allowedColors],
-          },
-        });
-      }
     }
   }
 
@@ -347,10 +226,7 @@ export function evaluateSurfaceCompliance(
     }
   }
 
-  // New color policy validation
-  if (contract.color) {
-    validateColorPolicy(contract, descriptor, violations);
-  }
+  validateColorPolicy(contract, descriptor, violations);
 
   const reportedWidth = descriptor.layout.maxContentWidth;
   if (reportedWidth === null || reportedWidth === undefined) {
@@ -724,3 +600,8 @@ export {
   validateFixSummary,
   type ValidationResult,
 } from "./schema-validate.js";
+
+export {
+  normalizeColorValue,
+  normalizeColorValues,
+} from "./color-policy.js";

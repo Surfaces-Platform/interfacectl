@@ -22,24 +22,27 @@ const baseContract = {
       allowedTimingFunctions: ["linear"],
     },
   },
+  color: {
+    policy: "strict",
+    allowedValues: ["var(--color-primary)"],
+  },
 };
 
 test("defaults to contract-container when requiredContainers omitted", () => {
   const contract = {
     ...baseContract,
-      surfaces: [
-        {
-          id: "surface-a",
-          displayName: "Surface A",
-          type: "web",
-          requiredSections: ["main.hero"],
-          allowedFonts: ["var(--font-a)"],
-          allowedColors: ["var(--color-primary)"],
-          layout: {
-            maxContentWidth: 960,
-          },
+    surfaces: [
+      {
+        id: "surface-a",
+        displayName: "Surface A",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-a)"],
+        layout: {
+          maxContentWidth: 960,
         },
-      ],
+      },
+    ],
   };
 
   const descriptor = {
@@ -68,27 +71,26 @@ test("defaults to contract-container when requiredContainers omitted", () => {
 test("reports missing custom required containers", () => {
   const contract = {
     ...baseContract,
-      surfaces: [
-        {
-          id: "surface-b",
-          displayName: "Surface B",
-          type: "web",
-          requiredSections: ["main.hero"],
-          allowedFonts: ["var(--font-b)"],
-          allowedColors: ["var(--color-b)"],
-          layout: {
-            maxContentWidth: 960,
-            requiredContainers: ["primary-shell", "contract-container"],
-          },
+    surfaces: [
+      {
+        id: "surface-b",
+        displayName: "Surface B",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-b)"],
+        layout: {
+          maxContentWidth: 960,
+          requiredContainers: ["primary-shell", "contract-container"],
         },
-      ],
+      },
+    ],
   };
 
   const descriptor = {
     surfaceId: "surface-b",
     sections: [{ id: "main.hero" }],
     fonts: [{ value: "var(--font-b)" }],
-    colors: [{ value: "var(--color-b)" }],
+    colors: [{ value: "var(--color-primary)" }],
     layout: {
       maxContentWidth: 960,
       containers: ["primary-shell"],
@@ -111,23 +113,26 @@ test("reports missing custom required containers", () => {
   ]);
 });
 
-test("captures layout width and motion violations", () => {
+test("captures layout width, motion, and strict color violations", () => {
   const contract = {
     ...baseContract,
-      surfaces: [
-        {
-          id: "surface-c",
-          displayName: "Surface C",
-          type: "web",
-          requiredSections: ["main.hero"],
-          allowedFonts: ["var(--font-c)"],
-          allowedColors: ["var(--color-c)"],
-          layout: {
-            maxContentWidth: 720,
-            requiredContainers: [],
-          },
+    surfaces: [
+      {
+        id: "surface-c",
+        displayName: "Surface C",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-c)"],
+        layout: {
+          maxContentWidth: 720,
+          requiredContainers: [],
         },
-      ],
+      },
+    ],
+    color: {
+      policy: "strict",
+      allowedValues: ["var(--color-c)"],
+    },
   };
 
   const descriptor = {
@@ -152,12 +157,147 @@ test("captures layout width and motion violations", () => {
   const violationTypes = report.violations.map((violation) => violation.type);
   assert.deepEqual(
     violationTypes.sort(),
-    ["color-not-allowed", "layout-width-exceeded", "motion-duration-not-allowed", "motion-timing-not-allowed"].sort(),
+    [
+      "color-not-allowed",
+      "layout-width-exceeded",
+      "motion-duration-not-allowed",
+      "motion-timing-not-allowed",
+    ].sort(),
   );
-  
+
   const colorViolation = report.violations.find((v) => v.type === "color-not-allowed");
   assert.ok(colorViolation, "should have color violation");
   assert.equal(colorViolation.details?.color, "var(--color-disallowed)");
+  assert.equal(colorViolation.details?.policy, "strict");
+  assert.deepEqual(colorViolation.details?.allowedValues, ["var(--color-c)"]);
 });
 
+test("policy off skips color enforcement", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-d",
+        displayName: "Surface D",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-d)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+      },
+    ],
+    color: {
+      policy: "off",
+      allowedValues: [],
+    },
+  };
 
+  const descriptor = {
+    surfaceId: "surface-d",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-d)" }],
+    colors: [{ value: "#ff00aa" }, { value: "var(--not-allowlisted)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const colorViolations = report.violations.filter((v) => v.type === "color-not-allowed");
+  assert.equal(colorViolations.length, 0);
+});
+
+test("policy warn emits color-not-allowed with warn metadata", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-e",
+        displayName: "Surface E",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-e)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+      },
+    ],
+    color: {
+      policy: "warn",
+      allowedValues: ["#ffffff"],
+    },
+  };
+
+  const descriptor = {
+    surfaceId: "surface-e",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-e)" }],
+    colors: [{ value: "#ff00aa" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const colorViolation = report.violations.find((v) => v.type === "color-not-allowed");
+  assert.ok(colorViolation);
+  assert.equal(colorViolation.details?.policy, "warn");
+});
+
+test("mixed allowed values pass exact matching through one path", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-f",
+        displayName: "Surface F",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-f)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+      },
+    ],
+    color: {
+      policy: "strict",
+      allowedValues: [
+        "var(--color-token)",
+        "#ffffff",
+        "rgba(15,23,42,0.3)",
+        "hsl(220,50%,40%)",
+        "transparent",
+      ],
+    },
+  };
+
+  const descriptor = {
+    surfaceId: "surface-f",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-f)" }],
+    colors: [
+      { value: "var(--color-token)" },
+      { value: "#ffffff" },
+      { value: "rgba(15,23,42,0.3)" },
+      { value: "hsl(220,50%,40%)" },
+      { value: "transparent" },
+    ],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const colorViolations = report.violations.filter((v) => v.type === "color-not-allowed");
+  assert.equal(colorViolations.length, 0);
+});

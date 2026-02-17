@@ -18,30 +18,14 @@ const __dirname = path.dirname(__filename);
 const cliPackageDir = path.resolve(__dirname, "..");
 const cliExecutable = path.resolve(cliPackageDir, "dist", "index.js");
 const requiredColorPolicy = {
-  sourceOfTruth: {
-    type: "tokens",
-    tokenNamespaces: ["--color-"],
-  },
-  rawValues: {
-    policy: "warn",
-    allowlist: [],
-    denylist: [],
-  },
+  policy: "off",
+  allowedValues: [],
 };
 
-/**
- * Creates a minimal valid workspace for testing.
- * @param {string} tempRoot - Root directory for the workspace
- * @param {object} contract - Contract object to write
- * @param {string} surfaceId - Surface ID to create directory for
- * @returns {Promise<string>} Path to the workspace root
- */
 async function createTempWorkspace(tempRoot, contract, surfaceId) {
-  // Write contract file
   const contractPath = path.join(tempRoot, "contract.json");
   await writeFile(contractPath, JSON.stringify(contract, null, 2), "utf-8");
 
-  // Create surface directory structure
   const surfaceDir = path.join(tempRoot, "apps", surfaceId);
   await mkdir(surfaceDir, { recursive: true });
   await writeFile(
@@ -50,25 +34,17 @@ async function createTempWorkspace(tempRoot, contract, surfaceId) {
     "utf-8"
   );
 
-  // Create app directory with analysable files
   const appDir = path.join(surfaceDir, "app");
   await mkdir(appDir, { recursive: true });
 
-  // Get contract requirements
   const surface = contract.surfaces[0];
   const firstSection = surface?.requiredSections?.[0] || "header";
   const maxWidth = surface?.layout?.maxContentWidth || 1200;
   const allowedFonts = surface?.allowedFonts || ["Inter", "sans-serif"];
-  const allowedColors = surface?.allowedColors || [];
   const motionDuration = contract.constraints?.motion?.allowedDurationsMs?.[0] || 200;
   const motionTiming = contract.constraints?.motion?.allowedTimingFunctions?.[0] || "ease";
+  const colorValue = contract.color?.allowedValues?.[0] || "var(--color-background)";
 
-  // Choose a color value - prefer first allowed color, or use CSS variable
-  const colorValue = allowedColors.length > 0
-    ? allowedColors[0]
-    : "var(--color-background)";
-
-  // Create globals.css with all required declarations
   await writeFile(
     path.join(appDir, "globals.css"),
     `:root {
@@ -79,7 +55,8 @@ async function createTempWorkspace(tempRoot, contract, surfaceId) {
 }
 
 body {
-  font-family: ${allowedFonts.map(f => f.startsWith("var(") ? f : `"${f}"`).join(", ")};
+  font-family: ${allowedFonts.map((f) => (f.startsWith("var(") ? f : `"${f}"`)).join(", ")};
+  color: ${colorValue};
   background: ${colorValue};
 }
 
@@ -93,7 +70,6 @@ body {
     "utf-8"
   );
 
-  // Create layout.tsx with contract-container marker
   await writeFile(
     path.join(appDir, "layout.tsx"),
     `import "./globals.css";
@@ -111,7 +87,6 @@ export default function Layout({ children }) {
     "utf-8"
   );
 
-  // Create page.tsx with section marker
   await writeFile(
     path.join(appDir, "page.tsx"),
     `export default function Page() {
@@ -150,9 +125,9 @@ async function runCommand(command, args, options = {}) {
   return { exitCode, stdout, stderr };
 }
 
-test("validate emits deprecation warning for allowedColors", async () => {
+test("validate rejects legacy color fields and per-surface allowedColors", async () => {
   const tempRoot = await mkdtemp(
-    path.join(os.tmpdir(), "interfacectl-deprecation-"),
+    path.join(os.tmpdir(), "interfacectl-legacy-color-shape-"),
   );
 
   try {
@@ -185,19 +160,28 @@ test("validate emits deprecation warning for allowedColors", async () => {
           allowedTimingFunctions: ["ease"],
         },
       },
-      color: requiredColorPolicy,
+      color: {
+        sourceOfTruth: {
+          type: "tokens",
+          tokenNamespaces: ["--color-"],
+        },
+        rawValues: {
+          policy: "warn",
+          allowlist: [],
+          denylist: [],
+        },
+      },
     };
 
     await createTempWorkspace(tempRoot, contract, "test-surface");
 
-    const contractPath = path.join(tempRoot, "contract.json");
     const result = await runCommand(
       "node",
       [
         cliExecutable,
         "validate",
         "--contract",
-        contractPath,
+        path.join(tempRoot, "contract.json"),
         "--workspace-root",
         tempRoot,
         "--format",
@@ -208,49 +192,27 @@ test("validate emits deprecation warning for allowedColors", async () => {
       { cwd: tempRoot },
     );
 
-    // Should pass schema validation (allowedColors is accepted but deprecated)
-    assert.equal(
-      result.exitCode,
-      0,
-      `Command failed: ${result.stderr}\n${result.stdout}`
-    );
+    assert.equal(result.exitCode, 10);
 
     const output = JSON.parse(result.stdout);
-    assert.ok(output.findings);
-
-    // Should have at least one deprecation warning
     assert.ok(
-      output.summary.warnings >= 1,
-      `Expected at least 1 warning, got ${output.summary.warnings}`
-    );
-
-    // Should have deprecation warning
-    const deprecationFinding = output.findings.find(
-      (f) => f.code === "contract.deprecated-field",
+      output.findings.some((f) => f.message.includes("allowedColors")),
+      "should reject legacy surfaces[*].allowedColors"
     );
     assert.ok(
-      deprecationFinding,
-      "Should emit contract.deprecated-field finding"
-    );
-    assert.equal(deprecationFinding.severity, "warning");
-    assert(
-      deprecationFinding.message.includes("allowedColors"),
-      "Deprecation message should mention allowedColors"
-    );
-    assert(
-      deprecationFinding.message.includes("deprecated"),
-      "Deprecation message should mention deprecated"
+      output.findings.some((f) => f.message.includes("sourceOfTruth")),
+      "should reject legacy color.sourceOfTruth"
     );
     assert.ok(
-      deprecationFinding.location,
-      "Should include jsonPointer location"
+      output.findings.some((f) => f.message.includes("rawValues")),
+      "should reject legacy color.rawValues"
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("validate accepts contract with color policy", async () => {
+test("validate accepts contract with unified color policy", async () => {
   const tempRoot = await mkdtemp(
     path.join(os.tmpdir(), "interfacectl-color-policy-"),
   );
@@ -284,21 +246,18 @@ test("validate accepts contract with color policy", async () => {
           allowedTimingFunctions: ["ease"],
         },
       },
-      color: {
-        ...requiredColorPolicy,
-      },
+      color: requiredColorPolicy,
     };
 
     await createTempWorkspace(tempRoot, contract, "test-surface");
 
-    const contractPath = path.join(tempRoot, "contract.json");
     const result = await runCommand(
       "node",
       [
         cliExecutable,
         "validate",
         "--contract",
-        contractPath,
+        path.join(tempRoot, "contract.json"),
         "--workspace-root",
         tempRoot,
         "--format",
@@ -309,39 +268,19 @@ test("validate accepts contract with color policy", async () => {
       { cwd: tempRoot },
     );
 
-    // Should pass schema validation
-    assert.equal(
-      result.exitCode,
-      0,
-      `Command failed: ${result.stderr}\n${result.stdout}`
-    );
+    assert.equal(result.exitCode, 0, `Command failed: ${result.stderr}\n${result.stdout}`);
 
     const output = JSON.parse(result.stdout);
-
-    // Assert there are no contract.schema-error findings
-    const schemaErrors = output.findings.filter(
-      (f) => f.code === "contract.schema-error"
-    );
-    assert.equal(
-      schemaErrors.length,
-      0,
-      `Expected no schema errors, got: ${JSON.stringify(schemaErrors, null, 2)}`
-    );
-
-    // Optionally assert the contract is accepted and surfaces validate
-    assert.equal(
-      output.summary.errors,
-      0,
-      `Expected no errors, got: ${output.summary.errors}`
-    );
+    assert.equal(output.summary.errors, 0);
+    assert.equal(output.summary.warnings, 0);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("validate rejects contract missing required color", async () => {
+test("validate warns with color.disallowed when policy is warn", async () => {
   const tempRoot = await mkdtemp(
-    path.join(os.tmpdir(), "interfacectl-color-required-"),
+    path.join(os.tmpdir(), "interfacectl-color-warn-"),
   );
 
   try {
@@ -355,26 +294,39 @@ test("validate rejects contract missing required color", async () => {
           type: "web",
           requiredSections: ["header"],
           allowedFonts: ["Inter"],
-          layout: { maxContentWidth: 1200 },
+          layout: {
+            maxContentWidth: 1200,
+          },
         },
       ],
       sections: [
-        { id: "header", intent: "Page header", description: "Main header" },
+        {
+          id: "header",
+          intent: "Page header",
+          description: "Main header",
+        },
       ],
       constraints: {
-        motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] },
+        motion: {
+          allowedDurationsMs: [200],
+          allowedTimingFunctions: ["ease"],
+        },
+      },
+      color: {
+        policy: "warn",
+        allowedValues: [],
       },
     };
 
     await createTempWorkspace(tempRoot, contract, "test-surface");
-    const contractPath = path.join(tempRoot, "contract.json");
+
     const result = await runCommand(
       "node",
       [
         cliExecutable,
         "validate",
         "--contract",
-        contractPath,
+        path.join(tempRoot, "contract.json"),
         "--workspace-root",
         tempRoot,
         "--format",
@@ -385,24 +337,21 @@ test("validate rejects contract missing required color", async () => {
       { cwd: tempRoot },
     );
 
-    assert.equal(result.exitCode, 10, `Expected E0 exit (10), got ${result.exitCode}`);
+    assert.equal(result.exitCode, 0, `warn policy should not fail: ${result.stderr}`);
+
     const output = JSON.parse(result.stdout);
-    const schemaErrors = output.findings.filter((f) => f.code === "contract.schema-error");
-    assert.ok(schemaErrors.length > 0, "Expected schema validation errors");
-    assert.ok(
-      schemaErrors.some(
-        (f) => f.message.toLowerCase().includes("required property") && f.message.includes("color"),
-      ),
-      `Expected missing color required-property error, got: ${JSON.stringify(schemaErrors)}`
-    );
+    const finding = output.findings.find((f) => f.code === "color.disallowed");
+    assert.ok(finding, "should emit color.disallowed finding");
+    assert.equal(finding.severity, "warning");
+    assert.equal(finding.category, "E1");
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("validate rejects contract missing color.sourceOfTruth", async () => {
+test("validate rejects contract missing color.policy", async () => {
   const tempRoot = await mkdtemp(
-    path.join(os.tmpdir(), "interfacectl-color-source-required-"),
+    path.join(os.tmpdir(), "interfacectl-missing-color-policy-"),
   );
 
   try {
@@ -416,33 +365,38 @@ test("validate rejects contract missing color.sourceOfTruth", async () => {
           type: "web",
           requiredSections: ["header"],
           allowedFonts: ["Inter"],
-          layout: { maxContentWidth: 1200 },
+          layout: {
+            maxContentWidth: 1200,
+          },
         },
       ],
       sections: [
-        { id: "header", intent: "Page header", description: "Main header" },
+        {
+          id: "header",
+          intent: "Page header",
+          description: "Main header",
+        },
       ],
       constraints: {
-        motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] },
+        motion: {
+          allowedDurationsMs: [200],
+          allowedTimingFunctions: ["ease"],
+        },
       },
       color: {
-        rawValues: {
-          policy: "warn",
-          allowlist: [],
-          denylist: [],
-        },
+        allowedValues: [],
       },
     };
 
     await createTempWorkspace(tempRoot, contract, "test-surface");
-    const contractPath = path.join(tempRoot, "contract.json");
+
     const result = await runCommand(
       "node",
       [
         cliExecutable,
         "validate",
         "--contract",
-        contractPath,
+        path.join(tempRoot, "contract.json"),
         "--workspace-root",
         tempRoot,
         "--format",
@@ -453,21 +407,22 @@ test("validate rejects contract missing color.sourceOfTruth", async () => {
       { cwd: tempRoot },
     );
 
-    assert.equal(result.exitCode, 10, `Expected E0 exit (10), got ${result.exitCode}`);
+    assert.equal(result.exitCode, 10);
+
     const output = JSON.parse(result.stdout);
-    const schemaErrors = output.findings.filter((f) => f.code === "contract.schema-error");
+    const schemaErrors = output.findings.filter((f) => f.code.startsWith("contract.schema"));
     assert.ok(
-      schemaErrors.some((f) => f.message.includes("sourceOfTruth")),
-      `Expected missing sourceOfTruth error, got: ${JSON.stringify(schemaErrors)}`
+      schemaErrors.some((f) => f.message.includes("policy")),
+      `Expected missing policy error, got: ${JSON.stringify(schemaErrors)}`
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
-test("validate rejects contract missing color.rawValues", async () => {
+test("validate rejects contract missing color.allowedValues", async () => {
   const tempRoot = await mkdtemp(
-    path.join(os.tmpdir(), "interfacectl-color-raw-required-"),
+    path.join(os.tmpdir(), "interfacectl-missing-color-allowlist-"),
   );
 
   try {
@@ -481,31 +436,38 @@ test("validate rejects contract missing color.rawValues", async () => {
           type: "web",
           requiredSections: ["header"],
           allowedFonts: ["Inter"],
-          layout: { maxContentWidth: 1200 },
+          layout: {
+            maxContentWidth: 1200,
+          },
         },
       ],
       sections: [
-        { id: "header", intent: "Page header", description: "Main header" },
+        {
+          id: "header",
+          intent: "Page header",
+          description: "Main header",
+        },
       ],
       constraints: {
-        motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] },
+        motion: {
+          allowedDurationsMs: [200],
+          allowedTimingFunctions: ["ease"],
+        },
       },
       color: {
-        sourceOfTruth: {
-          type: "none",
-        },
+        policy: "warn",
       },
     };
 
     await createTempWorkspace(tempRoot, contract, "test-surface");
-    const contractPath = path.join(tempRoot, "contract.json");
+
     const result = await runCommand(
       "node",
       [
         cliExecutable,
         "validate",
         "--contract",
-        contractPath,
+        path.join(tempRoot, "contract.json"),
         "--workspace-root",
         tempRoot,
         "--format",
@@ -516,12 +478,13 @@ test("validate rejects contract missing color.rawValues", async () => {
       { cwd: tempRoot },
     );
 
-    assert.equal(result.exitCode, 10, `Expected E0 exit (10), got ${result.exitCode}`);
+    assert.equal(result.exitCode, 10);
+
     const output = JSON.parse(result.stdout);
-    const schemaErrors = output.findings.filter((f) => f.code === "contract.schema-error");
+    const schemaErrors = output.findings.filter((f) => f.code.startsWith("contract.schema"));
     assert.ok(
-      schemaErrors.some((f) => f.message.includes("rawValues")),
-      `Expected missing rawValues error, got: ${JSON.stringify(schemaErrors)}`
+      schemaErrors.some((f) => f.message.includes("allowedValues")),
+      `Expected missing allowedValues error, got: ${JSON.stringify(schemaErrors)}`
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });

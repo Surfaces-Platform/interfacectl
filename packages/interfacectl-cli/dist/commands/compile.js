@@ -153,7 +153,6 @@ function surfaceToBundlePayload(surface) {
         type: surface.type,
         requiredSections: surface.requiredSections,
         allowedFonts: surface.allowedFonts,
-        ...(surface.allowedColors && { allowedColors: surface.allowedColors }),
         layout: surface.layout,
     };
 }

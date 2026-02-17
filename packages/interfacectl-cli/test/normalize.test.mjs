@@ -52,7 +52,6 @@ test("normalizeContract sorts set-like arrays", () => {
         type: "web",
         requiredSections: ["b", "a", "c"],
         allowedFonts: ["font2", "font1"],
-        allowedColors: ["color2", "color1"],
         layout: { maxContentWidth: 1000 },
       },
     ],
@@ -63,6 +62,10 @@ test("normalizeContract sorts set-like arrays", () => {
         allowedTimingFunctions: ["ease", "linear"],
       },
     },
+    color: {
+      policy: "off",
+      allowedValues: ["color2", "color1"],
+    },
   };
   const normalized = normalizeContract(contract);
   assert.deepEqual(
@@ -72,6 +75,10 @@ test("normalizeContract sorts set-like arrays", () => {
   assert.deepEqual(
     normalized.contract.surfaces[0].allowedFonts,
     ["font1", "font2"],
+  );
+  assert.deepEqual(
+    normalized.contract.color.allowedValues,
+    ["color1", "color2"],
   );
 });
 

@@ -6,6 +6,7 @@ import type {
   DiffChangeType,
   Severity,
 } from "@surfaces/interfacectl-validator";
+import { normalizeColorValue } from "@surfaces/interfacectl-validator";
 import type { NormalizedContract, NormalizedDescriptor } from "./normalize.js";
 
 /**
@@ -150,7 +151,7 @@ function determineSeverity(
   }
 
   // Font/color violations are errors (design system constraints)
-  if (path.includes("allowedFonts") || path.includes("allowedColors")) {
+  if (path.includes("allowedFonts") || path.includes("color/allowedValues")) {
     return "error";
   }
 
@@ -254,16 +255,17 @@ export function compareContractToDescriptor(
   }
 
   // Compare allowed colors
-  const contractColors = new Set(surface.allowedColors);
+  const contractColors = new Set(contract.contract.color.allowedValues);
   for (const color of desc.colors) {
-    if (!contractColors.has(color.value)) {
+    const normalizedColor = normalizeColorValue(color.value);
+    if (!contractColors.has(normalizedColor)) {
       entries.push({
         surfaceId,
         type: "added",
-        path: buildDiffPath(`surfaces/${surfaceId}`, "allowedColors"),
-        observedValue: color.value,
+        path: "color/allowedValues",
+        observedValue: normalizedColor,
         severity: "error",
-        rule: `contract.surfaces[${surfaceId}].allowedColors`,
+        rule: "contract.color.allowedValues",
       });
     }
   }

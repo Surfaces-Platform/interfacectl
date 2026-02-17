@@ -4,7 +4,12 @@ import {
   extractContractFromNextApp,
   stableStringify,
 } from "@surfaces/interfacectl-extractor";
-import { validateContractStructure, getBundledContractSchema } from "@surfaces/interfacectl-validator";
+import {
+  type InterfaceContract,
+  getBundledContractSchema,
+  validateContractStructure,
+} from "@surfaces/interfacectl-validator";
+import { seedColorPolicyFromObservedDescriptors } from "../utils/color-policy-seeding.js";
 
 export interface GenerateContractOptions {
   appRoot: string;
@@ -35,10 +40,22 @@ export async function runGenerateContractCommand(
       path.resolve(cwd, options.reportOutPath)
     : path.join(outDir, `${surfaceId}.extraction.json`);
 
-  const { contract, report } = await extractContractFromNextApp({
+  const { contract: extractedContract, report } = await extractContractFromNextApp({
     appRoot,
     surfaceId,
   });
+
+  const seeded = await seedColorPolicyFromObservedDescriptors({
+    workspaceRoot: cwd,
+    appRoot,
+    surfaceId,
+    contract: extractedContract as unknown as InterfaceContract,
+  });
+  const contract = seeded.contract;
+  const reportWithSeedWarnings = {
+    ...report,
+    warnings: [...report.warnings, ...seeded.warnings],
+  };
 
   let schema: object;
   if (options.schemaPath) {
@@ -49,7 +66,7 @@ export async function runGenerateContractCommand(
     schema = getBundledContractSchema() as object;
   }
   const structureResult = validateContractStructure(
-    contract as unknown,
+    contract,
     schema,
   );
   if (!structureResult.ok) {
@@ -65,7 +82,7 @@ export async function runGenerateContractCommand(
 
   const contractJson = stableStringify(contract);
   const reportForOutput = {
-    ...report,
+    ...reportWithSeedWarnings,
     appRoot: path.relative(cwd, report.appRoot),
   };
   const reportJson = stableStringify(reportForOutput);
@@ -74,9 +91,9 @@ export async function runGenerateContractCommand(
 
   console.log(`Wrote contract: ${contractPath}`);
   console.log(`Wrote report:   ${reportPath}`);
-  if (report.warnings.length > 0) {
-    console.log(`Warnings (${report.warnings.length}):`);
-    for (const w of report.warnings) {
+  if (reportWithSeedWarnings.warnings.length > 0) {
+    console.log(`Warnings (${reportWithSeedWarnings.warnings.length}):`);
+    for (const w of reportWithSeedWarnings.warnings) {
       console.log(`  [${w.code}] ${w.message}`);
     }
   }

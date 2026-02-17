@@ -1,137 +1,140 @@
 # Runtime (Edge) Enforcement Guide
 
-Goal: show how to use the existing interface contract to gate adaptive UI changes at runtime (edge) in CDN/serverless and native shells. No schema changes - this consumes the current contract fields (layout, color, motion, sections).
+Goal: show how to consume the current interface contract at `Runtime (edge)` for adaptive UI gating.
 
 Terminology follows `docs/taxonomy.md`:
+
 - This guide covers `Runtime (edge)` only.
-- `Generation time` and `CI/CD time` are separate enforcement contexts.
+- `Generation time` and `CI/CD time` are separate contexts.
 
 ## Inputs and derived manifest
 
 - Source contract: `contracts/surfaces.web.contract.json`
-- Optional derived runtime manifest (suggested, not required) — subset per surface:
-  ```json
-  {
-    "contractId": "surfaces.web",
-    "version": "0.1.0",
-    "surfaceId": "surfaces-web",
-    "layout": { "maxContentWidth": 1160, "requiredContainers": ["contract-container"] },
-    "color": {
-      "sourceOfTruth": { "type": "tokens", "tokenNamespaces": ["--color-", "--background"] },
-      "rawValues": { "policy": "warn", "allowlist": [], "denylist": [] }
-    },
-    "motion": {
-      "allowedDurationsMs": [120, 160, 200, 240],
-      "allowedTimingFunctions": ["ease", "ease-in-out", "var(--contract-motion-timing)"]
-    }
+- Optional runtime manifest (per-surface slice):
+
+```json
+{
+  "contractId": "surfaces.web",
+  "version": "0.1.0",
+  "surfaceId": "surfaces-web",
+  "layout": { "maxContentWidth": 1160, "requiredContainers": ["contract-container"] },
+  "color": {
+    "policy": "warn",
+    "allowedValues": ["var(--color-bg)", "#ffffff"]
+  },
+  "motion": {
+    "allowedDurationsMs": [120, 160, 200, 240],
+    "allowedTimingFunctions": ["ease", "ease-in-out", "var(--contract-motion-timing)"]
   }
-  ```
-- Keep provenance with every decision: contractId, version, surfaceId.
+}
+```
 
-## Enforcement behaviors (policy-driven)
-- `strict`: block the change; return violation payload.
-- `warn`: allow but emit violation payload with `severity: "warn"`.
-- `off`: skip check.
+Always attach provenance to decisions: `contractId`, `version`, `surfaceId`.
 
-## Violation payload shape (edge/native)
+## Enforcement behavior
+
+- `strict`: block change
+- `warn`: allow and emit violation
+- `off`: skip color check
+
+## Violation payload shape
+
 ```json
 {
   "surfaceId": "surfaces-web",
   "contractId": "surfaces.web",
   "version": "0.1.0",
-  "rule": "color.rawValues",
+  "rule": "color.allowedValues",
   "policy": "warn",
   "evidence": { "property": "background", "value": "rgba(15,23,42,0.3)" },
-  "location": { "node": "header.hero", "file": "app/globals.css" },
-  "action": "allow" // or "block"
+  "action": "allow"
 }
 ```
 
-## Edge adapter (Node/edge function example)
-Place near your edge handler, e.g., `docs/interfacectl/examples/edge/validate-edge.js`.
+## Edge adapter example (Node)
+
+See: `docs/examples/edge/validate-edge.js`
 
 ```javascript
 import manifest from "./manifest.json" assert { type: "json" };
 
 export function validateEdgeChange(change) {
-  // change: { surfaceId, proposedStyles, sectionId }
   const violations = [];
 
-  // Layout: enforce required container
-  if (!change.sectionId || change.sectionId === "") {
+  if (!change.sectionId) {
     violations.push(makeViolation("sections.required", "strict", { sectionId: change.sectionId }));
   }
 
-  // Color raw values
-  const policy = manifest.color.rawValues.policy;
-  if (policy !== "off" && hasRawColor(change.proposedStyles.background)) {
-    violations.push(makeViolation("color.rawValues", policy, {
+  const colorPolicy = manifest.color.policy;
+  const background = change.proposedStyles?.background;
+  if (colorPolicy !== "off" && isDisallowedColor(background, manifest.color.allowedValues)) {
+    violations.push(makeViolation("color.allowedValues", colorPolicy, {
       property: "background",
-      value: change.proposedStyles.background
+      value: background,
+      expected: manifest.color.allowedValues,
     }));
   }
 
-  const blocking = violations.find(v => v.policy === "strict");
+  const blocking = violations.find((v) => v.policy === "strict");
   return {
     allowed: !blocking,
     violations,
-    contract: { id: manifest.contractId, version: manifest.version, surfaceId: manifest.surfaceId }
+    contract: {
+      id: manifest.contractId,
+      version: manifest.version,
+      surfaceId: manifest.surfaceId,
+    },
   };
 }
 
-const RAW_COLOR_REGEX = /(rgb|hsl)a?\\(/i;
-function hasRawColor(value = "") { return RAW_COLOR_REGEX.test(value); }
+function isDisallowedColor(value = "", allowedValues = []) {
+  const normalized = normalizeColorValue(value);
+  const allowed = new Set(allowedValues.map(normalizeColorValue));
+  return normalized.length > 0 && !allowed.has(normalized);
+}
+
+function normalizeColorValue(value = "") {
+  return String(value)
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*([(),/:])\s*/g, "$1")
+    .replace(/\s*\-\-\s*/g, "--");
+}
+
 function makeViolation(rule, policy, evidence) {
-  return { rule, policy, severity: policy === "strict" ? "error" : "warn", evidence };
+  return {
+    rule,
+    policy,
+    severity: policy === "strict" ? "error" : "warn",
+    evidence,
+  };
 }
 ```
 
-## Native stubs (Swift / Kotlin skeletons)
+## Native stubs
 
 Swift:
-```swift
-struct ContractManifest: Decodable {
-  let contractId: String
-  let version: String
-  let surfaceId: String
-  let color: ColorPolicy
-}
 
-func validateBackground(_ value: String, manifest: ContractManifest) -> Bool {
-  guard manifest.color.rawValues.policy != "off" else { return true }
-  let rawPattern = try! NSRegularExpression(pattern: "(rgb|hsl)a?\\(", options: .caseInsensitive)
-  let range = NSRange(location: 0, length: value.utf16.count)
-  return rawPattern.firstMatch(in: value, options: [], range: range) == nil
+```swift
+func isDisallowedColor(_ value: String, allowedValues: [String]) -> Bool {
+  let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+  if normalized.isEmpty { return false }
+  return !allowedValues.contains(normalized)
 }
 ```
 
 Kotlin:
-```kotlin
-data class Manifest(
-  val contractId: String,
-  val version: String,
-  val surfaceId: String,
-  val color: ColorPolicy
-)
 
-fun validateBackground(value: String, manifest: Manifest): Boolean {
-  if (manifest.color.rawValues.policy == "off") return true
-  return !Regex(\"\"\"(rgb|hsl)a?\\(\"\"\", RegexOption.IGNORE_CASE).containsMatchIn(value)
+```kotlin
+fun isDisallowedColor(value: String, allowedValues: List<String>): Boolean {
+  val normalized = value.trim()
+  if (normalized.isEmpty()) return false
+  return !allowedValues.contains(normalized)
 }
 ```
 
-## Fallback and logging
-- On `strict` violation: block and return payload; caller decides UI fallback (e.g., remove adaptation, use last-known-good style).
-- On `warn`: allow, log payload (edge: console/log drain; native: telemetry buffer).
-- Include contract provenance in all logs for debuggability.
+## Runtime notes
 
-## Performance notes
-- Keep manifest small (per-surface slice).
-- Avoid network fetch in hot paths; preload manifest.
-- Regex checks only; no DOM traversal at edge/runtime.
-
-## Test checklist
-- Strict policy blocks known-bad change.
-- Warn policy passes but logs payload.
-- Provenance fields present.
-- Empty/unknown surfaceId returns error early.
+- Keep manifest small and per-surface.
+- Avoid network fetches in hot paths.
+- Emit violations with provenance for observability and incident correlation.

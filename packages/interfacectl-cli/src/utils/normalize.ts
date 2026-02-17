@@ -6,6 +6,7 @@ import type {
   SurfaceColorDescriptor,
   SurfaceSectionDescriptor,
 } from "@surfaces/interfacectl-validator";
+import { normalizeColorValues } from "@surfaces/interfacectl-validator";
 
 export interface NormalizationMetadata {
   reorderedPaths: string[];
@@ -27,9 +28,9 @@ export interface NormalizedDescriptor {
  */
 const SET_LIKE_FIELDS = new Set([
   "allowedFonts",
-  "allowedColors",
   "requiredSections",
   "requiredContainers",
+  "allowedValues",
   "allowedDurationsMs",
   "allowedTimingFunctions",
   "containers",
@@ -156,17 +157,6 @@ export function normalizeContract(
         }
       }
 
-      if (SET_LIKE_FIELDS.has("allowedColors")) {
-        const original = surface.allowedColors;
-        if (original) {
-          const sorted = normalizeSetField(original);
-          if (JSON.stringify(original) !== JSON.stringify(sorted)) {
-            metadata.reorderedPaths.push(`surfaces[${surfaceIdx}].allowedColors`);
-            normalizedSurface.allowedColors = sorted;
-          }
-        }
-      }
-
       if (
         surface.layout.requiredContainers &&
         SET_LIKE_FIELDS.has("requiredContainers")
@@ -213,6 +203,17 @@ export function normalizeContract(
           return sorted;
         })(),
       },
+    },
+    color: {
+      ...contract.color,
+      allowedValues: (() => {
+        const original = contract.color.allowedValues;
+        const sorted = normalizeColorValues(original);
+        if (JSON.stringify(original) !== JSON.stringify(sorted)) {
+          metadata.reorderedPaths.push("color.allowedValues");
+        }
+        return sorted;
+      })(),
     },
   };
 

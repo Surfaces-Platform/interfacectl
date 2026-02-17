@@ -19,7 +19,7 @@
     "enabled": true,
     "reorderedPaths": [
       "surfaces[0].allowedFonts",
-      "surfaces[0].allowedColors"
+      "color.allowedValues"
     ],
     "strippedPaths": [
       "descriptors[interfacectl-web].sections[0].source"

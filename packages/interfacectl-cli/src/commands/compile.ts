@@ -210,7 +210,6 @@ function surfaceToBundlePayload(surface: ContractSurface): Record<string, unknow
     type: surface.type,
     requiredSections: surface.requiredSections,
     allowedFonts: surface.allowedFonts,
-    ...(surface.allowedColors && { allowedColors: surface.allowedColors }),
     layout: surface.layout,
   };
 }

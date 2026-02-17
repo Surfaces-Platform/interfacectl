@@ -149,23 +149,6 @@ export async function runValidateCommand(options) {
         return finalize(e0ExitCode, initialContractVersion);
     }
     const contract = structureResult.contract;
-    // Check for deprecated allowedColors fields
-    for (let i = 0; i < contract.surfaces.length; i++) {
-        const surface = contract.surfaces[i];
-        if (surface.allowedColors !== undefined) {
-            const finding = {
-                code: "contract.deprecated-field",
-                severity: "warning",
-                category: "E0",
-                message: `allowedColors is deprecated. Migrate to color.sourceOfTruth + color.rawValues policy.`,
-                location: `/surfaces/${i}/allowedColors`,
-            };
-            findings.push(finding);
-            if (!isJson) {
-                textReporter.warn(pc.yellow(`  • Surface "${surface.id}": allowedColors is deprecated (use color.sourceOfTruth + color.rawValues)`));
-            }
-        }
-    }
     const surfaceFilters = new Set((options.surfaceFilters ?? []).map((value) => value.trim()));
     const structuralDescriptorResult = await collectSurfaceDescriptors({
         workspaceRoot,
@@ -308,8 +291,6 @@ function mapViolationsToFindings(summary) {
         "layout-pageframe-unextractable-value": "layout.pageframe.unextractable-value",
         "motion-duration-not-allowed": "motion.duration",
         "motion-timing-not-allowed": "motion.timing",
-        "color-raw-value-used": "color.raw-value.used",
-        "color-token-namespace-violation": "color.token.namespace.violation",
         "shell-owned-primitive-emitted": "shell.primitive.disallowed",
     };
     for (const report of summary.surfaceReports) {
@@ -345,10 +326,13 @@ function mapViolationsToFindings(summary) {
                     break;
                 }
                 case "color-not-allowed": {
-                    finding.expected = Array.isArray(details.allowedColors)
-                        ? details.allowedColors
+                    finding.expected = Array.isArray(details.allowedValues)
+                        ? details.allowedValues
                         : undefined;
                     finding.found = details.color;
+                    if (details.policy === "warn") {
+                        finding.severity = "warning";
+                    }
                     break;
                 }
                 case "layout-width-undetermined": {
@@ -430,25 +414,6 @@ function mapViolationsToFindings(summary) {
                 case "descriptor-unused": {
                     finding.expected = contract.surfaces.map((surface) => surface.id);
                     finding.found = violation.surfaceId;
-                    break;
-                }
-                case "color-raw-value-used": {
-                    finding.expected = details.allowedValues;
-                    finding.found = details.colorValue;
-                    // Set severity based on policy: "warn" -> warning, "strict" -> error
-                    if (details.policy === "warn") {
-                        finding.severity = "warning";
-                    }
-                    else if (details.policy === "strict") {
-                        finding.severity = "error";
-                    }
-                    break;
-                }
-                case "color-token-namespace-violation": {
-                    finding.expected = details.allowedNamespaces;
-                    finding.found = details.tokenName;
-                    // Token namespace violations are warnings by default
-                    finding.severity = "warning";
                     break;
                 }
                 default:

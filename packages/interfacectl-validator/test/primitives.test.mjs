@@ -8,6 +8,7 @@ test("flags shell-owned primitive emitted using shell.owns default", () => {
     version: "1.0.0",
     sections: [],
     constraints: { motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] } },
+    color: { policy: "off", allowedValues: [] },
     surfaces: [
       {
         id: "runs",
@@ -50,6 +51,7 @@ test("respects surface.mustNotEmit override when shell.owns missing", () => {
     version: "1.0.0",
     sections: [],
     constraints: { motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] } },
+    color: { policy: "off", allowedValues: [] },
     surfaces: [
       {
         id: "runs",
@@ -85,6 +87,7 @@ test("allows shell-owned primitive in explicit shell source path", () => {
     version: "1.0.0",
     sections: [],
     constraints: { motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] } },
+    color: { policy: "off", allowedValues: [] },
     surfaces: [
       {
         id: "runs",
@@ -120,6 +123,7 @@ test("flags shell-owned primitive from non-shell source even when allowlist exis
     version: "1.0.0",
     sections: [],
     constraints: { motion: { allowedDurationsMs: [200], allowedTimingFunctions: ["ease"] } },
+    color: { policy: "off", allowedValues: [] },
     surfaces: [
       {
         id: "runs",

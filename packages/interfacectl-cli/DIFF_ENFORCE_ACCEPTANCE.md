@@ -67,7 +67,7 @@ All items in the checklist must be completed and verified:
 Contract and descriptor match exactly → empty diff, exit 0
 
 ### reorder-only
-Arrays reordered (allowedFonts, allowedColors), values same → suppressed via normalization
+Arrays reordered (allowedFonts, color.allowedValues), values same → suppressed via normalization
 
 ### ephemeral-fields
 Timestamps/IDs changed in observed → stripped in normalization, not in diff

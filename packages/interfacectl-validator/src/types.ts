@@ -14,7 +14,6 @@ export interface ContractSurface {
   type: SurfaceType;
   requiredSections: string[];
   allowedFonts: string[];
-  allowedColors?: string[]; // Deprecated: use color.sourceOfTruth and color.rawValues
   layout: {
     maxContentWidth: number;
     requiredContainers?: string[];
@@ -42,42 +41,9 @@ export interface ShellSpec {
   contentSlot?: string;
 }
 
-export interface ColorSourceOfTruth {
-  type: "tokens" | "none";
-  tokenNamespaces?: string[];
-}
-
-export interface ColorRawValues {
-  policy: "off" | "warn" | "strict";
-  allowlist?: string[];
-  denylist?: string[];
-}
-
-export interface ColorRoleEnforcement {
-  enforcement: "off" | "warn" | "strict";
-}
-
-export interface ColorSemantics {
-  roles?: {
-    accent?: ColorRoleEnforcement;
-    text?: ColorRoleEnforcement;
-    background?: ColorRoleEnforcement;
-    border?: ColorRoleEnforcement;
-  };
-}
-
-export interface ColorConsistency {
-  acrossSurfaces?: {
-    enforcement: "off" | "warn" | "strict";
-    signals?: ("token-name" | "css-var-name" | "class-fragment")[];
-  };
-}
-
 export interface ColorPolicy {
-  sourceOfTruth: ColorSourceOfTruth;
-  rawValues: ColorRawValues;
-  semantics?: ColorSemantics;
-  consistency?: ColorConsistency;
+  policy: "off" | "warn" | "strict";
+  allowedValues: string[];
 }
 
 export interface InterfaceContract {
@@ -165,8 +131,6 @@ export type DriftViolationType =
   | "motion-timing-not-allowed"
   | "descriptor-missing"
   | "descriptor-unused"
-  | "color-raw-value-used"
-  | "color-token-namespace-violation"
   | "shell-owned-primitive-emitted";
 
 export interface DriftViolation {

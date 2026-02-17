@@ -5,8 +5,9 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { extractContractFromNextApp, stableStringify } from "@surfaces/interfacectl-extractor";
-import { getBundledContractSchema, validateContractStructure } from "@surfaces/interfacectl-validator";
+import { getBundledContractSchema, validateContractStructure, } from "@surfaces/interfacectl-validator";
 import { findAuthProfile, getAuthStorageMode, isProfileExpired, saveBrowserSessionProfile, } from "../utils/auth-profiles.js";
+import { seedColorPolicyFromObservedDescriptors } from "../utils/color-policy-seeding.js";
 import { redactSensitiveText, redactSensitiveUrl } from "../utils/redaction.js";
 import { buildBootstrapContract, emitBootstrapRunArtifact, suggestSurfaceIdFromUrl, suggestSurfaceName, writeBootstrapArtifacts, } from "../utils/onboarding.js";
 function normalizeSurfaceId(raw) {
@@ -143,10 +144,21 @@ export async function runInitCommand(options) {
                 : path.resolve(rootDir, "contracts", "generated");
             const contractPath = path.join(outDir, `${resolved.surfaceId}.contract.json`);
             const reportPath = path.join(outDir, `${resolved.surfaceId}.extraction.json`);
-            const { contract, report } = await extractContractFromNextApp({
+            const { contract: extractedContract, report } = await extractContractFromNextApp({
                 appRoot,
                 surfaceId: resolved.surfaceId,
             });
+            const seeded = await seedColorPolicyFromObservedDescriptors({
+                workspaceRoot: rootDir,
+                appRoot,
+                surfaceId: resolved.surfaceId,
+                contract: extractedContract,
+            });
+            const contract = seeded.contract;
+            const reportWithSeedWarnings = {
+                ...report,
+                warnings: [...report.warnings, ...seeded.warnings],
+            };
             const structure = validateContractStructure(contract, getBundledContractSchema());
             if (!structure.ok) {
                 console.error("Generated contract failed schema validation:");
@@ -156,7 +168,7 @@ export async function runInitCommand(options) {
                 return 1;
             }
             const reportWithOnboarding = {
-                ...report,
+                ...reportWithSeedWarnings,
                 onboarding: {
                     sourceUrl: redactSensitiveUrl(resolved.url),
                     authMode: authCapture.authMode,
@@ -174,8 +186,8 @@ export async function runInitCommand(options) {
             };
             await writeJson(contractPath, contract);
             await writeJson(reportPath, reportWithOnboarding);
-            const status = report.warnings.length > 0 ? "warn" : "pass";
-            const findingCodes = report.warnings.map((warning) => `extract.${warning.code}`);
+            const status = reportWithOnboarding.warnings.length > 0 ? "warn" : "pass";
+            const findingCodes = reportWithOnboarding.warnings.map((warning) => `extract.${warning.code}`);
             const run = await emitBootstrapRunArtifact({
                 rootDir,
                 surfaceId: resolved.surfaceId,
@@ -207,6 +219,10 @@ export async function runInitCommand(options) {
             {
                 code: "remote-url.bootstrap-only",
                 message: "Remote URL mode creates bootstrap extraction metadata only. Use local-root mode for full static extraction.",
+            },
+            {
+                code: "color-seed.remote-unavailable",
+                message: "Color allowlist was not seeded from code in remote-url mode; generated contract uses an empty allowlist with warn policy.",
             },
         ];
         const report = {

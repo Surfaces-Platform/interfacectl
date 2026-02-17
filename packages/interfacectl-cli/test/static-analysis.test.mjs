@@ -117,18 +117,21 @@ test("collectSurfaceDescriptors captures sections, containers, fonts, colors, an
           type: "web",
           requiredSections: ["main.hero"],
           allowedFonts: ["var(--font-demo)", "Demo Sans", "monospace"],
-          allowedColors: [
-            "var(--color-primary)",
-            "var(--color-background)",
-            "#333333",
-            "rgb(200, 200, 200)",
-          ],
           layout: {
             maxContentWidth: 960,
             requiredContainers: ["primary-shell"],
           },
         },
       ],
+      color: {
+        policy: "warn",
+        allowedValues: [
+          "var(--color-primary)",
+          "var(--color-background)",
+          "#333333",
+          "rgb(200,200,200)",
+        ],
+      },
     };
 
     const result = await collectSurfaceDescriptors({
@@ -242,6 +245,10 @@ test("detects shell-owned primitives (navigation/footer/auth-shell) in descripto
           layout: { maxContentWidth: 1120 },
         },
       ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
     };
 
     const result = await collectSurfaceDescriptors({
@@ -266,4 +273,3 @@ test("detects shell-owned primitives (navigation/footer/auth-shell) in descripto
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
-

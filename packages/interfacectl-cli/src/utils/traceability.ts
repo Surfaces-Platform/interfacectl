@@ -28,7 +28,11 @@ function deriveContractRef(entry: DiffEntry): ContractRef | undefined {
   // Skip when the surface is not in the contract (surface-missing). This is a narrow guard because
   // the contract is not in scope here. Ideal invariant would verify node existence against the contract.
   if (
-    (path.startsWith("surfaces/") || path.startsWith("constraints/")) &&
+    (
+      path.startsWith("surfaces/") ||
+      path.startsWith("constraints/") ||
+      path.startsWith("color/")
+    ) &&
     entry.rule !== "contract.surface-missing"
   ) {
     ref.path = "/" + path.replace(/\./g, "/");

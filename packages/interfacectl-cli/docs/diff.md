@@ -24,7 +24,7 @@ interfacectl diff [options]
 
 The diff command applies normalization to suppress noise:
 
-1. **Set-like fields**: Arrays like `allowedFonts`, `allowedColors`, `requiredSections` are sorted for comparison (order doesn't matter)
+1. **Set-like fields**: Arrays like `allowedFonts`, `color.allowedValues`, and `requiredSections` are sorted for comparison (order doesn't matter)
 2. **Ephemeral fields**: Fields like `source`, `timestamp`, `buildId` are stripped from observed artifacts
 3. **Normalization metadata**: The output includes metadata about what was normalized
 

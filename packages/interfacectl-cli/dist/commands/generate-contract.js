@@ -1,7 +1,8 @@
 import path from "node:path";
 import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { extractContractFromNextApp, stableStringify, } from "@surfaces/interfacectl-extractor";
-import { validateContractStructure, getBundledContractSchema } from "@surfaces/interfacectl-validator";
+import { getBundledContractSchema, validateContractStructure, } from "@surfaces/interfacectl-validator";
+import { seedColorPolicyFromObservedDescriptors } from "../utils/color-policy-seeding.js";
 const DEFAULT_OUT_DIR = "contracts/generated";
 export async function runGenerateContractCommand(options) {
     const cwd = process.cwd();
@@ -16,10 +17,21 @@ export async function runGenerateContractCommand(options) {
     const reportPath = options.reportOutPath ?
         path.resolve(cwd, options.reportOutPath)
         : path.join(outDir, `${surfaceId}.extraction.json`);
-    const { contract, report } = await extractContractFromNextApp({
+    const { contract: extractedContract, report } = await extractContractFromNextApp({
         appRoot,
         surfaceId,
     });
+    const seeded = await seedColorPolicyFromObservedDescriptors({
+        workspaceRoot: cwd,
+        appRoot,
+        surfaceId,
+        contract: extractedContract,
+    });
+    const contract = seeded.contract;
+    const reportWithSeedWarnings = {
+        ...report,
+        warnings: [...report.warnings, ...seeded.warnings],
+    };
     let schema;
     if (options.schemaPath) {
         const resolved = path.resolve(cwd, options.schemaPath);
@@ -41,7 +53,7 @@ export async function runGenerateContractCommand(options) {
     await mkdir(path.dirname(reportPath), { recursive: true });
     const contractJson = stableStringify(contract);
     const reportForOutput = {
-        ...report,
+        ...reportWithSeedWarnings,
         appRoot: path.relative(cwd, report.appRoot),
     };
     const reportJson = stableStringify(reportForOutput);
@@ -49,9 +61,9 @@ export async function runGenerateContractCommand(options) {
     await writeFile(reportPath, `${reportJson}\n`, "utf-8");
     console.log(`Wrote contract: ${contractPath}`);
     console.log(`Wrote report:   ${reportPath}`);
-    if (report.warnings.length > 0) {
-        console.log(`Warnings (${report.warnings.length}):`);
-        for (const w of report.warnings) {
+    if (reportWithSeedWarnings.warnings.length > 0) {
+        console.log(`Warnings (${reportWithSeedWarnings.warnings.length}):`);
+        for (const w of reportWithSeedWarnings.warnings) {
             console.log(`  [${w.code}] ${w.message}`);
         }
     }

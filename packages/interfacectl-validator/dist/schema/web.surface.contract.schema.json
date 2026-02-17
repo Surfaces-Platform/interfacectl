@@ -126,16 +126,6 @@
           },
           "uniqueItems": true
         },
-        "allowedColors": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "uniqueItems": true,
-          "description": "Deprecated: Use color.sourceOfTruth and color.rawValues instead. Accepted for one release compatibility window and will be removed in the next major version."
-        },
         "layout": {
           "type": "object",
           "additionalProperties": false,
@@ -315,65 +305,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "sourceOfTruth",
-        "rawValues"
-      ],
-      "properties": {
-        "sourceOfTruth": {
-          "$ref": "#/$defs/colorSourceOfTruth"
-        },
-        "rawValues": {
-          "$ref": "#/$defs/colorRawValues"
-        },
-        "semantics": {
-          "$ref": "#/$defs/colorSemantics"
-        },
-        "consistency": {
-          "$ref": "#/$defs/colorConsistency"
-        }
-      }
-    },
-    "colorSourceOfTruth": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "type"
-      ],
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": [
-            "tokens",
-            "none"
-          ]
-        },
-        "tokenNamespaces": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "uniqueItems": true
-        }
-      },
-      "if": {
-        "properties": {
-          "type": {
-            "const": "tokens"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "tokenNamespaces"
-        ]
-      }
-    },
-    "colorRawValues": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "policy"
+        "policy",
+        "allowedValues"
       ],
       "properties": {
         "policy": {
@@ -384,121 +317,13 @@
             "strict"
           ]
         },
-        "allowlist": {
+        "allowedValues": {
           "type": "array",
           "items": {
             "type": "string",
             "minLength": 1
           },
           "uniqueItems": true
-        },
-        "denylist": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "uniqueItems": true
-        }
-      }
-    },
-    "colorSemantics": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "roles": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "accent": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enforcement": {
-                  "type": "string",
-                  "enum": [
-                    "off",
-                    "warn",
-                    "strict"
-                  ]
-                }
-              }
-            },
-            "text": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enforcement": {
-                  "type": "string",
-                  "enum": [
-                    "off",
-                    "warn",
-                    "strict"
-                  ]
-                }
-              }
-            },
-            "background": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enforcement": {
-                  "type": "string",
-                  "enum": [
-                    "off",
-                    "warn",
-                    "strict"
-                  ]
-                }
-              }
-            },
-            "border": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "enforcement": {
-                  "type": "string",
-                  "enum": [
-                    "off",
-                    "warn",
-                    "strict"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "colorConsistency": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "acrossSurfaces": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enforcement": {
-              "type": "string",
-              "enum": [
-                "off",
-                "warn",
-                "strict"
-              ]
-            },
-            "signals": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "token-name",
-                  "css-var-name",
-                  "class-fragment"
-                ]
-              },
-              "uniqueItems": true
-            }
-          }
         }
       }
     },
