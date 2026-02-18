@@ -53,6 +53,36 @@ function validateColorPolicy(contract, descriptor, violations) {
         });
     }
 }
+function validateIconPolicy(surface, descriptor, violations) {
+    const iconPolicy = surface.icons;
+    if (surface.type !== "web" || !iconPolicy || iconPolicy.policy === "off") {
+        return;
+    }
+    const allowedSources = new Set(iconPolicy.allowedSources);
+    const seenSources = new Set();
+    for (const icon of descriptor.icons ?? []) {
+        const iconSource = icon.value.trim();
+        if (!iconSource || seenSources.has(iconSource)) {
+            continue;
+        }
+        seenSources.add(iconSource);
+        if (allowedSources.has(iconSource)) {
+            continue;
+        }
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "icon-source-not-allowed",
+            message: `Icon source "${iconSource}" is not allowed for surface "${descriptor.surfaceId}".`,
+            details: {
+                iconSource,
+                source: icon.source,
+                allowedSources: [...allowedSources],
+                policy: iconPolicy.policy,
+                jsonPointer: `/surfaces/${descriptor.surfaceId}/icons/allowedSources`,
+            },
+        });
+    }
+}
 export function evaluateSurfaceCompliance(contract, descriptor) {
     const surface = findSurface(contract.surfaces, descriptor.surfaceId);
     const violations = [];
@@ -173,6 +203,7 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
         }
     }
     validateColorPolicy(contract, descriptor, violations);
+    validateIconPolicy(surface, descriptor, violations);
     const reportedWidth = descriptor.layout.maxContentWidth;
     if (reportedWidth === null || reportedWidth === undefined) {
         violations.push({

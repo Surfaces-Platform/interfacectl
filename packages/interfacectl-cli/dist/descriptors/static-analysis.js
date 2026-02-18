@@ -64,6 +64,32 @@ const PRIMITIVE_PATTERNS = [
     { role: "sidebar", regex: ASIDE_REGEX },
     { role: "auth-shell", regex: AUTH_SHELL_REGEX },
 ];
+const IMPORT_SOURCE_REGEX = /\bimport\s+(?:type\s+)?(?:[^"'`]*?\s+from\s+)?["'`]([^"'`]+)["'`]/g;
+const EXPORT_SOURCE_REGEX = /\bexport\s+(?:\*|\{[^}]*\})\s+from\s+["'`]([^"'`]+)["'`]/g;
+const SURFACES_UI_COMPONENT_PREFIX = "@surfaces/ui/components/";
+const MODULE_EXTENSIONS = [
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".mts",
+    ".cjs",
+    ".cts",
+];
+const INDEX_MODULE_BASENAMES = MODULE_EXTENSIONS.map((ext) => `index${ext}`);
+const ICON_LIBRARY_PATTERNS = [
+    /^lucide-react$/,
+    /^@heroicons\//,
+    /^react-icons(?:\/|$)/,
+    /^@tabler\/icons-react$/,
+    /^@mui\/icons-material(?:\/|$)/,
+    /^@phosphor-icons\//,
+    /^phosphor-react$/,
+    /^iconoir-react$/,
+    /^remixicon-react$/,
+    /^@fortawesome\//,
+];
 export async function collectSurfaceDescriptors(options) {
     const structuralDescriptors = [];
     const warnings = [];
@@ -155,11 +181,14 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
         });
     }
     const primitives = await extractPrimitives(sectionFiles, workspaceRoot, fileContentCache);
+    const { icons, warnings: iconWarnings } = await extractIconSources(surfaceRoot, workspaceRoot, fileContentCache, surfaceId);
+    warnings.push(...iconWarnings);
     const structuralSurfaceDescriptor = {
         surfaceId,
         sections,
         fonts,
         colors,
+        icons,
         layout,
         motion,
         primitives,
@@ -711,6 +740,200 @@ async function extractPrimitives(sectionFiles, workspaceRoot, fileContentCache) 
     }))
         .sort((a, b) => a.role.localeCompare(b.role));
 }
+async function extractIconSources(surfaceRoot, workspaceRoot, fileContentCache, surfaceId) {
+    const warnings = [];
+    const iconSources = new Map();
+    const unresolvedSharedImports = new Set();
+    const sharedUiRoots = await findSharedUiSourceRoots(workspaceRoot);
+    const sourceFiles = await globby(["**/*.{ts,tsx,js,jsx,mts,mjs,cjs,cts}"], {
+        cwd: surfaceRoot,
+        absolute: true,
+        gitignore: true,
+        ignore: COMMON_GLOBBY_IGNORES,
+    });
+    const sharedQueue = [];
+    const queuedSharedFiles = new Set();
+    const enqueueSharedFile = (filePath) => {
+        if (!queuedSharedFiles.has(filePath)) {
+            queuedSharedFiles.add(filePath);
+            sharedQueue.push(filePath);
+        }
+    };
+    for (const filePath of sourceFiles) {
+        const content = await readFileCached(filePath, fileContentCache);
+        const fileSource = path.relative(workspaceRoot, filePath);
+        const importSpecifiers = parseModuleSpecifiers(content);
+        for (const specifier of importSpecifiers) {
+            if (specifier.startsWith(SURFACES_UI_COMPONENT_PREFIX)) {
+                const resolved = await resolveSharedUiComponentImport(specifier, sharedUiRoots);
+                if (resolved) {
+                    enqueueSharedFile(resolved);
+                }
+                else {
+                    unresolvedSharedImports.add(specifier);
+                }
+                continue;
+            }
+            if (isExternalModuleSpecifier(specifier) &&
+                isIconLibrarySpecifier(specifier)) {
+                if (!iconSources.has(specifier)) {
+                    iconSources.set(specifier, {
+                        value: specifier,
+                        source: fileSource,
+                    });
+                }
+            }
+        }
+    }
+    while (sharedQueue.length > 0) {
+        const filePath = sharedQueue.shift();
+        if (!filePath) {
+            continue;
+        }
+        const content = await readFileCached(filePath, fileContentCache);
+        const fileSource = path.relative(workspaceRoot, filePath);
+        const importSpecifiers = parseModuleSpecifiers(content);
+        for (const specifier of importSpecifiers) {
+            if (isExternalModuleSpecifier(specifier) &&
+                isIconLibrarySpecifier(specifier)) {
+                if (!iconSources.has(specifier)) {
+                    iconSources.set(specifier, {
+                        value: specifier,
+                        source: fileSource,
+                    });
+                }
+                continue;
+            }
+            if (specifier.startsWith(SURFACES_UI_COMPONENT_PREFIX)) {
+                const resolved = await resolveSharedUiComponentImport(specifier, sharedUiRoots);
+                if (resolved) {
+                    enqueueSharedFile(resolved);
+                }
+                else {
+                    unresolvedSharedImports.add(specifier);
+                }
+                continue;
+            }
+            if (specifier.startsWith(".")) {
+                const resolved = await resolveModulePath(path.dirname(filePath), specifier);
+                if (resolved && isPathWithinRoots(resolved, sharedUiRoots)) {
+                    enqueueSharedFile(resolved);
+                }
+            }
+        }
+    }
+    for (const specifier of [...unresolvedSharedImports].sort((a, b) => a.localeCompare(b))) {
+        warnings.push({
+            surfaceId,
+            code: "icons.shared-ui-unresolved",
+            message: `Shared UI import "${specifier}" could not be resolved; icon source detection may be incomplete for surface "${surfaceId}".`,
+        });
+    }
+    return {
+        icons: [...iconSources.values()].sort((a, b) => a.value.localeCompare(b.value)),
+        warnings,
+    };
+}
+function parseModuleSpecifiers(content) {
+    const specifiers = new Set();
+    IMPORT_SOURCE_REGEX.lastIndex = 0;
+    EXPORT_SOURCE_REGEX.lastIndex = 0;
+    let match;
+    while ((match = IMPORT_SOURCE_REGEX.exec(content)) !== null) {
+        if (match[1]) {
+            specifiers.add(match[1]);
+        }
+    }
+    while ((match = EXPORT_SOURCE_REGEX.exec(content)) !== null) {
+        if (match[1]) {
+            specifiers.add(match[1]);
+        }
+    }
+    return [...specifiers];
+}
+function isExternalModuleSpecifier(specifier) {
+    if (specifier.startsWith(".") ||
+        specifier.startsWith("/") ||
+        specifier.startsWith("@/") ||
+        specifier.startsWith("~/")) {
+        return false;
+    }
+    return true;
+}
+function isIconLibrarySpecifier(specifier) {
+    if (ICON_LIBRARY_PATTERNS.some((pattern) => pattern.test(specifier))) {
+        return true;
+    }
+    const normalized = specifier.toLowerCase();
+    if (normalized.startsWith("@surfaces/ui")) {
+        return false;
+    }
+    return /(^|\/)icons?(\/|$)/.test(normalized);
+}
+async function findSharedUiSourceRoots(workspaceRoot) {
+    const candidates = [
+        path.join(workspaceRoot, "packages", "ui", "src"),
+        path.join(workspaceRoot, "..", "packages", "ui", "src"),
+        path.join(workspaceRoot, "..", "surfaces-webapps", "packages", "ui", "src"),
+        path.join(workspaceRoot, "..", "..", "surfaces-webapps", "packages", "ui", "src"),
+    ];
+    const roots = [];
+    const seen = new Set();
+    for (const candidate of candidates) {
+        const resolved = path.resolve(candidate);
+        if (seen.has(resolved)) {
+            continue;
+        }
+        seen.add(resolved);
+        if (await pathExists(resolved)) {
+            roots.push(resolved);
+        }
+    }
+    return roots;
+}
+async function resolveSharedUiComponentImport(specifier, sharedUiRoots) {
+    if (!specifier.startsWith(SURFACES_UI_COMPONENT_PREFIX)) {
+        return undefined;
+    }
+    const componentPath = specifier.slice(SURFACES_UI_COMPONENT_PREFIX.length);
+    for (const root of sharedUiRoots) {
+        const resolved = await resolveModulePath(root, path.join("components", componentPath));
+        if (resolved) {
+            return resolved;
+        }
+    }
+    return undefined;
+}
+async function resolveModulePath(baseDir, targetPath) {
+    const absolutePath = path.resolve(baseDir, targetPath);
+    return resolveWithExtensions(absolutePath);
+}
+async function resolveWithExtensions(absolutePath) {
+    const directCandidates = [absolutePath];
+    if (path.extname(absolutePath).length === 0) {
+        for (const ext of MODULE_EXTENSIONS) {
+            directCandidates.push(`${absolutePath}${ext}`);
+        }
+    }
+    for (const candidate of directCandidates) {
+        if (await pathIsFile(candidate)) {
+            return candidate;
+        }
+    }
+    for (const basename of INDEX_MODULE_BASENAMES) {
+        const indexCandidate = path.join(absolutePath, basename);
+        if (await pathIsFile(indexCandidate)) {
+            return indexCandidate;
+        }
+    }
+    return undefined;
+}
+function isPathWithinRoots(filePath, roots) {
+    return roots.some((root) => {
+        const relative = path.relative(root, filePath);
+        return Boolean(relative) && !relative.startsWith("..");
+    });
+}
 function parseColorValue(value) {
     const colors = [];
     const trimmed = value.trim();
@@ -846,6 +1069,15 @@ async function pathExists(filePath) {
     try {
         await stat(filePath);
         return true;
+    }
+    catch {
+        return false;
+    }
+}
+async function pathIsFile(filePath) {
+    try {
+        const fileStat = await stat(filePath);
+        return fileStat.isFile();
     }
     catch {
         return false;

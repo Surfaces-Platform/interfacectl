@@ -73,6 +73,14 @@
         },
         "authAware": {
           "type": "boolean"
+        },
+        "iconSources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },
@@ -149,6 +157,9 @@
               "$ref": "#/$defs/pageFrame"
             }
           }
+        },
+        "icons": {
+          "$ref": "#/$defs/iconPolicy"
         },
         "phase0": {
           "type": "object",
@@ -298,6 +309,32 @@
             "warn"
           ],
           "default": "strict"
+        }
+      }
+    },
+    "iconPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "allowedSources"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "allowedSources": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         }
       }
     },
