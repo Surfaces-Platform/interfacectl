@@ -5,6 +5,7 @@
  * Inputs:
  *  --contract <path>   (required) contract JSON
  *  --descriptor <path> (required) generated descriptor JSON array
+ *  --format <text|json> (optional, default: text)
  *
  * Exit codes:
  *  0 = pass
@@ -16,14 +17,9 @@ import path from "node:path";
 
 const RAW_COLOR_REGEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
-function fail(code, msg) {
-  console.error(msg);
-  process.exit(code);
-}
-
 function normalizeRole(role) {
   if (!role) return undefined;
-  const r = role.toLowerCase();
+  const r = String(role).toLowerCase();
   if (r === "nav") return "navigation";
   if (r === "navigation") return "navigation";
   if (r === "auth" || r === "auth-shell" || r === "authwrapper") return "auth-shell";
@@ -31,40 +27,6 @@ function normalizeRole(role) {
   if (r === "footer") return "footer";
   if (r === "sidebar") return "sidebar";
   return r;
-}
-
-function readJson(p) {
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf8"));
-  } catch (err) {
-    fail(1, `Failed to read JSON from ${p}: ${err.message}`);
-  }
-}
-
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const opts = {};
-  for (let i = 0; i < args.length; i += 2) {
-    const key = args[i];
-    const val = args[i + 1];
-    if (!val) fail(1, `Missing value for ${key}`);
-    if (key === "--contract") opts.contract = val;
-    else if (key === "--descriptor") opts.descriptor = val;
-    else fail(1, `Unknown arg: ${key}`);
-  }
-  if (!opts.contract || !opts.descriptor) {
-    fail(1, "Usage: node tools/check-generation-boundaries.mjs --contract <path> --descriptor <path>");
-  }
-  return opts;
-}
-
-function buildBanList(contract, surfaceId) {
-  const surface = contract.surfaces.find((s) => s.id === surfaceId);
-  if (!surface) return [];
-  if (surface.mustNotEmit && surface.mustNotEmit.length > 0) {
-    return surface.mustNotEmit.map(normalizeRole).filter(Boolean);
-  }
-  return (contract.shell?.owns ?? []).map(normalizeRole).filter(Boolean);
 }
 
 function wildcardToRegex(pattern) {
@@ -98,84 +60,223 @@ function extractCssVarName(value) {
   return match ? match[1] : null;
 }
 
-function main() {
-  const { contract: contractPath, descriptor: descriptorPath } = parseArgs();
-  const contract = readJson(path.resolve(contractPath));
-  const descriptors = readJson(path.resolve(descriptorPath));
+function normalizeColorValue(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
 
-  if (!Array.isArray(contract.surfaces)) {
-    fail(1, "Contract missing surfaces array.");
+function buildBanList(contract, surfaceId) {
+  const surface = contract.surfaces.find((s) => s.id === surfaceId);
+  if (!surface) return [];
+  if (surface.mustNotEmit && surface.mustNotEmit.length > 0) {
+    return surface.mustNotEmit.map(normalizeRole).filter(Boolean);
   }
-  if (!Array.isArray(descriptors)) {
-    fail(1, "Descriptor must be an array of per-surface descriptors.");
-  }
+  return (contract.shell?.owns ?? []).map(normalizeRole).filter(Boolean);
+}
 
-  const primitiveViolations = [];
-  const blockingColorViolations = [];
-  const warningColorViolations = [];
-
-  for (const desc of descriptors) {
-    const surfaceId = desc.surfaceId;
-    if (!surfaceId) {
-      primitiveViolations.push({ surfaceId: "<unknown>", role: "<unknown>", count: 0, reason: "descriptor missing surfaceId" });
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const opts = { format: "text" };
+  for (let i = 0; i < args.length; i += 1) {
+    const key = args[i];
+    if (key === "--contract" || key === "--descriptor" || key === "--format") {
+      const val = args[i + 1];
+      if (!val) {
+        throw new Error(`Missing value for ${key}`);
+      }
+      if (key === "--contract") opts.contract = val;
+      if (key === "--descriptor") opts.descriptor = val;
+      if (key === "--format") opts.format = val;
+      i += 1;
       continue;
     }
+    throw new Error(`Unknown arg: ${key}`);
+  }
+
+  if (!opts.contract || !opts.descriptor) {
+    throw new Error(
+      "Usage: node tools/check-generation-boundaries.mjs --contract <path> --descriptor <path> [--format text|json]",
+    );
+  }
+
+  if (opts.format !== "text" && opts.format !== "json") {
+    throw new Error(`Invalid --format value "${opts.format}". Expected text|json.`);
+  }
+  return opts;
+}
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function makeFinding({
+  code,
+  severity,
+  policy,
+  message,
+  source,
+  evidence,
+}) {
+  return {
+    code,
+    severity,
+    policy,
+    message,
+    location: {
+      file: source ?? "",
+      line: 0,
+    },
+    evidence: evidence ?? {},
+  };
+}
+
+function evaluateShellBoundary(contract, descriptors) {
+  const findings = [];
+  for (const desc of descriptors) {
+    const surfaceId = desc?.surfaceId;
+    if (!surfaceId) continue;
     const banList = new Set(buildBanList(contract, surfaceId));
+    if (banList.size === 0) continue;
+
     const surface = contract.surfaces.find((s) => s.id === surfaceId);
     const allowSources = surface?.shellOwnedPrimitiveAllowSources ?? [];
-    if (banList.size > 0) {
-      const primitives = desc.primitives ?? [];
-      for (const p of primitives) {
-        const primitiveSources = p.sources ?? [];
-        const disallowedSources = primitiveSources.filter(
-          (source) => !sourceAllowed(source, allowSources),
-        );
-        const role = normalizeRole(p.role);
-        const shouldReport =
-          role &&
-          banList.has(role) &&
-          (p.count ?? 0) > 0 &&
-          (primitiveSources.length === 0 || disallowedSources.length > 0);
-        if (shouldReport) {
-          primitiveViolations.push({
+    const primitives = Array.isArray(desc?.primitives) ? desc.primitives : [];
+    for (const primitive of primitives) {
+      const primitiveSources = Array.isArray(primitive?.sources)
+        ? primitive.sources.filter((source) => typeof source === "string")
+        : [];
+      const disallowedSources = primitiveSources.filter(
+        (source) => !sourceAllowed(source, allowSources),
+      );
+      const role = normalizeRole(primitive?.role);
+      const count = Number(primitive?.count ?? 0);
+      const shouldReport =
+        role &&
+        banList.has(role) &&
+        count > 0 &&
+        (primitiveSources.length === 0 || disallowedSources.length > 0);
+      if (!shouldReport) continue;
+
+      findings.push(
+        makeFinding({
+          code: "shell-owned-primitive-emitted",
+          severity: "error",
+          policy: "strict",
+          message: `Shell-owned primitive "${role}" emitted for surface "${surfaceId}".`,
+          source: disallowedSources[0] ?? primitiveSources[0] ?? "",
+          evidence: {
+            source: "generationGuard",
             surfaceId,
             role,
-            count: p.count,
-            sources: p.sources ?? [],
+            count,
+            sources: primitiveSources,
             disallowedSources,
             allowSources,
-          });
-        }
-      }
+          },
+        }),
+      );
     }
+  }
+  return findings;
+}
 
-    const colorPolicy = contract.color;
-    if (!colorPolicy) {
-      continue;
+function evaluateColorPolicyCanonical(contract, descriptors) {
+  const findings = [];
+  const colorPolicy = contract?.color;
+  if (!colorPolicy || typeof colorPolicy !== "object") {
+    return { findings, evaluated: false };
+  }
+  const policy = colorPolicy.policy;
+  const allowedValues = Array.isArray(colorPolicy.allowedValues)
+    ? colorPolicy.allowedValues
+    : [];
+  if ((policy !== "off" && policy !== "warn" && policy !== "strict") || allowedValues.length === 0) {
+    return { findings, evaluated: false };
+  }
+
+  if (policy === "off") {
+    return { findings, evaluated: true };
+  }
+
+  const allowedSet = new Set(allowedValues.map((value) => normalizeColorValue(value)));
+  for (const desc of descriptors) {
+    const surfaceId = desc?.surfaceId;
+    if (!surfaceId) continue;
+    const colors = Array.isArray(desc?.colors) ? desc.colors : [];
+    for (const color of colors) {
+      const value = typeof color?.value === "string" ? color.value : "";
+      if (!value) continue;
+      const normalized = normalizeColorValue(value);
+      if (allowedSet.has(normalized)) continue;
+
+      findings.push(
+        makeFinding({
+          code: "color.disallowed",
+          severity: policy === "strict" ? "error" : "warning",
+          policy,
+          message: `Color "${value}" is not allowed for surface "${surfaceId}".`,
+          source: typeof color?.source === "string" ? color.source : "",
+          evidence: {
+            source: "generationGuard",
+            surfaceId,
+            value,
+            normalizedValue: normalized,
+            expected: [...allowedSet],
+          },
+        }),
+      );
     }
+  }
+  return { findings, evaluated: true };
+}
 
-    const rawPolicy = colorPolicy.rawValues?.policy ?? "off";
-    const allowlist = new Set(colorPolicy.rawValues?.allowlist ?? []);
-    const denylist = new Set(colorPolicy.rawValues?.denylist ?? []);
-    const allowedNamespaces =
-      colorPolicy.sourceOfTruth?.type === "tokens"
-        ? colorPolicy.sourceOfTruth.tokenNamespaces ?? []
-        : [];
+function evaluateColorPolicyLegacy(contract, descriptors) {
+  const findings = [];
+  const colorPolicy = contract?.color;
+  if (!colorPolicy || typeof colorPolicy !== "object") {
+    return { findings, evaluated: false };
+  }
+  const rawPolicy = colorPolicy.rawValues?.policy ?? "off";
+  const allowlist = new Set(colorPolicy.rawValues?.allowlist ?? []);
+  const denylist = new Set(colorPolicy.rawValues?.denylist ?? []);
+  const allowedNamespaces =
+    colorPolicy.sourceOfTruth?.type === "tokens"
+      ? colorPolicy.sourceOfTruth.tokenNamespaces ?? []
+      : [];
+  const hasLegacyShape =
+    rawPolicy === "off" ||
+    rawPolicy === "warn" ||
+    rawPolicy === "strict" ||
+    allowlist.size > 0 ||
+    denylist.size > 0 ||
+    allowedNamespaces.length > 0;
+  if (!hasLegacyShape) {
+    return { findings, evaluated: false };
+  }
 
-    for (const color of desc.colors ?? []) {
-      const colorValue = color?.value;
-      const source = color?.source;
+  for (const desc of descriptors) {
+    const surfaceId = desc?.surfaceId;
+    if (!surfaceId) continue;
+    const colors = Array.isArray(desc?.colors) ? desc.colors : [];
+    for (const color of colors) {
+      const colorValue = typeof color?.value === "string" ? color.value : "";
+      const source = typeof color?.source === "string" ? color.source : "";
       if (!colorValue) continue;
 
       if (denylist.has(colorValue)) {
-        blockingColorViolations.push({
-          surfaceId,
-          rule: "color.rawValues.denylist",
-          value: colorValue,
-          policy: rawPolicy,
-          source,
-          message: `Raw color "${colorValue}" is denylisted.`,
-        });
+        findings.push(
+          makeFinding({
+            code: "color.rawValues.denylist",
+            severity: "error",
+            policy: rawPolicy === "warn" || rawPolicy === "off" ? "warn" : "strict",
+            message: `Raw color "${colorValue}" is denylisted.`,
+            source,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              value: colorValue,
+            },
+          }),
+        );
         continue;
       }
 
@@ -186,79 +287,275 @@ function main() {
             varName.startsWith(namespace),
           );
           if (!hasAllowedNamespace) {
-            warningColorViolations.push({
-              surfaceId,
-              rule: "color.token.namespace",
-              value: varName,
-              source,
-              message: `Token "${varName}" does not match allowed namespaces: ${allowedNamespaces.join(", ")}.`,
-            });
+            findings.push(
+              makeFinding({
+                code: "color.token.namespace",
+                severity: "warning",
+                policy: "warn",
+                message: `Token "${varName}" does not match allowed namespaces: ${allowedNamespaces.join(", ")}.`,
+                source,
+                evidence: {
+                  source: "generationGuard",
+                  surfaceId,
+                  value: varName,
+                },
+              }),
+            );
           }
         }
         continue;
       }
 
-      if (!isRawColorLiteral(colorValue)) {
-        continue;
-      }
-
-      if (allowlist.has(colorValue)) {
-        continue;
-      }
+      if (!isRawColorLiteral(colorValue)) continue;
+      if (allowlist.has(colorValue)) continue;
 
       if (rawPolicy === "strict") {
-        blockingColorViolations.push({
-          surfaceId,
-          rule: "color.rawValues",
-          value: colorValue,
-          policy: rawPolicy,
-          source,
-          message: `Raw color "${colorValue}" violates strict rawValues policy.`,
-        });
+        findings.push(
+          makeFinding({
+            code: "color.rawValues",
+            severity: "error",
+            policy: "strict",
+            message: `Raw color "${colorValue}" violates strict rawValues policy.`,
+            source,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              value: colorValue,
+            },
+          }),
+        );
       } else if (rawPolicy === "warn") {
-        warningColorViolations.push({
-          surfaceId,
-          rule: "color.rawValues",
-          value: colorValue,
-          source,
-          message: `Raw color "${colorValue}" detected (warn policy).`,
-        });
+        findings.push(
+          makeFinding({
+            code: "color.rawValues",
+            severity: "warning",
+            policy: "warn",
+            message: `Raw color "${colorValue}" detected (warn policy).`,
+            source,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              value: colorValue,
+            },
+          }),
+        );
       }
     }
   }
+  return { findings, evaluated: true };
+}
 
-  if (primitiveViolations.length > 0) {
+function evaluateIconPolicy(contract, descriptors) {
+  const findings = [];
+  let evaluated = false;
+  const surfaces = Array.isArray(contract?.surfaces) ? contract.surfaces : [];
+
+  for (const desc of descriptors) {
+    const surfaceId = desc?.surfaceId;
+    if (!surfaceId) continue;
+    const surface = surfaces.find((entry) => entry.id === surfaceId);
+    const iconPolicy = surface?.icons;
+    if (!iconPolicy || iconPolicy.policy === "off") continue;
+    if (iconPolicy.policy !== "warn" && iconPolicy.policy !== "strict") continue;
+    evaluated = true;
+
+    const descriptorHasIcons = Array.isArray(desc?.icons);
+    if (!descriptorHasIcons) {
+      findings.push(
+        makeFinding({
+          code: "descriptor.icons.missing",
+          severity: iconPolicy.policy === "strict" ? "error" : "warning",
+          policy: iconPolicy.policy,
+          message: `Descriptor for surface "${surfaceId}" is missing icons[] while icon policy is "${iconPolicy.policy}".`,
+          source: "",
+          evidence: {
+            source: "generationGuard",
+            surfaceId,
+            expected: "icons[]",
+          },
+        }),
+      );
+      continue;
+    }
+
+    const allowedSources = new Set(
+      Array.isArray(iconPolicy.allowedSources)
+        ? iconPolicy.allowedSources.map((value) => String(value).trim()).filter(Boolean)
+        : [],
+    );
+    const seen = new Set();
+    for (const icon of desc.icons) {
+      const iconSource = typeof icon?.value === "string" ? icon.value.trim() : "";
+      if (!iconSource || seen.has(iconSource)) continue;
+      seen.add(iconSource);
+      if (allowedSources.has(iconSource)) continue;
+
+      findings.push(
+        makeFinding({
+          code: "icon.source-disallowed",
+          severity: iconPolicy.policy === "strict" ? "error" : "warning",
+          policy: iconPolicy.policy,
+          message: `Icon source "${iconSource}" is not allowed for surface "${surfaceId}".`,
+          source: typeof icon?.source === "string" ? icon.source : "",
+          evidence: {
+            source: "generationGuard",
+            surfaceId,
+            iconSource,
+            expected: [...allowedSources],
+          },
+        }),
+      );
+    }
+  }
+  return { findings, evaluated };
+}
+
+function summarizeFindings(findings) {
+  const blocking = findings.filter((finding) => finding.severity === "error").length;
+  const warnings = findings.filter((finding) => finding.severity === "warning").length;
+  return {
+    blocking,
+    warnings,
+    total: findings.length,
+    status: blocking > 0 ? "block" : warnings > 0 ? "warn" : "pass",
+  };
+}
+
+function printLegacyText(findings) {
+  const primitiveFindings = findings.filter((finding) => finding.code === "shell-owned-primitive-emitted");
+  const blockingColorFindings = findings.filter(
+    (finding) =>
+      finding.code === "color.rawValues.denylist" ||
+      (finding.code === "color.rawValues" && finding.severity === "error"),
+  );
+  const warningColorFindings = findings.filter(
+    (finding) =>
+      finding.code === "color.token.namespace" ||
+      (finding.code === "color.rawValues" && finding.severity === "warning"),
+  );
+
+  if (primitiveFindings.length > 0) {
     console.error("shell-owned-primitive-emitted detected:");
-    for (const v of primitiveViolations) {
+    for (const finding of primitiveFindings) {
+      const evidence = finding.evidence ?? {};
       console.error(
-        `- surface=${v.surfaceId} role=${v.role} count=${v.count} sources=${(v.sources || []).join(",")} disallowedSources=${(v.disallowedSources || []).join(",")}`,
+        `- surface=${evidence.surfaceId || "<unknown>"} role=${evidence.role || "<unknown>"} count=${evidence.count || 0} sources=${(evidence.sources || []).join(",")} disallowedSources=${(evidence.disallowedSources || []).join(",")}`,
       );
     }
   }
 
-  if (blockingColorViolations.length > 0) {
+  if (blockingColorFindings.length > 0) {
     console.error("color-policy-blocking detected:");
-    for (const v of blockingColorViolations) {
+    for (const finding of blockingColorFindings) {
+      const evidence = finding.evidence ?? {};
+      const source = finding.location?.file ?? "";
       console.error(
-        `- surface=${v.surfaceId} rule=${v.rule} value=${v.value} policy=${v.policy} source=${v.source || ""} message=${v.message}`,
+        `- surface=${evidence.surfaceId || "<unknown>"} rule=${finding.code} value=${evidence.value || ""} policy=${finding.policy} source=${source} message=${finding.message}`,
       );
     }
   }
 
-  if (warningColorViolations.length > 0) {
+  if (warningColorFindings.length > 0) {
     console.error("color-policy-warning detected:");
-    for (const v of warningColorViolations) {
+    for (const finding of warningColorFindings) {
+      const evidence = finding.evidence ?? {};
+      const source = finding.location?.file ?? "";
       console.error(
-        `- surface=${v.surfaceId} rule=${v.rule} value=${v.value} source=${v.source || ""} message=${v.message}`,
+        `- surface=${evidence.surfaceId || "<unknown>"} rule=${finding.code} value=${evidence.value || ""} source=${source} message=${finding.message}`,
       );
     }
   }
+}
 
-  if (primitiveViolations.length > 0 || blockingColorViolations.length > 0) {
-    process.exit(2);
+function outputJson(payload) {
+  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+}
+
+function failJson(msg) {
+  outputJson({
+    status: "block",
+    findings: [],
+    summary: {
+      blocking: 0,
+      warnings: 0,
+      total: 0,
+    },
+    evaluation: {
+      shellBoundaryEvaluated: false,
+      colorPolicyEvaluated: false,
+      iconPolicyEvaluated: false,
+    },
+    error: {
+      code: "input.invalid",
+      message: msg,
+    },
+  });
+}
+
+function main() {
+  let format = "text";
+  try {
+    const parsed = parseArgs();
+    const contractPath = path.resolve(parsed.contract);
+    const descriptorPath = path.resolve(parsed.descriptor);
+    format = parsed.format;
+
+    const contract = readJson(contractPath);
+    const descriptors = readJson(descriptorPath);
+
+    if (!Array.isArray(contract.surfaces)) {
+      throw new Error("Contract missing surfaces array.");
+    }
+    if (!Array.isArray(descriptors)) {
+      throw new Error("Descriptor must be an array of per-surface descriptors.");
+    }
+
+    const shellFindings = evaluateShellBoundary(contract, descriptors);
+    const colorCanonical = evaluateColorPolicyCanonical(contract, descriptors);
+    const colorLegacy = colorCanonical.evaluated
+      ? { findings: [], evaluated: false }
+      : evaluateColorPolicyLegacy(contract, descriptors);
+    const iconPolicy = evaluateIconPolicy(contract, descriptors);
+
+    if (format === "text") {
+      const legacyFindings = [...shellFindings, ...colorLegacy.findings];
+      const summary = summarizeFindings(legacyFindings);
+      printLegacyText(legacyFindings);
+      process.exit(summary.blocking > 0 ? 2 : 0);
+      return;
+    }
+
+    const findings = [
+      ...shellFindings,
+      ...colorCanonical.findings,
+      ...colorLegacy.findings,
+      ...iconPolicy.findings,
+    ];
+    const summary = summarizeFindings(findings);
+    outputJson({
+      status: summary.status,
+      findings,
+      summary: {
+        blocking: summary.blocking,
+        warnings: summary.warnings,
+        total: summary.total,
+      },
+      evaluation: {
+        shellBoundaryEvaluated: true,
+        colorPolicyEvaluated: colorCanonical.evaluated || colorLegacy.evaluated,
+        iconPolicyEvaluated: iconPolicy.evaluated,
+      },
+    });
+    process.exit(summary.blocking > 0 ? 2 : 0);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (format === "json") {
+      failJson(message);
+    } else {
+      console.error(message);
+    }
+    process.exit(1);
   }
-
-  process.exit(0);
 }
 
 main();
