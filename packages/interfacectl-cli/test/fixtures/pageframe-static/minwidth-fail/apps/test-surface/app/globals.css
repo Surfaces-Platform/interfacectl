@@ -1,0 +1,14 @@
+:root {
+  --contract-max-width: 1200px;
+  --contract-motion-duration: 200ms;
+  --contract-motion-timing: ease;
+}
+
+body {
+  font-family: "Inter";
+}
+
+.contract-container {
+  max-width: var(--contract-max-width);
+  transition: opacity var(--contract-motion-duration) var(--contract-motion-timing);
+}

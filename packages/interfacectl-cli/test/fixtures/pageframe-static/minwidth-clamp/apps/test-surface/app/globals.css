@@ -1,0 +1,20 @@
+:root {
+  --contract-max-width: 1200px;
+  --contract-motion-duration: 200ms;
+  --contract-motion-timing: ease;
+}
+
+body {
+  font-family: "Inter";
+}
+
+.contract-container {
+  max-width: var(--contract-max-width);
+  transition: opacity var(--contract-motion-duration) var(--contract-motion-timing);
+}
+
+[data-contract="page-container"] {
+  max-width: 1200px;
+  min-width: clamp(768px, 80vw, 1024px);
+  padding-inline: 24px;
+}

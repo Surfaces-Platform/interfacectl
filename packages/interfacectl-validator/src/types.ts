@@ -3,6 +3,7 @@ export type SurfaceType = "web" | "cli";
 export interface PageFrameLayout {
   containerSelector: string;
   containerMaxWidthPx: number;
+  containerMinWidthPx?: number;
   paddingXpx: number;
   alignment?: "center" | "left";
   enforcement?: "strict" | "warn";
@@ -106,10 +107,12 @@ export interface SurfacePrimitiveDescriptor {
 export interface PageFrameLayoutDescriptor {
   containerSelector: string;
   maxWidthPx?: number | null;
+  minWidthPx?: number | null;
   paddingLeftPx?: number | null;
   paddingRightPx?: number | null;
   source?: string;
   maxWidthHasClampCalc?: boolean;
+  minWidthHasClampCalc?: boolean;
   paddingHasClampCalc?: boolean;
 }
 
@@ -145,6 +148,7 @@ export type DriftViolationType =
   | "layout-pageframe-selector-unsupported"
   | "layout-pageframe-container-not-found"
   | "layout-pageframe-maxwidth-mismatch"
+  | "layout-pageframe-minwidth-mismatch"
   | "layout-pageframe-padding-mismatch"
   | "layout-pageframe-non-deterministic-value"
   | "layout-pageframe-unextractable-value"

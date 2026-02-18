@@ -92,3 +92,20 @@ test("validateContractStructure accepts x_extracted.iconSources", () => {
   const result = validateContractStructure(contract, schema);
   assert.equal(result.ok, true);
 });
+
+test("validateContractStructure accepts optional pageFrame.containerMinWidthPx", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({
+    layout: {
+      maxContentWidth: 1200,
+      pageFrame: {
+        containerSelector: '[data-contract=\"page-container\"]',
+        containerMaxWidthPx: 1200,
+        containerMinWidthPx: 1024,
+        paddingXpx: 24,
+      },
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true);
+});

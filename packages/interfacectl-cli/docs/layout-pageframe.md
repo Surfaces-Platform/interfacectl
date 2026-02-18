@@ -8,6 +8,7 @@ The pageFrame validator checks:
 
 - **Container existence**: Verifies the element matching `containerSelector` exists in the DOM (via `data-contract="page-container"` marker)
 - **Max-width**: Compares extracted `max-width` CSS property against `containerMaxWidthPx`
+- **Min-width** (optional): Compares extracted `min-width` CSS property against `containerMinWidthPx` when present
 - **Horizontal padding**: Compares extracted `padding-left` and `padding-right` (or `padding-inline`) against `paddingXpx`
 
 ## What It Does Not Validate
@@ -28,20 +29,20 @@ The validator uses static analysis to extract deterministic pixel values from so
 The validator extracts values in this priority order:
 
 1. **Inline styles** on the marked element (`data-contract="page-container"`)
-   - Parses `style` attribute for `max-width`, `padding-left`, `padding-right`, or `padding-inline`
+   - Parses `style` attribute for `max-width`, `min-width`, `padding-left`, `padding-right`, or `padding-inline`
    - Supports px values only
 
 2. **CSS rules** targeting the marker selector
-   - Detects rules like `[data-contract="page-container"] { max-width: ...; padding-inline: ...; }`
+   - Detects rules like `[data-contract="page-container"] { max-width: ...; min-width: ...; padding-inline: ...; }`
    - Supports px values only
    - If values use `clamp()` or `calc()`, returns `layout.pageFrame.unextractable-value`
 
 3. **Tailwind bracket classes** (best-effort, v1)
-   - Supports `max-w-[NNNpx]` and `px-[NNpx]` or `pl-[NNpx]/pr-[NNpx]`
+   - Supports `max-w-[NNNpx]`, `min-w-[NNNpx]`, and `px-[NNpx]` or `pl-[NNpx]/pr-[NNpx]`
    - If only tokenized classes exist (e.g., `px-6`), returns `layout.pageFrame.unextractable-value` with guidance
 
 4. **CSS custom properties** (optional fallback)
-   - `--contract-page-frame-max-width` and `--contract-page-frame-padding-x`
+   - `--contract-page-frame-max-width`, `--contract-page-frame-min-width`, and `--contract-page-frame-padding-x`
    - Not required, but supported if present
 
 ### Limitations
@@ -69,6 +70,7 @@ Add `pageFrame` as an optional property within a surface's `layout` section:
         "pageFrame": {
           "containerSelector": "[data-contract=\"page-container\"]",
           "containerMaxWidthPx": 1200,
+          "containerMinWidthPx": 1024,
           "paddingXpx": 24,
           "alignment": "center",
           "enforcement": "strict"
@@ -83,6 +85,7 @@ Add `pageFrame` as an optional property within a surface's `layout` section:
 
 - `containerSelector` (required): CSS selector identifying the primary page container. v1 only supports `[data-contract="page-container"]`
 - `containerMaxWidthPx` (required): Expected max-width in pixels
+- `containerMinWidthPx` (optional): Expected min-width in pixels (validated only when present)
 - `paddingXpx` (required): Expected horizontal padding (left and right) in pixels
 - `alignment` (optional): `"center"` or `"left"`, defaults to `"center"` (not validated in v1)
 - `enforcement` (optional): `"strict"` or `"warn"`, defaults to `"strict"`
@@ -94,13 +97,14 @@ Add `pageFrame` as an optional property within a surface's `layout` section:
 ### Inline Styles (Recommended)
 
 ```tsx
-<div
-  data-contract="page-container"
-  style={{
-    maxWidth: "1200px",
-    paddingLeft: "24px",
-    paddingRight: "24px",
-  }}
+    <div
+      data-contract="page-container"
+      style={{
+        maxWidth: "1200px",
+        minWidth: "1024px",
+        paddingLeft: "24px",
+        paddingRight: "24px",
+      }}
 >
   {children}
 </div>
@@ -111,6 +115,7 @@ Add `pageFrame` as an optional property within a surface's `layout` section:
 ```css
 [data-contract="page-container"] {
   max-width: 1200px;
+  min-width: 1024px;
   padding-left: 24px;
   padding-right: 24px;
 }
@@ -127,7 +132,7 @@ Add `pageFrame` as an optional property within a surface's `layout` section:
 ```tsx
 <div
   data-contract="page-container"
-  className="max-w-[1200px] px-[24px]"
+  className="max-w-[1200px] min-w-[1024px] px-[24px]"
 >
   {children}
 </div>
@@ -180,6 +185,12 @@ The page container marker (`data-contract="page-container"`) was not found in so
 Extracted max-width does not match the expected value.
 
 **Resolution**: Update the max-width to match the contract value.
+
+### `layout.pageFrame.minwidth-mismatch`
+
+Extracted min-width does not match the expected value.
+
+**Resolution**: Update the min-width to match the contract value.
 
 ### `layout.pageFrame.padding-mismatch`
 

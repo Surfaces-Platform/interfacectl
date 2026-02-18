@@ -2,6 +2,7 @@ export type SurfaceType = "web" | "cli";
 export interface PageFrameLayout {
     containerSelector: string;
     containerMaxWidthPx: number;
+    containerMinWidthPx?: number;
     paddingXpx: number;
     alignment?: "center" | "left";
     enforcement?: "strict" | "warn";
@@ -91,10 +92,12 @@ export interface SurfacePrimitiveDescriptor {
 export interface PageFrameLayoutDescriptor {
     containerSelector: string;
     maxWidthPx?: number | null;
+    minWidthPx?: number | null;
     paddingLeftPx?: number | null;
     paddingRightPx?: number | null;
     source?: string;
     maxWidthHasClampCalc?: boolean;
+    minWidthHasClampCalc?: boolean;
     paddingHasClampCalc?: boolean;
 }
 export interface SurfaceLayoutDescriptor {
@@ -114,7 +117,7 @@ export interface SurfaceDescriptor {
     motion: SurfaceMotionDescriptor[];
     primitives?: SurfacePrimitiveDescriptor[];
 }
-export type DriftViolationType = "unknown-surface" | "missing-section" | "unknown-section" | "font-not-allowed" | "color-not-allowed" | "icon-source-not-allowed" | "layout-width-exceeded" | "layout-width-undetermined" | "layout-container-missing" | "layout-pageframe-selector-unsupported" | "layout-pageframe-container-not-found" | "layout-pageframe-maxwidth-mismatch" | "layout-pageframe-padding-mismatch" | "layout-pageframe-non-deterministic-value" | "layout-pageframe-unextractable-value" | "motion-duration-not-allowed" | "motion-timing-not-allowed" | "descriptor-missing" | "descriptor-unused" | "shell-owned-primitive-emitted";
+export type DriftViolationType = "unknown-surface" | "missing-section" | "unknown-section" | "font-not-allowed" | "color-not-allowed" | "icon-source-not-allowed" | "layout-width-exceeded" | "layout-width-undetermined" | "layout-container-missing" | "layout-pageframe-selector-unsupported" | "layout-pageframe-container-not-found" | "layout-pageframe-maxwidth-mismatch" | "layout-pageframe-minwidth-mismatch" | "layout-pageframe-padding-mismatch" | "layout-pageframe-non-deterministic-value" | "layout-pageframe-unextractable-value" | "motion-duration-not-allowed" | "motion-timing-not-allowed" | "descriptor-missing" | "descriptor-unused" | "shell-owned-primitive-emitted";
 export interface DriftViolation {
     surfaceId: string;
     type: DriftViolationType;

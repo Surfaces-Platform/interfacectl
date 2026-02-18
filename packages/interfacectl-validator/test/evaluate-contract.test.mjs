@@ -389,3 +389,155 @@ test("mixed allowed values pass exact matching through one path", () => {
   const colorViolations = report.violations.filter((v) => v.type === "color-not-allowed");
   assert.equal(colorViolations.length, 0);
 });
+
+test("reports pageFrame min-width mismatch when containerMinWidthPx is set", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-pageframe-minwidth",
+        displayName: "Surface PageFrame Min Width",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-minwidth)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+          pageFrame: {
+            containerSelector: '[data-contract=\"page-container\"]',
+            containerMaxWidthPx: 1200,
+            containerMinWidthPx: 1024,
+            paddingXpx: 24,
+            enforcement: "strict",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-pageframe-minwidth",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-minwidth)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+      pageFrame: {
+        containerSelector: '[data-contract=\"page-container\"]',
+        maxWidthPx: 1200,
+        minWidthPx: 960,
+        paddingLeftPx: 24,
+        paddingRightPx: 24,
+        source: "apps/surface/app/layout.tsx",
+      },
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "layout-pageframe-minwidth-mismatch",
+  );
+  assert.ok(violation);
+  assert.equal(violation.details?.expected, 1024);
+  assert.equal(violation.details?.actual, 960);
+});
+
+test("reports non-deterministic min-width when clamp/calc is detected", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-pageframe-minwidth-clamp",
+        displayName: "Surface PageFrame Min Width Clamp",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-minwidth-clamp)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+          pageFrame: {
+            containerSelector: '[data-contract=\"page-container\"]',
+            containerMaxWidthPx: 1200,
+            containerMinWidthPx: 1024,
+            paddingXpx: 24,
+            enforcement: "strict",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-pageframe-minwidth-clamp",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-minwidth-clamp)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+      pageFrame: {
+        containerSelector: '[data-contract=\"page-container\"]',
+        maxWidthPx: 1200,
+        minWidthPx: null,
+        minWidthHasClampCalc: true,
+        paddingLeftPx: 24,
+        paddingRightPx: 24,
+        source: "apps/surface/app/globals.css",
+      },
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "layout-pageframe-non-deterministic-value",
+  );
+  assert.ok(violation);
+  assert.equal(violation.details?.property, "min-width");
+  assert.equal(violation.details?.expected, 1024);
+});
+
+test("reports selector unsupported even when pageFrame descriptor is unavailable", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-pageframe-selector",
+        displayName: "Surface PageFrame Selector",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-selector)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+          pageFrame: {
+            containerSelector: ".shell",
+            containerMaxWidthPx: 1200,
+            paddingXpx: 24,
+            enforcement: "strict",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-pageframe-selector",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-selector)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "layout-pageframe-selector-unsupported",
+  );
+  assert.ok(violation);
+});

@@ -290,6 +290,10 @@
           "type": "number",
           "minimum": 0
         },
+        "containerMinWidthPx": {
+          "type": "number",
+          "minimum": 0
+        },
         "paddingXpx": {
           "type": "number",
           "minimum": 0
