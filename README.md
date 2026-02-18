@@ -50,7 +50,7 @@ The CLI provides four main commands:
 
 ### `validate`
 
-Validates configured surfaces against a shared interface contract. Performs comprehensive validation including contract structure validation, surface descriptor collection, and compliance checking for fonts, colors, layout, motion, and sections.
+Validates configured surfaces against a shared interface contract. Performs comprehensive validation including contract structure validation, surface descriptor collection, and compliance checking for fonts, colors, icon sources, layout, motion, and sections.
 
 ```bash
 interfacectl validate [options]
@@ -86,7 +86,7 @@ interfacectl compile --contract <path> --out <dir>
 
 Extracts a **deterministic contract artifact** from a Next.js app by analyzing app code and config. This is **contract extraction only** — no enforcement, no network calls.
 
-**Phase 0 scope:** Routes (app router), layout shell presence (`app/layout.tsx` or `app/(shell)/layout.tsx`), design system usage (`@surfaces/ui` component imports), and auth posture (`/auth` routes). Values that cannot be extracted safely are omitted and reported as warnings in the extraction report.
+**Phase 0 scope:** Routes (app router), layout shell presence (`app/layout.tsx` or `app/(shell)/layout.tsx`), design system usage (`@surfaces/ui` component imports), and auth posture (`/auth` routes). The command also seeds `color.allowedValues` and web-surface `icons.allowedSources` from observed descriptors (default `icons.policy: "warn"`). Values that cannot be extracted safely are omitted and reported as warnings in the extraction report.
 
 **Phase 0 guardrails:** No Babel or heavy AST frameworks. Extraction uses filesystem walks and regex for determinism, debuggability, and minimal dependency surface. See [docs/plans/phase-0-extraction-guardrails.md](docs/plans/phase-0-extraction-guardrails.md) for what we extract, what we omit, and when AST tooling may be added in a later phase.
 

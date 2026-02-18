@@ -251,6 +251,94 @@ test("policy warn emits color-not-allowed with warn metadata", () => {
   assert.equal(colorViolation.details?.policy, "warn");
 });
 
+test("icon policy strict reports disallowed icon sources", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-icons-strict",
+        displayName: "Surface Icons Strict",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-icons)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+        icons: {
+          policy: "strict",
+          allowedSources: ["lucide-react"],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-icons-strict",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-icons)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    icons: [{ value: "lucide-react" }, { value: "@heroicons/react/24/outline" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const iconViolation = report.violations.find(
+    (violation) => violation.type === "icon-source-not-allowed",
+  );
+  assert.ok(iconViolation, "expected icon-source-not-allowed violation");
+  assert.equal(iconViolation.details?.iconSource, "@heroicons/react/24/outline");
+  assert.equal(iconViolation.details?.policy, "strict");
+  assert.deepEqual(iconViolation.details?.allowedSources, ["lucide-react"]);
+});
+
+test("icon policy warn emits policy metadata for warn-level handling", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-icons-warn",
+        displayName: "Surface Icons Warn",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-icons)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+        icons: {
+          policy: "warn",
+          allowedSources: [],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-icons-warn",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-icons)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    icons: [{ value: "lucide-react" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const iconViolation = report.violations.find(
+    (violation) => violation.type === "icon-source-not-allowed",
+  );
+  assert.ok(iconViolation);
+  assert.equal(iconViolation.details?.policy, "warn");
+});
+
 test("mixed allowed values pass exact matching through one path", () => {
   const contract = {
     ...baseContract,

@@ -147,6 +147,66 @@ test("compile: golden - generated contract.normalized.json and surface/constrain
   }
 });
 
+test("compile: includes surface icons policy when present in contract", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-icons-"));
+  const contractWithIconsPath = path.join(outDir, "contract-with-icons.json");
+  try {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      contractWithIconsPath,
+      JSON.stringify(
+        {
+          contractId: "demo-ui-icons",
+          version: "1.0.0",
+          surfaces: [
+            {
+              id: "demo-surface",
+              displayName: "Demo Surface",
+              type: "web",
+              requiredSections: ["main.hero"],
+              allowedFonts: ["Inter"],
+              layout: { maxContentWidth: 960 },
+              icons: {
+                policy: "warn",
+                allowedSources: ["lucide-react"],
+              },
+            },
+          ],
+          sections: [
+            { id: "main.hero", intent: "Hero", description: "Main hero" },
+          ],
+          constraints: {
+            motion: {
+              allowedDurationsMs: [120],
+              allowedTimingFunctions: ["linear"],
+            },
+          },
+          color: {
+            policy: "off",
+            allowedValues: [],
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runCompile(contractWithIconsPath, outDir);
+    assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
+
+    const generatedSurface = await readJson(
+      path.join(outDir, "surfaces", "demo-surface.json"),
+    );
+    assert.deepEqual(generatedSurface.icons, {
+      policy: "warn",
+      allowedSources: ["lucide-react"],
+    });
+  } finally {
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
 test("compile: invalid contract fails with non-zero exit", async () => {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-fail-"));
   const invalidContract = path.join(outDir, "invalid.json");

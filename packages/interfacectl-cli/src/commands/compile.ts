@@ -211,5 +211,6 @@ function surfaceToBundlePayload(surface: ContractSurface): Record<string, unknow
     requiredSections: surface.requiredSections,
     allowedFonts: surface.allowedFonts,
     layout: surface.layout,
+    ...(surface.icons ? { icons: surface.icons } : {}),
   };
 }

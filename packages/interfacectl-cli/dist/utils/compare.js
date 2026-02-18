@@ -209,6 +209,25 @@ export function compareContractToDescriptor(contract, descriptor, surfaceId) {
             });
         }
     }
+    // Compare icon source policy for web surfaces
+    const iconPolicy = surface.icons;
+    if (surface.type === "web" && iconPolicy && iconPolicy.policy !== "off") {
+        const iconSeverity = iconPolicy.policy === "warn" ? "warning" : "error";
+        const allowedSources = new Set(iconPolicy.allowedSources);
+        const observedSources = new Set((desc.icons ?? []).map((icon) => icon.value.trim()).filter(Boolean));
+        for (const observedSource of [...observedSources].sort((a, b) => a.localeCompare(b))) {
+            if (!allowedSources.has(observedSource)) {
+                entries.push({
+                    surfaceId,
+                    type: "added",
+                    path: buildDiffPath(`surfaces/${surfaceId}`, "icons.allowedSources"),
+                    observedValue: observedSource,
+                    severity: iconSeverity,
+                    rule: `contract.surfaces[${surfaceId}].icons.allowedSources`,
+                });
+            }
+        }
+    }
     // Compare layout maxContentWidth
     const contractWidth = surface.layout.maxContentWidth;
     const observedWidth = desc.layout.maxContentWidth;
