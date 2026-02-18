@@ -10,6 +10,7 @@ import {
   validateContractStructure,
 } from "@surfaces/interfacectl-validator";
 import { seedColorPolicyFromObservedDescriptors } from "../utils/color-policy-seeding.js";
+import { seedIconPolicyFromObservedDescriptors } from "../utils/icon-policy-seeding.js";
 
 export interface GenerateContractOptions {
   appRoot: string;
@@ -51,10 +52,16 @@ export async function runGenerateContractCommand(
     surfaceId,
     contract: extractedContract as unknown as InterfaceContract,
   });
-  const contract = seeded.contract;
+  const iconSeeded = await seedIconPolicyFromObservedDescriptors({
+    workspaceRoot: cwd,
+    appRoot,
+    surfaceId,
+    contract: seeded.contract,
+  });
+  const contract = iconSeeded.contract;
   const reportWithSeedWarnings = {
     ...report,
-    warnings: [...report.warnings, ...seeded.warnings],
+    warnings: [...report.warnings, ...seeded.warnings, ...iconSeeded.warnings],
   };
 
   let schema: object;

@@ -10,6 +10,7 @@ const SET_LIKE_FIELDS = new Set([
     "allowedDurationsMs",
     "allowedTimingFunctions",
     "containers",
+    "allowedSources",
 ]);
 /**
  * Fields to strip from observed artifacts (ephemeral metadata)
@@ -124,6 +125,18 @@ export function normalizeContract(contract) {
                     };
                 }
             }
+            if (surface.icons?.allowedSources &&
+                SET_LIKE_FIELDS.has("allowedSources")) {
+                const original = surface.icons.allowedSources;
+                const sorted = normalizeSetField(original);
+                if (JSON.stringify(original) !== JSON.stringify(sorted)) {
+                    metadata.reorderedPaths.push(`surfaces[${surfaceIdx}].icons.allowedSources`);
+                    normalizedSurface.icons = {
+                        ...surface.icons,
+                        allowedSources: sorted,
+                    };
+                }
+            }
             return normalizedSurface;
         }),
         sections: contract.sections.map((section, sectionIdx) => {
@@ -205,6 +218,18 @@ export function normalizeDescriptor(descriptor) {
             const sorted = normalizeSetField(strippedDescriptor.colors.map((c) => ({ ...c })));
             if (JSON.stringify(original) !== JSON.stringify(sorted.map((c) => c.value))) {
                 metadata.reorderedPaths.push(`descriptors[${descriptor.surfaceId}].colors`);
+            }
+            return sorted;
+        })(),
+        icons: (() => {
+            if (!strippedDescriptor.icons) {
+                return undefined;
+            }
+            const original = strippedDescriptor.icons.map((icon) => icon.value);
+            const sorted = normalizeSetField(strippedDescriptor.icons.map((icon) => ({ ...icon })));
+            if (JSON.stringify(original) !==
+                JSON.stringify(sorted.map((icon) => icon.value))) {
+                metadata.reorderedPaths.push(`descriptors[${descriptor.surfaceId}].icons`);
             }
             return sorted;
         })(),

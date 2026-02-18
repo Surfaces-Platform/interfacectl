@@ -154,5 +154,6 @@ function surfaceToBundlePayload(surface) {
         requiredSections: surface.requiredSections,
         allowedFonts: surface.allowedFonts,
         layout: surface.layout,
+        ...(surface.icons ? { icons: surface.icons } : {}),
     };
 }

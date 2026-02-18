@@ -23,7 +23,7 @@ interfacectl validate [options]
 Performs comprehensive validation of surface implementations against an interface contract. This includes:
 - Contract structure validation against schema
 - Surface descriptor collection from codebase
-- Compliance checking for fonts, colors, layout, motion, and sections
+- Compliance checking for fonts, colors, icon sources, layout, motion, and sections
 - Generation of structured validation reports
 
 **Options:**
@@ -51,7 +51,7 @@ Performs comprehensive validation of surface implementations against an interfac
 **v2 (new contract, opt-in via `--exit-codes v2` or `INTERFACECTL_EXIT_CODES=v2`):**
 - `0`: All surfaces comply with the contract
 - `10`: E0 - Artifact invalid (config/contract load failures, schema parse errors, internal errors)
-- `20`: E1 - Token policy violation (font/color/motion not allowed)
+- `20`: E1 - Token policy violation (font/color/icon/motion not allowed)
 - `30`: E2 - Interface contract violation (layout/section violations)
 
 **Note:** v1 internal errors use exit code `2`. v2 unifies all E0 conditions to exit code `10`. Use `--exit-codes v2` to opt into the new exit code contract. A deprecation warning is printed in v1 mode when violations occur.
@@ -64,6 +64,7 @@ Performs comprehensive validation of surface implementations against an interfac
 - `section.unexpected`: Unknown section in surface
 - `font.disallowed`: Font not allowed by contract
 - `color.disallowed`: Color not allowed by contract
+- `icon.source-disallowed`: Icon source library not allowed by contract
 - `layout.width-exceeded`: Layout width exceeds contract maximum
 - `layout.width-undetermined`: Layout width cannot be determined
 - `layout.container-missing`: Required container missing from layout
@@ -421,6 +422,7 @@ interfacectl generate-contract --app-root <path> --surface <id> [--out <path>] [
 
 **Description:**
 - Scans the app directory for routes (app router), layout shell (`app/layout.tsx` or `app/(shell)/layout.tsx`), `@surfaces/ui` component imports, and `/auth` routes.
+- Seeds `color.allowedValues` from observed descriptors and seeds `surfaces[*].icons` for web surfaces with `policy: "warn"` plus discovered icon source libraries.
 - Writes a contract JSON (default `contracts/generated/<surfaceId>.contract.json`) and an extraction report (default `contracts/generated/<surfaceId>.extraction.json`).
 - Validates the generated contract against the schema before writing. Running the command twice produces identical output (stable key order, no timestamps).
 

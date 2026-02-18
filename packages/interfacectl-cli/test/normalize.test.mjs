@@ -52,6 +52,10 @@ test("normalizeContract sorts set-like arrays", () => {
         type: "web",
         requiredSections: ["b", "a", "c"],
         allowedFonts: ["font2", "font1"],
+        icons: {
+          policy: "warn",
+          allowedSources: ["react-icons/fi", "lucide-react"],
+        },
         layout: { maxContentWidth: 1000 },
       },
     ],
@@ -77,6 +81,10 @@ test("normalizeContract sorts set-like arrays", () => {
     ["font1", "font2"],
   );
   assert.deepEqual(
+    normalized.contract.surfaces[0].icons.allowedSources,
+    ["lucide-react", "react-icons/fi"],
+  );
+  assert.deepEqual(
     normalized.contract.color.allowedValues,
     ["color1", "color2"],
   );
@@ -88,11 +96,13 @@ test("normalizeDescriptor strips ephemeral fields", () => {
     sections: [{ id: "section1", source: "file.ts" }],
     fonts: [{ value: "font1", source: "file.ts" }],
     colors: [{ value: "color1", source: "file.ts" }],
+    icons: [{ value: "react-icons/fi", source: "file.ts" }],
     layout: { maxContentWidth: 1000, source: "file.ts" },
     motion: [],
   };
   const normalized = normalizeDescriptor(descriptor);
   assert.equal(normalized.descriptor.sections[0].source, undefined);
   assert.equal(normalized.descriptor.fonts[0].source, undefined);
+  assert.equal(normalized.descriptor.icons[0].source, undefined);
   assert.equal(normalized.descriptor.layout.source, undefined);
 });

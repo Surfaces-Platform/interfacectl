@@ -9,6 +9,7 @@ import {
 test("classifyViolationType: E1 violations", () => {
   assert.equal(classifyViolationType("font-not-allowed"), "E1");
   assert.equal(classifyViolationType("color-not-allowed"), "E1");
+  assert.equal(classifyViolationType("icon-source-not-allowed"), "E1");
   assert.equal(classifyViolationType("motion-duration-not-allowed"), "E1");
   assert.equal(classifyViolationType("motion-timing-not-allowed"), "E1");
 });

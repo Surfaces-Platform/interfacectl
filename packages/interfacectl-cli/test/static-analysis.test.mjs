@@ -273,3 +273,127 @@ test("detects shell-owned primitives (navigation/footer/auth-shell) in descripto
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test("collectSurfaceDescriptors captures deterministic icon sources from surface and shared UI imports", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-icons-static-"));
+  const surfaceId = "demo-icons";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+  const sharedUiRoot = path.join(tempRoot, "packages", "ui", "src", "components");
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+    await mkdir(sharedUiRoot, { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "layout.tsx"),
+      `
+        export default function RootLayout({ children }) {
+          return <html><body>{children}</body></html>;
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        import { House } from "lucide-react";
+        import IconButton from "@surfaces/ui/components/IconButton";
+        import { IconBadge } from "./IconBadge";
+
+        export default function Page() {
+          return (
+            <main data-contract-section="main.hero">
+              <House />
+              <IconButton />
+              <IconBadge />
+            </main>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "IconBadge.tsx"),
+      `
+        import { AlertCircle } from "lucide-react";
+        export function IconBadge() {
+          return <AlertCircle />;
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(sharedUiRoot, "IconButton.tsx"),
+      `
+        import { BellIcon } from "@heroicons/react/24/outline";
+        export { UiIcon } from "./UiIcon";
+        export default function IconButton() {
+          return <BellIcon />;
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(sharedUiRoot, "UiIcon.tsx"),
+      `
+        import { FiUser } from "react-icons/fi";
+        export function UiIcon() {
+          return <FiUser />;
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "test.contract",
+      version: "1.0.0",
+      sections: [{ id: "main.hero", intent: "Hero", description: "Hero section" }],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Demo Icons",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 960 },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    const iconResolutionWarnings = result.warnings.filter(
+      (warning) => warning.code === "icons.shared-ui-unresolved",
+    );
+    assert.equal(iconResolutionWarnings.length, 0);
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor);
+
+    assert.deepEqual(
+      (descriptor.icons ?? []).map((icon) => icon.value),
+      ["@heroicons/react/24/outline", "lucide-react", "react-icons/fi"],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});

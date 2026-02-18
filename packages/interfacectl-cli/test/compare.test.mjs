@@ -4,6 +4,7 @@ import {
   classifyChange,
   detectRename,
   buildDiffPath,
+  compareContractToDescriptor,
 } from "../dist/utils/compare.js";
 
 test("classifyChange identifies added entries", () => {
@@ -42,4 +43,110 @@ test("buildDiffPath creates stable paths", () => {
   
   const path2 = buildDiffPath("surfaces/test", "sections", 0);
   assert.equal(path2, "surfaces/test/sections/0");
+});
+
+test("compareContractToDescriptor emits warning drift for icon policy warn", () => {
+  const contract = {
+    contract: {
+      contractId: "test",
+      version: "1.0.0",
+      surfaces: [
+        {
+          id: "demo",
+          displayName: "Demo",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 960 },
+          icons: {
+            policy: "warn",
+            allowedSources: ["lucide-react"],
+          },
+        },
+      ],
+      sections: [{ id: "main.hero", intent: "Hero", description: "Hero section" }],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    },
+    metadata: { reorderedPaths: [], strippedPaths: [] },
+  };
+
+  const descriptor = {
+    descriptor: {
+      surfaceId: "demo",
+      sections: [{ id: "main.hero" }],
+      fonts: [{ value: "Inter" }],
+      colors: [],
+      icons: [{ value: "@heroicons/react/24/outline" }],
+      layout: { maxContentWidth: 960, containers: ["contract-container"] },
+      motion: [],
+    },
+    metadata: { reorderedPaths: [], strippedPaths: [] },
+  };
+
+  const entries = compareContractToDescriptor(contract, descriptor, "demo");
+  const iconEntry = entries.find((entry) => entry.path.includes("icons.allowedSources"));
+  assert.ok(iconEntry);
+  assert.equal(iconEntry.severity, "warning");
+});
+
+test("compareContractToDescriptor emits error drift for icon policy strict", () => {
+  const contract = {
+    contract: {
+      contractId: "test",
+      version: "1.0.0",
+      surfaces: [
+        {
+          id: "demo",
+          displayName: "Demo",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 960 },
+          icons: {
+            policy: "strict",
+            allowedSources: ["lucide-react"],
+          },
+        },
+      ],
+      sections: [{ id: "main.hero", intent: "Hero", description: "Hero section" }],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    },
+    metadata: { reorderedPaths: [], strippedPaths: [] },
+  };
+
+  const descriptor = {
+    descriptor: {
+      surfaceId: "demo",
+      sections: [{ id: "main.hero" }],
+      fonts: [{ value: "Inter" }],
+      colors: [],
+      icons: [{ value: "@heroicons/react/24/outline" }],
+      layout: { maxContentWidth: 960, containers: ["contract-container"] },
+      motion: [],
+    },
+    metadata: { reorderedPaths: [], strippedPaths: [] },
+  };
+
+  const entries = compareContractToDescriptor(contract, descriptor, "demo");
+  const iconEntry = entries.find((entry) => entry.path.includes("icons.allowedSources"));
+  assert.ok(iconEntry);
+  assert.equal(iconEntry.severity, "error");
 });

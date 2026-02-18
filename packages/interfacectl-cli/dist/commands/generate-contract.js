@@ -3,6 +3,7 @@ import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { extractContractFromNextApp, stableStringify, } from "@surfaces/interfacectl-extractor";
 import { getBundledContractSchema, validateContractStructure, } from "@surfaces/interfacectl-validator";
 import { seedColorPolicyFromObservedDescriptors } from "../utils/color-policy-seeding.js";
+import { seedIconPolicyFromObservedDescriptors } from "../utils/icon-policy-seeding.js";
 const DEFAULT_OUT_DIR = "contracts/generated";
 export async function runGenerateContractCommand(options) {
     const cwd = process.cwd();
@@ -27,10 +28,16 @@ export async function runGenerateContractCommand(options) {
         surfaceId,
         contract: extractedContract,
     });
-    const contract = seeded.contract;
+    const iconSeeded = await seedIconPolicyFromObservedDescriptors({
+        workspaceRoot: cwd,
+        appRoot,
+        surfaceId,
+        contract: seeded.contract,
+    });
+    const contract = iconSeeded.contract;
     const reportWithSeedWarnings = {
         ...report,
-        warnings: [...report.warnings, ...seeded.warnings],
+        warnings: [...report.warnings, ...seeded.warnings, ...iconSeeded.warnings],
     };
     let schema;
     if (options.schemaPath) {

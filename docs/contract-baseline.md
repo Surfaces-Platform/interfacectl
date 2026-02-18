@@ -29,6 +29,11 @@ Optional surface layout fields:
 - `layout.requiredContainers` (array of strings)
 - `layout.pageFrame` (when present, enforced by validator)
 
+Optional per-surface icon policy (web surfaces):
+
+- `icons.policy`: one of `"off"`, `"warn"`, `"strict"`.
+- `icons.allowedSources`: array of allowed icon source libraries (for example `lucide-react`, `@heroicons/react/24/outline`).
+
 ## Section required fields
 
 Each item in `sections` must include:
@@ -54,6 +59,19 @@ Violation contract:
 
 - Validator violation type: `color-not-allowed`
 - CLI finding code: `color.disallowed`
+
+## Web icon source policy (optional)
+
+When `surfaces[*].icons` is present for a web surface:
+
+- `off`: skip icon source enforcement.
+- `warn`: emit warning findings for disallowed icon sources.
+- `strict`: emit error findings for disallowed icon sources.
+
+Violation contract:
+
+- Validator violation type: `icon-source-not-allowed`
+- CLI finding code: `icon.source-disallowed`
 
 ## Shell ownership boundary (optional)
 
