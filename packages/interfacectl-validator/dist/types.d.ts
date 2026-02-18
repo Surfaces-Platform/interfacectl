@@ -17,6 +17,7 @@ export interface ContractSurface {
         requiredContainers?: string[];
         pageFrame?: PageFrameLayout;
     };
+    icons?: IconPolicy;
     mustNotEmit?: string[];
     shellOwnedPrimitiveAllowSources?: string[];
 }
@@ -39,6 +40,10 @@ export interface ColorPolicy {
     policy: "off" | "warn" | "strict";
     allowedValues: string[];
 }
+export interface IconPolicy {
+    policy: "off" | "warn" | "strict";
+    allowedSources: string[];
+}
 export interface InterfaceContract {
     contractId: string;
     version: string;
@@ -47,6 +52,14 @@ export interface InterfaceContract {
     sections: ContractSection[];
     constraints: ContractConstraints;
     color: ColorPolicy;
+    x_extracted?: {
+        routes?: string[];
+        hasShell?: boolean;
+        designSystemComponents?: string[];
+        authAware?: boolean;
+        iconSources?: string[];
+        [key: string]: unknown;
+    };
     shell?: ShellSpec;
 }
 export interface SurfaceSectionDescriptor {
@@ -58,6 +71,10 @@ export interface SurfaceFontDescriptor {
     source?: string;
 }
 export interface SurfaceColorDescriptor {
+    value: string;
+    source?: string;
+}
+export interface SurfaceIconDescriptor {
     value: string;
     source?: string;
 }
@@ -92,11 +109,12 @@ export interface SurfaceDescriptor {
     sections: SurfaceSectionDescriptor[];
     fonts: SurfaceFontDescriptor[];
     colors: SurfaceColorDescriptor[];
+    icons?: SurfaceIconDescriptor[];
     layout: SurfaceLayoutDescriptor;
     motion: SurfaceMotionDescriptor[];
     primitives?: SurfacePrimitiveDescriptor[];
 }
-export type DriftViolationType = "unknown-surface" | "missing-section" | "unknown-section" | "font-not-allowed" | "color-not-allowed" | "layout-width-exceeded" | "layout-width-undetermined" | "layout-container-missing" | "layout-pageframe-selector-unsupported" | "layout-pageframe-container-not-found" | "layout-pageframe-maxwidth-mismatch" | "layout-pageframe-padding-mismatch" | "layout-pageframe-non-deterministic-value" | "layout-pageframe-unextractable-value" | "motion-duration-not-allowed" | "motion-timing-not-allowed" | "descriptor-missing" | "descriptor-unused" | "shell-owned-primitive-emitted";
+export type DriftViolationType = "unknown-surface" | "missing-section" | "unknown-section" | "font-not-allowed" | "color-not-allowed" | "icon-source-not-allowed" | "layout-width-exceeded" | "layout-width-undetermined" | "layout-container-missing" | "layout-pageframe-selector-unsupported" | "layout-pageframe-container-not-found" | "layout-pageframe-maxwidth-mismatch" | "layout-pageframe-padding-mismatch" | "layout-pageframe-non-deterministic-value" | "layout-pageframe-unextractable-value" | "motion-duration-not-allowed" | "motion-timing-not-allowed" | "descriptor-missing" | "descriptor-unused" | "shell-owned-primitive-emitted";
 export interface DriftViolation {
     surfaceId: string;
     type: DriftViolationType;

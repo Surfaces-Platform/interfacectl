@@ -8,6 +8,7 @@ export function classifyViolationType(type) {
     const e1Types = [
         "font-not-allowed",
         "color-not-allowed",
+        "icon-source-not-allowed",
         "motion-duration-not-allowed",
         "motion-timing-not-allowed",
     ];

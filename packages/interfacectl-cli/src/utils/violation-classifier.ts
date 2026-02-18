@@ -15,6 +15,7 @@ export function classifyViolationType(
   const e1Types: DriftViolationType[] = [
     "font-not-allowed",
     "color-not-allowed",
+    "icon-source-not-allowed",
     "motion-duration-not-allowed",
     "motion-timing-not-allowed",
   ];
