@@ -8,17 +8,20 @@ const PAGE_CONTAINER_ATTRIBUTE_REGEX = /data-contract\s*=\s*(?:"page-container"|
 // Inline style extraction
 const INLINE_STYLE_REGEX = /style\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const INLINE_MAX_WIDTH_REGEX = /max-width\s*:\s*([0-9.]+)\s*px/gi;
+const INLINE_MIN_WIDTH_REGEX = /min-width\s*:\s*([0-9.]+)\s*px/gi;
 const INLINE_PADDING_LEFT_REGEX = /padding-left\s*:\s*([0-9.]+)\s*px/gi;
 const INLINE_PADDING_RIGHT_REGEX = /padding-right\s*:\s*([0-9.]+)\s*px/gi;
 const INLINE_PADDING_INLINE_REGEX = /padding-inline\s*:\s*([0-9.]+)\s*px/gi;
 // CSS rule extraction for [data-contract="page-container"]
 const CSS_SELECTOR_PAGE_CONTAINER_REGEX = /\[data-contract\s*=\s*["']page-container["']\]\s*\{([^}]+)\}/gi;
 const CSS_MAX_WIDTH_REGEX = /max-width\s*:\s*([0-9.]+)\s*px/gi;
+const CSS_MIN_WIDTH_REGEX = /min-width\s*:\s*([0-9.]+)\s*px/gi;
 const CSS_PADDING_LEFT_REGEX = /padding-left\s*:\s*([0-9.]+)\s*px/gi;
 const CSS_PADDING_RIGHT_REGEX = /padding-right\s*:\s*([0-9.]+)\s*px/gi;
 const CSS_PADDING_INLINE_REGEX = /padding-inline\s*:\s*([0-9.]+)\s*px/gi;
 // Tailwind class extraction (best-effort)
 const TAILWIND_MAX_WIDTH_REGEX = /max-w-\[([0-9.]+)px\]/gi;
+const TAILWIND_MIN_WIDTH_REGEX = /min-w-\[([0-9.]+)px\]/gi;
 const TAILWIND_PADDING_X_REGEX = /px-\[([0-9.]+)px\]/gi;
 const TAILWIND_PADDING_LEFT_REGEX = /pl-\[([0-9.]+)px\]/gi;
 const TAILWIND_PADDING_RIGHT_REGEX = /pr-\[([0-9.]+)px\]/gi;
@@ -27,6 +30,7 @@ const CLAMP_REGEX = /clamp\s*\(/i;
 const CALC_REGEX = /calc\s*\(/i;
 // Optional CSS custom properties (fallback)
 const PAGE_FRAME_MAX_WIDTH_VAR_REGEX = /--contract-page-frame-max-width\s*:\s*([0-9.]+)\s*px/i;
+const PAGE_FRAME_MIN_WIDTH_VAR_REGEX = /--contract-page-frame-min-width\s*:\s*([0-9.]+)\s*px/i;
 const PAGE_FRAME_PADDING_VAR_REGEX = /--contract-page-frame-padding-x\s*:\s*([0-9.]+)\s*px/i;
 const COMMON_GLOBBY_IGNORES = [
     "**/node_modules/**",
@@ -330,18 +334,22 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
         return {
             containerSelector,
             maxWidthPx: null,
+            minWidthPx: null,
             paddingLeftPx: null,
             paddingRightPx: null,
             source: undefined,
             maxWidthHasClampCalc: undefined,
+            minWidthHasClampCalc: undefined,
             paddingHasClampCalc: undefined,
         };
     }
     let maxWidthPx = null;
+    let minWidthPx = null;
     let paddingLeftPx = null;
     let paddingRightPx = null;
     let extractionSource;
     let maxWidthHasClampCalc = false;
+    let minWidthHasClampCalc = false;
     let paddingHasClampCalc = false;
     // Strategy A: Extract from inline styles on the marked element
     if (containerFileContent) {
@@ -364,6 +372,27 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
                         if (Number.isFinite(value)) {
                             maxWidthPx = value;
                             extractionSource = containerSource;
+                        }
+                    }
+                }
+            }
+            // Extract min-width
+            if (minWidthPx === null) {
+                const minWidthDeclMatch = /min-width\s*:\s*([^;]+)/i.exec(styleContent);
+                if (minWidthDeclMatch) {
+                    const minWidthValue = minWidthDeclMatch[1].trim();
+                    if (CLAMP_REGEX.test(minWidthValue) || CALC_REGEX.test(minWidthValue)) {
+                        minWidthHasClampCalc = true;
+                    }
+                    else {
+                        INLINE_MIN_WIDTH_REGEX.lastIndex = 0;
+                        const minWidthMatch = INLINE_MIN_WIDTH_REGEX.exec(styleContent);
+                        if (minWidthMatch) {
+                            const value = Number.parseFloat(minWidthMatch[1]);
+                            if (Number.isFinite(value)) {
+                                minWidthPx = value;
+                                extractionSource = containerSource;
+                            }
                         }
                     }
                 }
@@ -417,7 +446,10 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
         }
     }
     // Strategy B: Extract from CSS rules targeting [data-contract="page-container"]
-    if (maxWidthPx === null || paddingLeftPx === null || paddingRightPx === null) {
+    if (maxWidthPx === null ||
+        minWidthPx === null ||
+        paddingLeftPx === null ||
+        paddingRightPx === null) {
         for (const cssPath of cssFilePaths) {
             const cssContent = await readFileCached(cssPath, fileContentCache);
             CSS_SELECTOR_PAGE_CONTAINER_REGEX.lastIndex = 0;
@@ -442,6 +474,27 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
                                 const value = Number.parseFloat(maxWidthMatch[1]);
                                 if (Number.isFinite(value)) {
                                     maxWidthPx = value;
+                                    extractionSource = path.relative(workspaceRoot, cssPath);
+                                }
+                            }
+                        }
+                    }
+                }
+                // Extract min-width (check for clamp/calc in min-width declaration)
+                if (minWidthPx === null) {
+                    const minWidthDeclMatch = /min-width\s*:\s*([^;]+)/i.exec(ruleContent);
+                    if (minWidthDeclMatch) {
+                        const minWidthValue = minWidthDeclMatch[1].trim();
+                        if (CLAMP_REGEX.test(minWidthValue) || CALC_REGEX.test(minWidthValue)) {
+                            minWidthHasClampCalc = true;
+                        }
+                        else {
+                            CSS_MIN_WIDTH_REGEX.lastIndex = 0;
+                            const minWidthMatch = CSS_MIN_WIDTH_REGEX.exec(ruleContent);
+                            if (minWidthMatch) {
+                                const value = Number.parseFloat(minWidthMatch[1]);
+                                if (Number.isFinite(value)) {
+                                    minWidthPx = value;
                                     extractionSource = path.relative(workspaceRoot, cssPath);
                                 }
                             }
@@ -503,7 +556,10 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
         }
     }
     // Strategy C: Extract from Tailwind bracket classes (best-effort, v1)
-    if (maxWidthPx === null || paddingLeftPx === null || paddingRightPx === null) {
+    if (maxWidthPx === null ||
+        minWidthPx === null ||
+        paddingLeftPx === null ||
+        paddingRightPx === null) {
         for (const filePath of sectionFiles) {
             const content = await readFileCached(filePath, fileContentCache);
             // Extract max-width from max-w-[NNNpx]
@@ -514,6 +570,18 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
                     const value = Number.parseFloat(maxWidthMatch[1]);
                     if (Number.isFinite(value)) {
                         maxWidthPx = value;
+                        extractionSource = path.relative(workspaceRoot, filePath);
+                    }
+                }
+            }
+            // Extract min-width from min-w-[NNNpx]
+            if (minWidthPx === null) {
+                TAILWIND_MIN_WIDTH_REGEX.lastIndex = 0;
+                const minWidthMatch = TAILWIND_MIN_WIDTH_REGEX.exec(content);
+                if (minWidthMatch) {
+                    const value = Number.parseFloat(minWidthMatch[1]);
+                    if (Number.isFinite(value)) {
+                        minWidthPx = value;
                         extractionSource = path.relative(workspaceRoot, filePath);
                     }
                 }
@@ -549,7 +617,10 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
         }
     }
     // Optional: CSS custom properties (fallback, not required)
-    if (maxWidthPx === null || paddingLeftPx === null || paddingRightPx === null) {
+    if (maxWidthPx === null ||
+        minWidthPx === null ||
+        paddingLeftPx === null ||
+        paddingRightPx === null) {
         for (const cssPath of cssFilePaths) {
             const cssContent = await readFileCached(cssPath, fileContentCache);
             if (maxWidthPx === null) {
@@ -558,6 +629,16 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
                     const value = Number.parseFloat(varMatch[1]);
                     if (Number.isFinite(value)) {
                         maxWidthPx = value;
+                        extractionSource = path.relative(workspaceRoot, cssPath);
+                    }
+                }
+            }
+            if (minWidthPx === null) {
+                const minWidthMatch = cssContent.match(PAGE_FRAME_MIN_WIDTH_VAR_REGEX);
+                if (minWidthMatch) {
+                    const value = Number.parseFloat(minWidthMatch[1]);
+                    if (Number.isFinite(value)) {
+                        minWidthPx = value;
                         extractionSource = path.relative(workspaceRoot, cssPath);
                     }
                 }
@@ -578,10 +659,12 @@ async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot,
     return {
         containerSelector,
         maxWidthPx,
+        minWidthPx,
         paddingLeftPx,
         paddingRightPx,
         source: extractionSource ?? containerSource,
         maxWidthHasClampCalc: maxWidthHasClampCalc || undefined,
+        minWidthHasClampCalc: minWidthHasClampCalc || undefined,
         paddingHasClampCalc: paddingHasClampCalc || undefined,
     };
 }

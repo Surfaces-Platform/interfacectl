@@ -1,0 +1,53 @@
+{
+  "contractId": "test-pageframe-static-minwidth",
+  "version": "1.0.0",
+  "surfaces": [
+    {
+      "id": "test-surface",
+      "displayName": "Test Surface",
+      "type": "web",
+      "requiredSections": [
+        "header"
+      ],
+      "allowedFonts": [
+        "Inter"
+      ],
+      "layout": {
+        "maxContentWidth": 1200,
+        "pageFrame": {
+          "containerSelector": "[data-contract=\"page-container\"]",
+          "containerMaxWidthPx": 1200,
+          "containerMinWidthPx": 1024,
+          "paddingXpx": 24,
+          "alignment": "center",
+          "enforcement": "strict"
+        }
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": "header",
+      "intent": "Page header",
+      "description": "Main page header section"
+    }
+  ],
+  "constraints": {
+    "motion": {
+      "allowedDurationsMs": [
+        200,
+        300
+      ],
+      "allowedTimingFunctions": [
+        "ease",
+        "ease-in-out"
+      ]
+    }
+  },
+  "color": {
+    "policy": "off",
+    "allowedValues": [
+      "#000000"
+    ]
+  }
+}

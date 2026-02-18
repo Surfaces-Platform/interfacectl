@@ -426,6 +426,7 @@ function mapViolationsToFindings(
     "layout-container-missing": "layout.container-missing",
     "layout-pageframe-container-not-found": "layout.pageframe.container-not-found",
     "layout-pageframe-maxwidth-mismatch": "layout.pageframe.maxwidth-mismatch",
+    "layout-pageframe-minwidth-mismatch": "layout.pageframe.minwidth-mismatch",
     "layout-pageframe-padding-mismatch": "layout.pageframe.padding-mismatch",
     "layout-pageframe-selector-unsupported": "layout.pageframe.selector-unsupported",
     "layout-pageframe-non-deterministic-value": "layout.pageframe.non-deterministic-value",
@@ -518,6 +519,11 @@ function mapViolationsToFindings(
           break;
         }
         case "layout-pageframe-maxwidth-mismatch": {
+          finding.expected = details.expected;
+          finding.found = details.actual;
+          break;
+        }
+        case "layout-pageframe-minwidth-mismatch": {
           finding.expected = details.expected;
           finding.found = details.actual;
           break;

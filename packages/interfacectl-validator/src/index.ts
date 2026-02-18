@@ -356,9 +356,16 @@ export function evaluateSurfaceCompliance(
   }
 
   // Validate pageFrame layout if contract defines it
-  if (surface.layout.pageFrame && descriptor.layout.pageFrame) {
+  if (surface.layout.pageFrame) {
     const pageFrameContract = surface.layout.pageFrame;
-    const pageFrameDescriptor = descriptor.layout.pageFrame;
+    const pageFrameDescriptor: PageFrameLayoutDescriptor =
+      descriptor.layout.pageFrame ?? {
+        containerSelector: pageFrameContract.containerSelector,
+        maxWidthPx: null,
+        minWidthPx: null,
+        paddingLeftPx: null,
+        paddingRightPx: null,
+      };
     const enforcement = pageFrameContract.enforcement ?? "strict";
 
     // Check if selector is supported
@@ -441,6 +448,54 @@ export function evaluateSurfaceCompliance(
               source: pageFrameDescriptor.source,
             },
           });
+        }
+
+        // Validate min-width (optional)
+        const expectedMinWidth = pageFrameContract.containerMinWidthPx;
+        if (expectedMinWidth !== undefined) {
+          const actualMinWidth = pageFrameDescriptor.minWidthPx ?? null;
+
+          if (actualMinWidth === null) {
+            if (pageFrameDescriptor.minWidthHasClampCalc) {
+              violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "layout-pageframe-non-deterministic-value",
+                message: `Page frame min-width uses non-deterministic expression (clamp/calc) for surface "${descriptor.surfaceId}". Expected ${expectedMinWidth}px. Static analysis requires deterministic px values. Use fixed px values in inline styles or CSS rules targeting [data-contract="page-container"].`,
+                details: {
+                  property: "min-width",
+                  expected: expectedMinWidth,
+                  actual: null,
+                  selector: containerSelector,
+                  source: pageFrameDescriptor.source,
+                },
+              });
+            } else {
+              violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "layout-pageframe-unextractable-value",
+                message: `Page frame min-width could not be extracted for surface "${descriptor.surfaceId}". Expected ${expectedMinWidth}px. Use inline styles, CSS rules targeting [data-contract="page-container"], or Tailwind bracket classes (min-w-[${expectedMinWidth}px]).`,
+                details: {
+                  property: "min-width",
+                  expected: expectedMinWidth,
+                  actual: null,
+                  selector: containerSelector,
+                  source: pageFrameDescriptor.source,
+                },
+              });
+            }
+          } else if (actualMinWidth !== expectedMinWidth) {
+            violations.push({
+              surfaceId: descriptor.surfaceId,
+              type: "layout-pageframe-minwidth-mismatch",
+              message: `Page frame min-width mismatch for surface "${descriptor.surfaceId}": expected ${expectedMinWidth}px, found ${actualMinWidth}px.`,
+              details: {
+                expected: expectedMinWidth,
+                actual: actualMinWidth,
+                selector: containerSelector,
+                source: pageFrameDescriptor.source,
+              },
+            });
+          }
         }
 
         // Validate padding

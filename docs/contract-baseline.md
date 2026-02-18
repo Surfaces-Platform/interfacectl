@@ -28,6 +28,7 @@ Optional surface layout fields:
 
 - `layout.requiredContainers` (array of strings)
 - `layout.pageFrame` (when present, enforced by validator)
+  - `layout.pageFrame.containerMinWidthPx` (optional): exact deterministic min-width check in px for `[data-contract="page-container"]`.
 
 Optional per-surface icon policy (web surfaces):
 

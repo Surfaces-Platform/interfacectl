@@ -18,6 +18,7 @@ test("classifyViolationType: E2 violations", () => {
   assert.equal(classifyViolationType("layout-width-exceeded"), "E2");
   assert.equal(classifyViolationType("layout-width-undetermined"), "E2");
   assert.equal(classifyViolationType("layout-container-missing"), "E2");
+  assert.equal(classifyViolationType("layout-pageframe-minwidth-mismatch"), "E2");
   assert.equal(classifyViolationType("missing-section"), "E2");
   assert.equal(classifyViolationType("unknown-section"), "E2");
   assert.equal(classifyViolationType("unknown-surface"), "E2");
