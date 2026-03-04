@@ -9,6 +9,24 @@ export interface PageFrameLayout {
   enforcement?: "strict" | "warn";
 }
 
+export interface FlowTransitionRequirement {
+  from: string;
+  to: string;
+}
+
+export interface FlowRequirement {
+  flowId: string;
+  minSteps?: number;
+  requiredSteps?: string[];
+  requiredTransitions?: FlowTransitionRequirement[];
+  terminalSteps?: string[];
+}
+
+export interface FlowPolicy {
+  policy: "off" | "warn" | "strict";
+  requirements: FlowRequirement[];
+}
+
 export interface ContractSurface {
   id: string;
   displayName: string;
@@ -21,6 +39,7 @@ export interface ContractSurface {
     pageFrame?: PageFrameLayout;
   };
   icons?: IconPolicy;
+  flows?: FlowPolicy;
   mustNotEmit?: string[];
   shellOwnedPrimitiveAllowSources?: string[];
 }
@@ -104,6 +123,22 @@ export interface SurfacePrimitiveDescriptor {
   sources?: string[];
 }
 
+export interface SurfaceFlowStepDescriptor {
+  id: string;
+}
+
+export interface SurfaceFlowTransitionDescriptor {
+  from: string;
+  to: string;
+}
+
+export interface SurfaceFlowDescriptor {
+  flowId: string;
+  steps: SurfaceFlowStepDescriptor[];
+  transitions: SurfaceFlowTransitionDescriptor[];
+  source?: string;
+}
+
 export interface PageFrameLayoutDescriptor {
   containerSelector: string;
   maxWidthPx?: number | null;
@@ -130,6 +165,8 @@ export interface SurfaceDescriptor {
   fonts: SurfaceFontDescriptor[];
   colors: SurfaceColorDescriptor[];
   icons?: SurfaceIconDescriptor[];
+  flows?: SurfaceFlowDescriptor[];
+  flowDescriptorPath?: string;
   layout: SurfaceLayoutDescriptor;
   motion: SurfaceMotionDescriptor[];
   primitives?: SurfacePrimitiveDescriptor[];
@@ -154,6 +191,12 @@ export type DriftViolationType =
   | "layout-pageframe-unextractable-value"
   | "motion-duration-not-allowed"
   | "motion-timing-not-allowed"
+  | "descriptor-flows-missing"
+  | "flow-required-missing"
+  | "flow-steps-min"
+  | "flow-steps-required"
+  | "flow-transition-required"
+  | "flow-terminal-invalid"
   | "descriptor-missing"
   | "descriptor-unused"
   | "shell-owned-primitive-emitted";

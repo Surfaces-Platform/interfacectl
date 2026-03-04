@@ -8,6 +8,7 @@ import {
   type InterfaceContract,
   type ValidationSummary,
   type DriftViolationType,
+  type SurfaceFlowDescriptor,
 } from "@surfaces/interfacectl-validator";
 import {
   collectSurfaceDescriptors,
@@ -53,6 +54,7 @@ interface TextReporter {
 
 interface InterfacectlConfig {
   surfaceRoots?: Record<string, string>;
+  flowDescriptorPaths?: Record<string, string>;
 }
 
 export interface ValidateCommandOptions {
@@ -103,6 +105,7 @@ export async function runValidateCommand(
 
   const findings: JsonFinding[] = [];
   let surfaceRootMap = new Map<string, string>();
+  let flowDescriptorPathMap = new Map<string, string>();
 
   // Determine exit code version
   const exitCodeVersion = getExitCodeVersion({ exitCodes: options.exitCodes });
@@ -161,6 +164,11 @@ export async function runValidateCommand(
     surfaceRootMap = new Map(
       Object.entries(configResult.config.surfaceRoots ?? {}).map(
         ([surfaceId, surfaceRoot]) => [surfaceId, surfaceRoot],
+      ),
+    );
+    flowDescriptorPathMap = new Map(
+      Object.entries(configResult.config.flowDescriptorPaths ?? {}).map(
+        ([surfaceId, flowDescriptorPath]) => [surfaceId, flowDescriptorPath],
       ),
     );
   } else if (
@@ -290,9 +298,46 @@ export async function runValidateCommand(
     return finalize(e0ExitCode, contract.version ?? initialContractVersion);
   }
 
+  const flowDescriptorResult = await loadFlowDescriptorArtifacts({
+    workspaceRoot,
+    contract,
+    surfaceFilters,
+    flowDescriptorPathMap,
+  });
+  if (!flowDescriptorResult.ok) {
+    const message = `Failed to load flow descriptor artifact: ${flowDescriptorResult.error}`;
+    if (!isJson) {
+      printHeader(pc.red("✖ Flow descriptor artifact load failed"), textReporter);
+      textReporter.error(pc.red(flowDescriptorResult.error));
+    }
+    findings.push({
+      code: "flow-descriptor.load-error",
+      severity: "error",
+      category: "E0",
+      message,
+      surface: flowDescriptorResult.surfaceId,
+      location: flowDescriptorResult.path,
+    });
+    const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
+    return finalize(e0ExitCode, contract.version ?? initialContractVersion);
+  }
+
+  const descriptorsWithFlowArtifacts = structuralDescriptorResult.descriptors.map(
+    (descriptor) => {
+      const flowDescriptorPath = flowDescriptorResult.paths.get(
+        descriptor.surfaceId,
+      );
+      return {
+        ...descriptor,
+        flows: flowDescriptorResult.flowsBySurface.get(descriptor.surfaceId),
+        flowDescriptorPath,
+      };
+    },
+  );
+
   const summary = evaluateContractCompliance(
     contract,
-    structuralDescriptorResult.descriptors,
+    descriptorsWithFlowArtifacts,
   );
   const violationFindings = mapViolationsToFindings(summary);
   findings.push(...violationFindings);
@@ -433,6 +478,12 @@ function mapViolationsToFindings(
     "layout-pageframe-unextractable-value": "layout.pageframe.unextractable-value",
     "motion-duration-not-allowed": "motion.duration",
     "motion-timing-not-allowed": "motion.timing",
+    "descriptor-flows-missing": "descriptor.flows.missing",
+    "flow-required-missing": "flow.required.missing",
+    "flow-steps-min": "flow.steps.min",
+    "flow-steps-required": "flow.steps.required",
+    "flow-transition-required": "flow.transition.required",
+    "flow-terminal-invalid": "flow.terminal.invalid",
     "shell-owned-primitive-emitted": "shell.primitive.disallowed",
   };
 
@@ -486,6 +537,54 @@ function mapViolationsToFindings(
             ? details.allowedSources
             : undefined;
           finding.found = details.iconSource;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "descriptor-flows-missing": {
+          finding.expected = details.requiredFlowIds;
+          finding.found = null;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "flow-required-missing": {
+          finding.expected = details.flowId;
+          finding.found = null;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "flow-steps-min": {
+          finding.expected = details.minSteps;
+          finding.found = details.actualStepCount;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "flow-steps-required": {
+          finding.expected = details.requiredSteps;
+          finding.found = details.missingRequiredSteps;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "flow-transition-required": {
+          finding.expected = details.requiredTransitions;
+          finding.found = details.missingRequiredTransitions;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "flow-terminal-invalid": {
+          finding.expected = details.terminalSteps;
+          finding.found = details.invalidTransitions;
           if (details.policy === "warn") {
             finding.severity = "warning";
           }
@@ -594,6 +693,190 @@ async function writeFileWithParents(
 ): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, contents, "utf8");
+}
+
+type FlowDescriptorArtifactLoadResult =
+  | {
+      ok: true;
+      flowsBySurface: Map<string, SurfaceFlowDescriptor[]>;
+      paths: Map<string, string>;
+    }
+  | {
+      ok: false;
+      error: string;
+      path: string;
+      surfaceId: string;
+    };
+
+async function loadFlowDescriptorArtifacts({
+  workspaceRoot,
+  contract,
+  surfaceFilters,
+  flowDescriptorPathMap,
+}: {
+  workspaceRoot: string;
+  contract: InterfaceContract;
+  surfaceFilters: Set<string>;
+  flowDescriptorPathMap: Map<string, string>;
+}): Promise<FlowDescriptorArtifactLoadResult> {
+  const flowsBySurface = new Map<string, SurfaceFlowDescriptor[]>();
+  const paths = new Map<string, string>();
+
+  for (const surface of contract.surfaces) {
+    if (surface.flows?.policy === "off" || !surface.flows) {
+      continue;
+    }
+    if (surfaceFilters.size > 0 && !surfaceFilters.has(surface.id)) {
+      continue;
+    }
+
+    const configuredPath =
+      flowDescriptorPathMap.get(surface.id) ??
+      `contracts/generated/${surface.id}.flow-descriptor.json`;
+    const absolutePath = path.isAbsolute(configuredPath)
+      ? configuredPath
+      : path.resolve(workspaceRoot, configuredPath);
+    const relativePath = path.isAbsolute(configuredPath)
+      ? path.relative(workspaceRoot, configuredPath)
+      : configuredPath;
+
+    paths.set(surface.id, relativePath);
+
+    let raw: string;
+    try {
+      raw = await readFile(absolutePath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
+      return {
+        ok: false,
+        error: `Failed to read flow descriptor for surface "${surface.id}" at ${absolutePath}: ${
+          (error as Error).message
+        }`,
+        path: absolutePath,
+        surfaceId: surface.id,
+      };
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      return {
+        ok: false,
+        error: `Flow descriptor for surface "${surface.id}" is not valid JSON at ${absolutePath}: ${
+          (error as Error).message
+        }`,
+        path: absolutePath,
+        surfaceId: surface.id,
+      };
+    }
+
+    if (!Array.isArray(parsed)) {
+      return {
+        ok: false,
+        error: `Flow descriptor for surface "${surface.id}" must be a JSON array at ${absolutePath}.`,
+        path: absolutePath,
+        surfaceId: surface.id,
+      };
+    }
+
+    const normalizedFlows: SurfaceFlowDescriptor[] = [];
+    for (const [index, entry] of parsed.entries()) {
+      if (!entry || typeof entry !== "object") {
+        return {
+          ok: false,
+          error: `Flow descriptor entry ${index} for surface "${surface.id}" must be an object at ${absolutePath}.`,
+          path: absolutePath,
+          surfaceId: surface.id,
+        };
+      }
+      const entryRecord = entry as Record<string, unknown>;
+      const flowIdValue = entryRecord.flowId;
+
+      const flowId = typeof flowIdValue === "string" ? flowIdValue.trim() : "";
+      if (!flowId) {
+        return {
+          ok: false,
+          error: `Flow descriptor entry ${index} for surface "${surface.id}" is missing a non-empty flowId at ${absolutePath}.`,
+          path: absolutePath,
+          surfaceId: surface.id,
+        };
+      }
+
+      const stepsRaw = entryRecord.steps;
+      if (!Array.isArray(stepsRaw)) {
+        return {
+          ok: false,
+          error: `Flow descriptor "${flowId}" for surface "${surface.id}" must include steps[] at ${absolutePath}.`,
+          path: absolutePath,
+          surfaceId: surface.id,
+        };
+      }
+      const steps: { id: string }[] = [];
+      for (const [stepIndex, step] of stepsRaw.entries()) {
+        const stepRecord =
+          step && typeof step === "object"
+            ? (step as Record<string, unknown>)
+            : undefined;
+        const stepIdValue = stepRecord?.id;
+        const stepId =
+          typeof stepIdValue === "string" ? stepIdValue.trim() : "";
+        if (!stepId) {
+          return {
+            ok: false,
+            error: `Flow descriptor "${flowId}" step ${stepIndex} for surface "${surface.id}" must include non-empty id at ${absolutePath}.`,
+            path: absolutePath,
+            surfaceId: surface.id,
+          };
+        }
+        steps.push({ id: stepId });
+      }
+
+      const transitionsRaw = entryRecord.transitions;
+      if (!Array.isArray(transitionsRaw)) {
+        return {
+          ok: false,
+          error: `Flow descriptor "${flowId}" for surface "${surface.id}" must include transitions[] at ${absolutePath}.`,
+          path: absolutePath,
+          surfaceId: surface.id,
+        };
+      }
+      const transitions: { from: string; to: string }[] = [];
+      for (const [transitionIndex, transition] of transitionsRaw.entries()) {
+        const transitionRecord =
+          transition && typeof transition === "object"
+            ? (transition as Record<string, unknown>)
+            : undefined;
+        const fromValue = transitionRecord?.from;
+        const toValue = transitionRecord?.to;
+        const from = typeof fromValue === "string" ? fromValue.trim() : "";
+        const to = typeof toValue === "string" ? toValue.trim() : "";
+        if (!from || !to) {
+          return {
+            ok: false,
+            error: `Flow descriptor "${flowId}" transition ${transitionIndex} for surface "${surface.id}" must include non-empty from/to at ${absolutePath}.`,
+            path: absolutePath,
+            surfaceId: surface.id,
+          };
+        }
+        transitions.push({ from, to });
+      }
+      const sourceValue = entryRecord.source;
+
+      normalizedFlows.push({
+        flowId,
+        steps,
+        transitions,
+        source: typeof sourceValue === "string" ? sourceValue : relativePath,
+      });
+    }
+
+    flowsBySurface.set(surface.id, normalizedFlows);
+  }
+
+  return { ok: true, flowsBySurface, paths };
 }
 
 type ConfigLoadResult =

@@ -24,6 +24,12 @@ test("classifyViolationType: E2 violations", () => {
   assert.equal(classifyViolationType("unknown-surface"), "E2");
   assert.equal(classifyViolationType("descriptor-missing"), "E2");
   assert.equal(classifyViolationType("descriptor-unused"), "E2");
+  assert.equal(classifyViolationType("descriptor-flows-missing"), "E2");
+  assert.equal(classifyViolationType("flow-required-missing"), "E2");
+  assert.equal(classifyViolationType("flow-steps-min"), "E2");
+  assert.equal(classifyViolationType("flow-steps-required"), "E2");
+  assert.equal(classifyViolationType("flow-transition-required"), "E2");
+  assert.equal(classifyViolationType("flow-terminal-invalid"), "E2");
 });
 
 test("getExitCodeForCategory: v2 exit codes", () => {

@@ -83,6 +83,127 @@ function validateIconPolicy(surface, descriptor, violations) {
         });
     }
 }
+function validateFlowPolicy(surface, descriptor, violations) {
+    const flowPolicy = surface.flows;
+    if (!flowPolicy || flowPolicy.policy === "off") {
+        return;
+    }
+    const policy = flowPolicy.policy;
+    const requirements = flowPolicy.requirements ?? [];
+    const descriptorFlows = descriptor.flows;
+    const defaultSource = descriptor.flowDescriptorPath;
+    if (!Array.isArray(descriptorFlows)) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "descriptor-flows-missing",
+            message: `Flow descriptor is missing for surface "${descriptor.surfaceId}" while flow policy is "${policy}".`,
+            details: {
+                policy,
+                source: defaultSource,
+                flowDescriptorPath: defaultSource,
+                requiredFlowIds: requirements.map((requirement) => requirement.flowId),
+            },
+        });
+        return;
+    }
+    const flowMap = new Map(descriptorFlows
+        .map((flow) => [flow.flowId?.trim(), flow])
+        .filter(([flowId]) => typeof flowId === "string" && flowId.length > 0));
+    for (const requirement of requirements) {
+        const requirementSource = defaultSource;
+        const flowId = requirement.flowId;
+        const descriptorFlow = flowMap.get(flowId);
+        if (!descriptorFlow) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "flow-required-missing",
+                message: `Required flow "${flowId}" is missing for surface "${descriptor.surfaceId}".`,
+                details: {
+                    flowId,
+                    policy,
+                    source: requirementSource,
+                    flowDescriptorPath: defaultSource,
+                },
+            });
+            continue;
+        }
+        const flowSource = descriptorFlow.source ?? defaultSource;
+        const stepIds = new Set((descriptorFlow.steps ?? [])
+            .map((step) => step.id?.trim())
+            .filter((stepId) => Boolean(stepId)));
+        if (typeof requirement.minSteps === "number" &&
+            stepIds.size < requirement.minSteps) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "flow-steps-min",
+                message: `Flow "${flowId}" has ${stepIds.size} step(s); minimum is ${requirement.minSteps}.`,
+                details: {
+                    flowId,
+                    minSteps: requirement.minSteps,
+                    actualStepCount: stepIds.size,
+                    stepIds: [...stepIds],
+                    policy,
+                    source: flowSource,
+                },
+            });
+        }
+        const requiredSteps = requirement.requiredSteps ?? [];
+        const missingRequiredSteps = requiredSteps.filter((stepId) => !stepIds.has(stepId));
+        if (missingRequiredSteps.length > 0) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "flow-steps-required",
+                message: `Flow "${flowId}" is missing required step(s): ${missingRequiredSteps.join(", ")}.`,
+                details: {
+                    flowId,
+                    requiredSteps,
+                    missingRequiredSteps,
+                    policy,
+                    source: flowSource,
+                },
+            });
+        }
+        const transitionList = (descriptorFlow.transitions ?? [])
+            .map((transition) => ({
+            from: transition.from?.trim(),
+            to: transition.to?.trim(),
+        }))
+            .filter((transition) => Boolean(transition.from && transition.to));
+        const transitionKeys = new Set(transitionList.map((transition) => `${transition.from}->${transition.to}`));
+        const requiredTransitions = requirement.requiredTransitions ?? [];
+        const missingRequiredTransitions = requiredTransitions.filter((transition) => !transitionKeys.has(`${transition.from}->${transition.to}`));
+        if (missingRequiredTransitions.length > 0) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "flow-transition-required",
+                message: `Flow "${flowId}" is missing required transition(s).`,
+                details: {
+                    flowId,
+                    requiredTransitions,
+                    missingRequiredTransitions,
+                    policy,
+                    source: flowSource,
+                },
+            });
+        }
+        const terminalSteps = requirement.terminalSteps ?? [];
+        const invalidTerminalTransitions = transitionList.filter((transition) => terminalSteps.includes(transition.from));
+        if (invalidTerminalTransitions.length > 0) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "flow-terminal-invalid",
+                message: `Flow "${flowId}" has outgoing transition(s) from terminal step(s).`,
+                details: {
+                    flowId,
+                    terminalSteps,
+                    invalidTransitions: invalidTerminalTransitions,
+                    policy,
+                    source: flowSource,
+                },
+            });
+        }
+    }
+}
 export function evaluateSurfaceCompliance(contract, descriptor) {
     const surface = findSurface(contract.surfaces, descriptor.surfaceId);
     const violations = [];
@@ -204,6 +325,7 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
     }
     validateColorPolicy(contract, descriptor, violations);
     validateIconPolicy(surface, descriptor, violations);
+    validateFlowPolicy(surface, descriptor, violations);
     const reportedWidth = descriptor.layout.maxContentWidth;
     if (reportedWidth === null || reportedWidth === undefined) {
         violations.push({

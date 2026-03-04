@@ -73,6 +73,46 @@ function makeCanonicalContract({ iconPolicy = "strict" } = {}) {
   };
 }
 
+function makeFlowContract({ policy = "strict" } = {}) {
+  return {
+    contractId: "surfaces.web",
+    version: "0.1.0",
+    surfaces: [
+      {
+        id: "reference-target-web",
+        displayName: "Reference",
+        type: "web",
+        requiredSections: [],
+        allowedFonts: ["Inter"],
+        layout: { maxContentWidth: 1120 },
+        flows: {
+          policy,
+          requirements: [
+            {
+              flowId: "checkout",
+              minSteps: 2,
+              requiredSteps: ["start", "review"],
+              requiredTransitions: [{ from: "start", to: "review" }],
+              terminalSteps: ["review"],
+            },
+          ],
+        },
+      },
+    ],
+    sections: [],
+    constraints: {
+      motion: {
+        allowedDurationsMs: [120],
+        allowedTimingFunctions: ["linear"],
+      },
+    },
+    color: {
+      policy: "off",
+      allowedValues: [],
+    },
+  };
+}
+
 test("json: strict canonical color policy blocks disallowed color", () => {
   const result = runGuard({
     contract: makeCanonicalContract(),
@@ -149,6 +189,72 @@ test("json: strict icon policy emits descriptor.icons.missing when icons are abs
   const payload = parseJsonOutput(result);
   assert.equal(payload.status, "block");
   assert.ok(payload.findings.some((finding) => finding.code === "descriptor.icons.missing"));
+});
+
+test("json: strict flow policy emits descriptor.flows.missing when flows are absent", () => {
+  const result = runGuard({
+    contract: makeFlowContract({ policy: "strict" }),
+    descriptor: [
+      {
+        surfaceId: "reference-target-web",
+        primitives: [],
+        colors: [],
+      },
+    ],
+  });
+
+  assert.equal(result.status, 2, result.stderr || result.stdout);
+  const payload = parseJsonOutput(result);
+  assert.equal(payload.status, "block");
+  assert.equal(payload.evaluation.flowPolicyEvaluated, true);
+  assert.ok(payload.findings.some((finding) => finding.code === "descriptor.flows.missing"));
+});
+
+test("json: warn flow policy emits warnings and stays non-blocking", () => {
+  const result = runGuard({
+    contract: makeFlowContract({ policy: "warn" }),
+    descriptor: [
+      {
+        surfaceId: "reference-target-web",
+        primitives: [],
+        colors: [],
+      },
+    ],
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const payload = parseJsonOutput(result);
+  assert.equal(payload.status, "warn");
+  const finding = payload.findings.find((entry) => entry.code === "descriptor.flows.missing");
+  assert.ok(finding, "expected descriptor.flows.missing finding");
+  assert.equal(finding.severity, "warning");
+  assert.equal(finding.policy, "warn");
+});
+
+test("json: strict flow policy enforces steps, transitions, and terminal invariants", () => {
+  const result = runGuard({
+    contract: makeFlowContract({ policy: "strict" }),
+    descriptor: [
+      {
+        surfaceId: "reference-target-web",
+        primitives: [],
+        colors: [],
+        flows: [
+          {
+            flowId: "checkout",
+            steps: [{ id: "start" }, { id: "review" }, { id: "done" }],
+            transitions: [{ from: "review", to: "done" }],
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(result.status, 2, result.stderr || result.stdout);
+  const payload = parseJsonOutput(result);
+  assert.equal(payload.status, "block");
+  assert.ok(payload.findings.some((finding) => finding.code === "flow.transition.required"));
+  assert.ok(payload.findings.some((finding) => finding.code === "flow.terminal.invalid"));
 });
 
 test("text: canonical color/icon checks remain backward-compatible in text mode", () => {

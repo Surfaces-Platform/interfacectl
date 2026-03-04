@@ -161,6 +161,9 @@
         "icons": {
           "$ref": "#/$defs/iconPolicy"
         },
+        "flows": {
+          "$ref": "#/$defs/flowPolicy"
+        },
         "phase0": {
           "type": "object",
           "description": "Phase 0.5: optional expectations for extracted reality (routes, auth, shell, design system).",
@@ -339,6 +342,89 @@
             "minLength": 1
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "flowPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "requirements"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowRequirement"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "flowRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flowId"
+      ],
+      "properties": {
+        "flowId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minSteps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requiredSteps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "requiredTransitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowTransition"
+          },
+          "uniqueItems": true
+        },
+        "terminalSteps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "flowTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
