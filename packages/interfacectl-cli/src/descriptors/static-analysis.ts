@@ -11,6 +11,7 @@ import {
   type SurfaceMotionDescriptor,
   type SurfaceSectionDescriptor,
   type PageFrameLayoutDescriptor,
+  type LandingPatternDescriptor,
   type SurfacePrimitiveDescriptor,
 } from "@surfaces/interfacectl-validator";
 
@@ -22,6 +23,8 @@ const CONTAINER_ATTRIBUTE_REGEX =
 const CONTRACT_CONTAINER_TOKEN = "contract-container";
 const PAGE_CONTAINER_ATTRIBUTE_REGEX =
   /data-contract\s*=\s*(?:"page-container"|'page-container'|{`page-container`}|{\s*["'`]page-container["'`]\s*})/g;
+const MIN_SCREEN_CLASS_REGEX =
+  /className\s*=\s*(?:"[^"]*\bmin-h-screen\b[^"]*\bw-full\b[^"]*"|'[^']*\bmin-h-screen\b[^']*\bw-full\b[^']*')/;
 // Inline style extraction
 const INLINE_STYLE_REGEX = /style\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const INLINE_MAX_WIDTH_REGEX = /max-width\s*:\s*([0-9.]+)\s*px/gi;
@@ -496,13 +499,135 @@ async function extractLayout(
     );
   }
 
+  let landingPattern: LandingPatternDescriptor | undefined;
+  if (surface?.layout.landingPattern) {
+    landingPattern = await extractLandingPattern(
+      sectionFiles,
+      workspaceRoot,
+      fileContentCache,
+    );
+  }
+
   return {
     maxContentWidth: maxWidth,
     containers: [...containers].sort(),
     containerSources: [...containerSources].sort(),
     source: layoutSource,
     pageFrame,
+    landingPattern,
   };
+}
+
+async function extractLandingPattern(
+  sectionFiles: string[],
+  workspaceRoot: string,
+  fileContentCache: Map<string, string>,
+): Promise<LandingPatternDescriptor | undefined> {
+  const landingPagePath = selectLandingPageFile(sectionFiles);
+  if (!landingPagePath) {
+    return undefined;
+  }
+
+  const content = await readFileCached(landingPagePath, fileContentCache);
+  const sectionOrder: string[] = [];
+  const topLevelSections: string[] = [];
+  const nestedSections: string[] = [];
+  const sectionStack: Array<{ tagName: string; id: string }> = [];
+  const tagRegex = /<\/?([A-Za-z][\w.-]*)\b[^>]*>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagRegex.exec(content)) !== null) {
+    const tag = match[0];
+    const tagName = match[1];
+    const isClosing = tag.startsWith("</");
+    const isSelfClosing = /\/>\s*$/.test(tag);
+
+    if (isClosing) {
+      for (let index = sectionStack.length - 1; index >= 0; index -= 1) {
+        if (sectionStack[index]?.tagName === tagName) {
+          sectionStack.splice(index, 1);
+          break;
+        }
+      }
+      continue;
+    }
+
+    const sectionId = extractAttributeValue(tag, SECTION_ATTRIBUTE_REGEX);
+    if (!sectionId) {
+      continue;
+    }
+
+    sectionOrder.push(sectionId);
+    if (sectionStack.length === 0) {
+      topLevelSections.push(sectionId);
+    } else if (!nestedSections.includes(sectionId)) {
+      nestedSections.push(sectionId);
+    }
+
+    if (!isSelfClosing) {
+      sectionStack.push({ tagName, id: sectionId });
+    }
+  }
+
+  return {
+    sectionOrder,
+    topLevelSections,
+    nestedSections,
+    pageBackgroundMode: extractPageBackgroundMode(content),
+    source: path.relative(workspaceRoot, landingPagePath),
+  };
+}
+
+function selectLandingPageFile(filePaths: string[]): string | undefined {
+  const candidates = filePaths.filter((filePath) => filePath.endsWith(`${path.sep}page.tsx`));
+  if (candidates.length === 0) {
+    return undefined;
+  }
+
+  const ranked = [...candidates].sort((left, right) => {
+    const leftRank = getLandingPageRank(left);
+    const rightRank = getLandingPageRank(right);
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+    return left.localeCompare(right);
+  });
+
+  return ranked[0];
+}
+
+function getLandingPageRank(filePath: string): number {
+  if (filePath.includes(`${path.sep}app${path.sep}page.tsx`)) return 0;
+  if (filePath.includes(`${path.sep}app${path.sep}(overview)${path.sep}page.tsx`)) return 1;
+  if (filePath.includes(`${path.sep}app${path.sep}(marketing)${path.sep}page.tsx`)) return 2;
+  return 10;
+}
+
+function extractAttributeValue(tag: string, regex: RegExp): string | undefined {
+  regex.lastIndex = 0;
+  const match = regex.exec(tag);
+  const value = match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4] ?? "";
+  return value || undefined;
+}
+
+function extractPageBackgroundMode(content: string): "solid" | "custom" | "unknown" {
+  const tagRegex = /<[A-Za-z][\w.-]*\b[^>]*>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagRegex.exec(content)) !== null) {
+    const tag = match[0];
+    if (!MIN_SCREEN_CLASS_REGEX.test(tag)) {
+      continue;
+    }
+    if (/\bbackground\s*:/.test(tag)) {
+      return "custom";
+    }
+    if (/\bbackgroundColor\s*:/.test(tag)) {
+      return "solid";
+    }
+  }
+
+  return "unknown";
 }
 
 async function extractPageFrameLayout(

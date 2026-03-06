@@ -724,3 +724,119 @@ test("flow policy emits flow-terminal-invalid when terminal step has outgoing tr
     { from: "review", to: "done" },
   ]);
 });
+
+test("reports landing pattern violations for nested sections and custom background", () => {
+  const contract = {
+    ...baseContract,
+    sections: [
+      { id: "landing.hero", intent: "hero", description: "Hero section" },
+      { id: "landing.guidance", intent: "guidance", description: "Guidance section" },
+      { id: "landing.actions", intent: "actions", description: "Actions section" },
+    ],
+    surfaces: [
+      {
+        id: "surface-landing-pattern",
+        displayName: "Surface Landing Pattern",
+        type: "web",
+        requiredSections: ["landing.hero", "landing.guidance", "landing.actions"],
+        allowedFonts: ["var(--font-landing)"],
+        layout: {
+          maxContentWidth: 1120,
+          landingPattern: {
+            policy: "strict",
+            requireTopLevelSections: ["landing.hero", "landing.guidance", "landing.actions"],
+            sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+            pageBackgroundMode: "solid",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-landing-pattern",
+    sections: [
+      { id: "landing.hero" },
+      { id: "landing.guidance" },
+      { id: "landing.actions" },
+    ],
+    fonts: [{ value: "var(--font-landing)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+      landingPattern: {
+        sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+        topLevelSections: ["landing.hero"],
+        nestedSections: ["landing.guidance", "landing.actions"],
+        pageBackgroundMode: "custom",
+        source: "apps/surface/app/page.tsx",
+      },
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violationTypes = report.violations.map((violation) => violation.type);
+  assert.ok(violationTypes.includes("landing-pattern-top-level-missing"));
+  assert.ok(violationTypes.includes("landing-pattern-section-nested"));
+  assert.ok(violationTypes.includes("landing-pattern-background-mode"));
+});
+
+test("passes landing pattern validation when the shared structure is preserved", () => {
+  const contract = {
+    ...baseContract,
+    sections: [
+      { id: "landing.hero", intent: "hero", description: "Hero section" },
+      { id: "landing.guidance", intent: "guidance", description: "Guidance section" },
+      { id: "landing.actions", intent: "actions", description: "Actions section" },
+    ],
+    surfaces: [
+      {
+        id: "surface-landing-pass",
+        displayName: "Surface Landing Pass",
+        type: "web",
+        requiredSections: ["landing.hero", "landing.guidance", "landing.actions"],
+        allowedFonts: ["var(--font-landing)"],
+        layout: {
+          maxContentWidth: 1120,
+          landingPattern: {
+            policy: "strict",
+            requireTopLevelSections: ["landing.hero", "landing.guidance", "landing.actions"],
+            sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+            pageBackgroundMode: "solid",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-landing-pass",
+    sections: [
+      { id: "landing.hero" },
+      { id: "landing.guidance" },
+      { id: "landing.actions" },
+    ],
+    fonts: [{ value: "var(--font-landing)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+      landingPattern: {
+        sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+        topLevelSections: ["landing.hero", "landing.guidance", "landing.actions"],
+        nestedSections: [],
+        pageBackgroundMode: "solid",
+        source: "apps/surface/app/page.tsx",
+      },
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const landingViolations = report.violations.filter((violation) =>
+    violation.type.startsWith("landing-pattern-"),
+  );
+  assert.equal(landingViolations.length, 0);
+});

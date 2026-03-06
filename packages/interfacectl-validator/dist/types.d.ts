@@ -15,6 +15,12 @@ export interface ChromePolicy {
     allowOuterShadow: boolean;
     allowInsetShadow: boolean;
 }
+export interface LandingPatternPolicy {
+    policy: "off" | "warn" | "strict";
+    requireTopLevelSections?: string[];
+    sectionOrder?: string[];
+    pageBackgroundMode?: "solid" | "custom";
+}
 export interface FlowTransitionRequirement {
     from: string;
     to: string;
@@ -41,6 +47,7 @@ export interface ContractSurface {
         requiredContainers?: string[];
         pageFrame?: PageFrameLayout;
         chromePolicy?: ChromePolicy;
+        landingPattern?: LandingPatternPolicy;
     };
     icons?: IconPolicy;
     flows?: FlowPolicy;
@@ -138,12 +145,20 @@ export interface PageFrameLayoutDescriptor {
     minWidthHasClampCalc?: boolean;
     paddingHasClampCalc?: boolean;
 }
+export interface LandingPatternDescriptor {
+    sectionOrder: string[];
+    topLevelSections: string[];
+    nestedSections: string[];
+    pageBackgroundMode?: "solid" | "custom" | "unknown";
+    source?: string;
+}
 export interface SurfaceLayoutDescriptor {
     maxContentWidth?: number | null;
     containers?: string[];
     containerSources?: string[];
     source?: string;
     pageFrame?: PageFrameLayoutDescriptor;
+    landingPattern?: LandingPatternDescriptor;
 }
 export interface SurfaceDescriptor {
     surfaceId: string;
@@ -157,7 +172,7 @@ export interface SurfaceDescriptor {
     motion: SurfaceMotionDescriptor[];
     primitives?: SurfacePrimitiveDescriptor[];
 }
-export type DriftViolationType = "unknown-surface" | "missing-section" | "unknown-section" | "font-not-allowed" | "color-not-allowed" | "icon-source-not-allowed" | "layout-width-exceeded" | "layout-width-undetermined" | "layout-container-missing" | "layout-pageframe-selector-unsupported" | "layout-pageframe-container-not-found" | "layout-pageframe-maxwidth-mismatch" | "layout-pageframe-minwidth-mismatch" | "layout-pageframe-padding-mismatch" | "layout-pageframe-non-deterministic-value" | "layout-pageframe-unextractable-value" | "motion-duration-not-allowed" | "motion-timing-not-allowed" | "descriptor-flows-missing" | "flow-required-missing" | "flow-steps-min" | "flow-steps-required" | "flow-transition-required" | "flow-terminal-invalid" | "descriptor-missing" | "descriptor-unused" | "shell-owned-primitive-emitted";
+export type DriftViolationType = "unknown-surface" | "missing-section" | "unknown-section" | "font-not-allowed" | "color-not-allowed" | "icon-source-not-allowed" | "layout-width-exceeded" | "layout-width-undetermined" | "layout-container-missing" | "layout-pageframe-selector-unsupported" | "layout-pageframe-container-not-found" | "layout-pageframe-maxwidth-mismatch" | "layout-pageframe-minwidth-mismatch" | "layout-pageframe-padding-mismatch" | "layout-pageframe-non-deterministic-value" | "layout-pageframe-unextractable-value" | "landing-pattern-signal-missing" | "landing-pattern-top-level-missing" | "landing-pattern-section-order" | "landing-pattern-section-nested" | "landing-pattern-background-mode" | "motion-duration-not-allowed" | "motion-timing-not-allowed" | "descriptor-flows-missing" | "flow-required-missing" | "flow-steps-min" | "flow-steps-required" | "flow-transition-required" | "flow-terminal-invalid" | "descriptor-missing" | "descriptor-unused" | "shell-owned-primitive-emitted";
 export interface DriftViolation {
     surfaceId: string;
     type: DriftViolationType;

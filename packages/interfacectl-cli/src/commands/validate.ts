@@ -476,6 +476,11 @@ function mapViolationsToFindings(
     "layout-pageframe-selector-unsupported": "layout.pageframe.selector-unsupported",
     "layout-pageframe-non-deterministic-value": "layout.pageframe.non-deterministic-value",
     "layout-pageframe-unextractable-value": "layout.pageframe.unextractable-value",
+    "landing-pattern-signal-missing": "landing.pattern.signal-missing",
+    "landing-pattern-top-level-missing": "landing.pattern.top-level-missing",
+    "landing-pattern-section-order": "landing.pattern.section-order",
+    "landing-pattern-section-nested": "landing.pattern.section-nested",
+    "landing-pattern-background-mode": "landing.pattern.background-mode",
     "motion-duration-not-allowed": "motion.duration",
     "motion-timing-not-allowed": "motion.timing",
     "descriptor-flows-missing": "descriptor.flows.missing",
@@ -649,6 +654,46 @@ function mapViolationsToFindings(
             left: details.actualLeft,
             right: details.actualRight,
           };
+          break;
+        }
+        case "landing-pattern-signal-missing": {
+          finding.expected = "landing pattern signals";
+          finding.found = null;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "landing-pattern-top-level-missing": {
+          finding.expected = details.expectedTopLevelSections;
+          finding.found = details.missingTopLevelSections;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "landing-pattern-section-order": {
+          finding.expected = details.expectedSectionOrder;
+          finding.found = details.foundSectionOrder;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "landing-pattern-section-nested": {
+          finding.expected = [];
+          finding.found = details.nestedSections;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "landing-pattern-background-mode": {
+          finding.expected = details.expectedBackgroundMode;
+          finding.found = details.actualBackgroundMode;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
           break;
         }
         case "motion-duration-not-allowed": {

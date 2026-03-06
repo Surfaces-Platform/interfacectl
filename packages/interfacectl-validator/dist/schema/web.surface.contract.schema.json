@@ -158,6 +158,9 @@
             },
             "chromePolicy": {
               "$ref": "#/$defs/chromePolicy"
+            },
+            "landingPattern": {
+              "$ref": "#/$defs/landingPattern"
             }
           }
         },
@@ -389,6 +392,46 @@
             "minLength": 1
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "landingPattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "requireTopLevelSections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "sectionOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "pageBackgroundMode": {
+          "type": "string",
+          "enum": [
+            "solid",
+            "custom"
+          ]
         }
       }
     },

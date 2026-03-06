@@ -286,6 +286,121 @@ function validateFlowPolicy(
   }
 }
 
+function validateLandingPattern(
+  surface: ContractSurface,
+  descriptor: SurfaceDescriptor,
+  violations: DriftViolation[],
+): void {
+  const landingPattern = surface.layout.landingPattern;
+  if (!landingPattern || landingPattern.policy === "off") {
+    return;
+  }
+
+  const descriptorPattern = descriptor.layout.landingPattern;
+  if (!descriptorPattern) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-signal-missing",
+      message: `Landing pattern signals are missing for surface "${descriptor.surfaceId}".`,
+      details: {
+        policy: landingPattern.policy,
+      },
+    });
+    return;
+  }
+
+  const topLevelSections = new Set(descriptorPattern.topLevelSections);
+  const nestedSections = new Set(descriptorPattern.nestedSections);
+  const orderedSections = descriptorPattern.sectionOrder;
+
+  const requiredTopLevel = landingPattern.requireTopLevelSections ?? [];
+  const missingTopLevel = requiredTopLevel.filter(
+    (sectionId) => !topLevelSections.has(sectionId),
+  );
+  if (missingTopLevel.length > 0) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-top-level-missing",
+      message: `Landing sections must appear as top-level blocks for surface "${descriptor.surfaceId}": ${missingTopLevel.join(", ")}.`,
+      details: {
+        policy: landingPattern.policy,
+        expectedTopLevelSections: requiredTopLevel,
+        missingTopLevelSections: missingTopLevel,
+        source: descriptorPattern.source,
+      },
+    });
+  }
+
+  const disallowedNestedSections = requiredTopLevel.filter((sectionId) =>
+    nestedSections.has(sectionId),
+  );
+  if (disallowedNestedSections.length > 0) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-section-nested",
+      message: `Landing sections must not be nested inside other contract sections for surface "${descriptor.surfaceId}": ${disallowedNestedSections.join(", ")}.`,
+      details: {
+        policy: landingPattern.policy,
+        nestedSections: disallowedNestedSections,
+        source: descriptorPattern.source,
+      },
+    });
+  }
+
+  const expectedOrder = landingPattern.sectionOrder ?? [];
+  if (expectedOrder.length > 1) {
+    let lastIndex = -1;
+    const outOfOrderSections: string[] = [];
+
+    for (const sectionId of expectedOrder) {
+      const sectionIndex = orderedSections.indexOf(sectionId);
+      if (sectionIndex === -1) {
+        continue;
+      }
+      if (sectionIndex < lastIndex) {
+        outOfOrderSections.push(sectionId);
+      } else {
+        lastIndex = sectionIndex;
+      }
+    }
+
+    if (outOfOrderSections.length > 0) {
+      violations.push({
+        surfaceId: descriptor.surfaceId,
+        type: "landing-pattern-section-order",
+        message: `Landing section order does not match the shared pattern for surface "${descriptor.surfaceId}".`,
+        details: {
+          policy: landingPattern.policy,
+          expectedSectionOrder: expectedOrder,
+          foundSectionOrder: orderedSections,
+          outOfOrderSections,
+          source: descriptorPattern.source,
+        },
+      });
+    }
+  }
+
+  const expectedBackgroundMode = landingPattern.pageBackgroundMode;
+  if (
+    expectedBackgroundMode &&
+    descriptorPattern.pageBackgroundMode &&
+    descriptorPattern.pageBackgroundMode !== "unknown" &&
+    descriptorPattern.pageBackgroundMode !== expectedBackgroundMode
+  ) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-background-mode",
+      message: `Landing page background treatment for surface "${descriptor.surfaceId}" must be "${expectedBackgroundMode}".`,
+      details: {
+        policy: landingPattern.policy,
+        expectedBackgroundMode,
+        actualBackgroundMode: descriptorPattern.pageBackgroundMode,
+        source: descriptorPattern.source,
+      },
+    });
+  }
+}
+
 export function evaluateSurfaceCompliance(
   contract: InterfaceContract,
   descriptor: SurfaceDescriptor,
@@ -423,6 +538,7 @@ export function evaluateSurfaceCompliance(
   validateColorPolicy(contract, descriptor, violations);
   validateIconPolicy(surface, descriptor, violations);
   validateFlowPolicy(surface, descriptor, violations);
+  validateLandingPattern(surface, descriptor, violations);
 
   const reportedWidth = descriptor.layout.maxContentWidth;
   if (reportedWidth === null || reportedWidth === undefined) {
@@ -822,6 +938,7 @@ export type {
   SurfaceMotionDescriptor,
   SurfaceLayoutDescriptor,
   PageFrameLayoutDescriptor,
+  LandingPatternDescriptor,
   SurfacePrimitiveDescriptor,
   SurfaceReport,
   DriftViolation,
@@ -841,6 +958,7 @@ export type {
   FlowPolicy,
   FlowRequirement,
   FlowTransitionRequirement,
+  LandingPatternPolicy,
   SurfaceFlowDescriptor,
   SurfaceFlowStepDescriptor,
   SurfaceFlowTransitionDescriptor,
