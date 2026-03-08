@@ -7,6 +7,14 @@ export interface PageFrameLayout {
     alignment?: "center" | "left";
     enforcement?: "strict" | "warn";
 }
+export type ChromePolicyTarget = "page-container" | "top-level-section" | "layout-container";
+export interface ChromePolicy {
+    policy: "off" | "warn" | "strict";
+    targets: ChromePolicyTarget[];
+    maxBorderRadiusPx: number;
+    allowOuterShadow: boolean;
+    allowInsetShadow: boolean;
+}
 export interface FlowTransitionRequirement {
     from: string;
     to: string;
@@ -32,6 +40,7 @@ export interface ContractSurface {
         maxContentWidth: number;
         requiredContainers?: string[];
         pageFrame?: PageFrameLayout;
+        chromePolicy?: ChromePolicy;
     };
     icons?: IconPolicy;
     flows?: FlowPolicy;
