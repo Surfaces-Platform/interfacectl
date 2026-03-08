@@ -541,3 +541,302 @@ test("reports selector unsupported even when pageFrame descriptor is unavailable
   );
   assert.ok(violation);
 });
+
+function makeFlowContract(policy = "strict", requirementOverrides = {}) {
+  return {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-flow",
+        displayName: "Surface Flow",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-flow)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+        flows: {
+          policy,
+          requirements: [
+            {
+              flowId: "checkout",
+              minSteps: 2,
+              requiredSteps: ["start", "review"],
+              requiredTransitions: [{ from: "start", to: "review" }],
+              terminalSteps: ["review"],
+              ...requirementOverrides,
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function makeFlowDescriptor(overrides = {}) {
+  return {
+    surfaceId: "surface-flow",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-flow)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+    ...overrides,
+  };
+}
+
+test("flow policy emits descriptor-flows-missing when descriptor artifact is absent", () => {
+  const contract = makeFlowContract("warn");
+  const descriptor = makeFlowDescriptor({
+    flowDescriptorPath: "contracts/generated/surface-flow.flow-descriptor.json",
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "descriptor-flows-missing",
+  );
+  assert.ok(violation);
+  assert.equal(violation.details?.policy, "warn");
+  assert.equal(
+    violation.details?.flowDescriptorPath,
+    "contracts/generated/surface-flow.flow-descriptor.json",
+  );
+});
+
+test("flow policy emits flow-required-missing when required flow is missing", () => {
+  const contract = makeFlowContract("strict");
+  const descriptor = makeFlowDescriptor({
+    flows: [],
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "flow-required-missing",
+  );
+  assert.ok(violation);
+  assert.equal(violation.details?.flowId, "checkout");
+  assert.equal(violation.details?.policy, "strict");
+});
+
+test("flow policy emits flow-steps-min when step count is below minimum", () => {
+  const contract = makeFlowContract("strict", {
+    requiredSteps: [],
+    requiredTransitions: [],
+    terminalSteps: [],
+  });
+  const descriptor = makeFlowDescriptor({
+    flows: [
+      {
+        flowId: "checkout",
+        steps: [{ id: "start" }],
+        transitions: [],
+      },
+    ],
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "flow-steps-min",
+  );
+  assert.ok(violation);
+  assert.equal(violation.details?.flowId, "checkout");
+  assert.equal(violation.details?.actualStepCount, 1);
+  assert.equal(violation.details?.minSteps, 2);
+});
+
+test("flow policy emits flow-steps-required when required step is missing", () => {
+  const contract = makeFlowContract("strict", {
+    minSteps: 1,
+    requiredTransitions: [],
+    terminalSteps: [],
+  });
+  const descriptor = makeFlowDescriptor({
+    flows: [
+      {
+        flowId: "checkout",
+        steps: [{ id: "start" }],
+        transitions: [],
+      },
+    ],
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "flow-steps-required",
+  );
+  assert.ok(violation);
+  assert.deepEqual(violation.details?.missingRequiredSteps, ["review"]);
+});
+
+test("flow policy emits flow-transition-required when required transition is missing", () => {
+  const contract = makeFlowContract("strict", {
+    minSteps: 1,
+    requiredSteps: ["start", "review"],
+    terminalSteps: [],
+  });
+  const descriptor = makeFlowDescriptor({
+    flows: [
+      {
+        flowId: "checkout",
+        steps: [{ id: "start" }, { id: "review" }],
+        transitions: [],
+      },
+    ],
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "flow-transition-required",
+  );
+  assert.ok(violation);
+  assert.deepEqual(violation.details?.missingRequiredTransitions, [
+    { from: "start", to: "review" },
+  ]);
+});
+
+test("flow policy emits flow-terminal-invalid when terminal step has outgoing transition", () => {
+  const contract = makeFlowContract("strict", {
+    minSteps: 1,
+    requiredSteps: [],
+    requiredTransitions: [],
+    terminalSteps: ["review"],
+  });
+  const descriptor = makeFlowDescriptor({
+    flows: [
+      {
+        flowId: "checkout",
+        steps: [{ id: "review" }, { id: "done" }],
+        transitions: [{ from: "review", to: "done" }],
+      },
+    ],
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "flow-terminal-invalid",
+  );
+  assert.ok(violation);
+  assert.deepEqual(violation.details?.invalidTransitions, [
+    { from: "review", to: "done" },
+  ]);
+});
+
+test("reports landing pattern violations for nested sections and custom background", () => {
+  const contract = {
+    ...baseContract,
+    sections: [
+      { id: "landing.hero", intent: "hero", description: "Hero section" },
+      { id: "landing.guidance", intent: "guidance", description: "Guidance section" },
+      { id: "landing.actions", intent: "actions", description: "Actions section" },
+    ],
+    surfaces: [
+      {
+        id: "surface-landing-pattern",
+        displayName: "Surface Landing Pattern",
+        type: "web",
+        requiredSections: ["landing.hero", "landing.guidance", "landing.actions"],
+        allowedFonts: ["var(--font-landing)"],
+        layout: {
+          maxContentWidth: 1120,
+          landingPattern: {
+            policy: "strict",
+            requireTopLevelSections: ["landing.hero", "landing.guidance", "landing.actions"],
+            sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+            pageBackgroundMode: "solid",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-landing-pattern",
+    sections: [
+      { id: "landing.hero" },
+      { id: "landing.guidance" },
+      { id: "landing.actions" },
+    ],
+    fonts: [{ value: "var(--font-landing)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+      landingPattern: {
+        sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+        topLevelSections: ["landing.hero"],
+        nestedSections: ["landing.guidance", "landing.actions"],
+        pageBackgroundMode: "custom",
+        source: "apps/surface/app/page.tsx",
+      },
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violationTypes = report.violations.map((violation) => violation.type);
+  assert.ok(violationTypes.includes("landing-pattern-top-level-missing"));
+  assert.ok(violationTypes.includes("landing-pattern-section-nested"));
+  assert.ok(violationTypes.includes("landing-pattern-background-mode"));
+});
+
+test("passes landing pattern validation when the shared structure is preserved", () => {
+  const contract = {
+    ...baseContract,
+    sections: [
+      { id: "landing.hero", intent: "hero", description: "Hero section" },
+      { id: "landing.guidance", intent: "guidance", description: "Guidance section" },
+      { id: "landing.actions", intent: "actions", description: "Actions section" },
+    ],
+    surfaces: [
+      {
+        id: "surface-landing-pass",
+        displayName: "Surface Landing Pass",
+        type: "web",
+        requiredSections: ["landing.hero", "landing.guidance", "landing.actions"],
+        allowedFonts: ["var(--font-landing)"],
+        layout: {
+          maxContentWidth: 1120,
+          landingPattern: {
+            policy: "strict",
+            requireTopLevelSections: ["landing.hero", "landing.guidance", "landing.actions"],
+            sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+            pageBackgroundMode: "solid",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-landing-pass",
+    sections: [
+      { id: "landing.hero" },
+      { id: "landing.guidance" },
+      { id: "landing.actions" },
+    ],
+    fonts: [{ value: "var(--font-landing)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+      landingPattern: {
+        sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+        topLevelSections: ["landing.hero", "landing.guidance", "landing.actions"],
+        nestedSections: [],
+        pageBackgroundMode: "solid",
+        source: "apps/surface/app/page.tsx",
+      },
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const landingViolations = report.violations.filter((violation) =>
+    violation.type.startsWith("landing-pattern-"),
+  );
+  assert.equal(landingViolations.length, 0);
+});

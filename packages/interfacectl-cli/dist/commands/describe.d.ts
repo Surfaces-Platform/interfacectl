@@ -8,7 +8,7 @@ export interface DescribeCommandOptions {
 }
 /**
  * Produce descriptor(s) with primitives for pre-emit guard (check-generation-boundaries).
- * Output format: array of { surfaceId, primitives, sections, fonts, colors, layout, motion }.
+ * Output format: array of { surfaceId, primitives, sections, fonts, colors, flows, layout, motion }.
  */
 export declare function runDescribeCommand(options: DescribeCommandOptions): Promise<number>;
 //# sourceMappingURL=describe.d.ts.map

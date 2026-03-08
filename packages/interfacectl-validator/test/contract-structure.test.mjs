@@ -109,3 +109,84 @@ test("validateContractStructure accepts optional pageFrame.containerMinWidthPx",
   const result = validateContractStructure(contract, schema);
   assert.equal(result.ok, true);
 });
+
+test("validateContractStructure accepts optional surface.flows policy", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({
+    flows: {
+      policy: "warn",
+      requirements: [
+        {
+          flowId: "checkout",
+          minSteps: 2,
+          requiredSteps: ["start", "review"],
+          requiredTransitions: [{ from: "start", to: "review" }],
+          terminalSteps: ["review"],
+        },
+      ],
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true);
+});
+
+test("validateContractStructure accepts optional surface.layout.chromePolicy", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({
+    layout: {
+      maxContentWidth: 1200,
+      chromePolicy: {
+        policy: "off",
+        targets: ["page-container", "top-level-section", "layout-container"],
+        maxBorderRadiusPx: 8,
+        allowOuterShadow: false,
+        allowInsetShadow: true,
+      },
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true);
+});
+
+test("validateContractStructure rejects invalid surface.layout.chromePolicy target", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({
+    layout: {
+      maxContentWidth: 1200,
+      chromePolicy: {
+        policy: "strict",
+        targets: ["page-container", "card-grid"],
+        maxBorderRadiusPx: 8,
+        allowOuterShadow: false,
+        allowInsetShadow: true,
+      },
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("targets")),
+    `expected chromePolicy targets validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure rejects malformed surface.flows requirements", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({
+    flows: {
+      policy: "strict",
+      requirements: [
+        {
+          flowId: "checkout",
+          minSteps: 0,
+        },
+      ],
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("minSteps")),
+    `expected minSteps validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});

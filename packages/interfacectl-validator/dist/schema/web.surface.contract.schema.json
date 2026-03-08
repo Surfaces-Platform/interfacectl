@@ -155,11 +155,20 @@
             },
             "pageFrame": {
               "$ref": "#/$defs/pageFrame"
+            },
+            "chromePolicy": {
+              "$ref": "#/$defs/chromePolicy"
+            },
+            "landingPattern": {
+              "$ref": "#/$defs/landingPattern"
             }
           }
         },
         "icons": {
           "$ref": "#/$defs/iconPolicy"
+        },
+        "flows": {
+          "$ref": "#/$defs/flowPolicy"
         },
         "phase0": {
           "type": "object",
@@ -316,6 +325,50 @@
         }
       }
     },
+    "chromePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "targets",
+        "maxBorderRadiusPx",
+        "allowOuterShadow",
+        "allowInsetShadow"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "page-container",
+              "top-level-section",
+              "layout-container"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "maxBorderRadiusPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "allowOuterShadow": {
+          "type": "boolean"
+        },
+        "allowInsetShadow": {
+          "type": "boolean"
+        }
+      }
+    },
     "iconPolicy": {
       "type": "object",
       "additionalProperties": false,
@@ -339,6 +392,129 @@
             "minLength": 1
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "landingPattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "requireTopLevelSections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "sectionOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "pageBackgroundMode": {
+          "type": "string",
+          "enum": [
+            "solid",
+            "custom"
+          ]
+        }
+      }
+    },
+    "flowPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "requirements"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowRequirement"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "flowRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flowId"
+      ],
+      "properties": {
+        "flowId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minSteps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requiredSteps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "requiredTransitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowTransition"
+          },
+          "uniqueItems": true
+        },
+        "terminalSteps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "flowTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

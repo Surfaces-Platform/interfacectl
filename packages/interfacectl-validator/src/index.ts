@@ -131,6 +131,276 @@ function validateIconPolicy(
   }
 }
 
+function validateFlowPolicy(
+  surface: ContractSurface,
+  descriptor: SurfaceDescriptor,
+  violations: DriftViolation[],
+): void {
+  const flowPolicy = surface.flows;
+  if (!flowPolicy || flowPolicy.policy === "off") {
+    return;
+  }
+
+  const policy = flowPolicy.policy;
+  const requirements = flowPolicy.requirements ?? [];
+  const descriptorFlows = descriptor.flows;
+  const defaultSource = descriptor.flowDescriptorPath;
+
+  if (!Array.isArray(descriptorFlows)) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "descriptor-flows-missing",
+      message: `Flow descriptor is missing for surface "${descriptor.surfaceId}" while flow policy is "${policy}".`,
+      details: {
+        policy,
+        source: defaultSource,
+        flowDescriptorPath: defaultSource,
+        requiredFlowIds: requirements.map((requirement) => requirement.flowId),
+      },
+    });
+    return;
+  }
+
+  const flowMap = new Map(
+    descriptorFlows
+      .map((flow) => [flow.flowId?.trim(), flow] as const)
+      .filter(([flowId]) => typeof flowId === "string" && flowId.length > 0),
+  );
+
+  for (const requirement of requirements) {
+    const requirementSource = defaultSource;
+    const flowId = requirement.flowId;
+    const descriptorFlow = flowMap.get(flowId);
+
+    if (!descriptorFlow) {
+      violations.push({
+        surfaceId: descriptor.surfaceId,
+        type: "flow-required-missing",
+        message: `Required flow "${flowId}" is missing for surface "${descriptor.surfaceId}".`,
+        details: {
+          flowId,
+          policy,
+          source: requirementSource,
+          flowDescriptorPath: defaultSource,
+        },
+      });
+      continue;
+    }
+
+    const flowSource = descriptorFlow.source ?? defaultSource;
+    const stepIds = new Set(
+      (descriptorFlow.steps ?? [])
+        .map((step) => step.id?.trim())
+        .filter((stepId): stepId is string => Boolean(stepId)),
+    );
+
+    if (
+      typeof requirement.minSteps === "number" &&
+      stepIds.size < requirement.minSteps
+    ) {
+      violations.push({
+        surfaceId: descriptor.surfaceId,
+        type: "flow-steps-min",
+        message: `Flow "${flowId}" has ${stepIds.size} step(s); minimum is ${requirement.minSteps}.`,
+        details: {
+          flowId,
+          minSteps: requirement.minSteps,
+          actualStepCount: stepIds.size,
+          stepIds: [...stepIds],
+          policy,
+          source: flowSource,
+        },
+      });
+    }
+
+    const requiredSteps = requirement.requiredSteps ?? [];
+    const missingRequiredSteps = requiredSteps.filter(
+      (stepId) => !stepIds.has(stepId),
+    );
+    if (missingRequiredSteps.length > 0) {
+      violations.push({
+        surfaceId: descriptor.surfaceId,
+        type: "flow-steps-required",
+        message: `Flow "${flowId}" is missing required step(s): ${missingRequiredSteps.join(", ")}.`,
+        details: {
+          flowId,
+          requiredSteps,
+          missingRequiredSteps,
+          policy,
+          source: flowSource,
+        },
+      });
+    }
+
+    const transitionList = (descriptorFlow.transitions ?? [])
+      .map((transition) => ({
+        from: transition.from?.trim(),
+        to: transition.to?.trim(),
+      }))
+      .filter(
+        (transition): transition is { from: string; to: string } =>
+          Boolean(transition.from && transition.to),
+      );
+    const transitionKeys = new Set(
+      transitionList.map((transition) => `${transition.from}->${transition.to}`),
+    );
+
+    const requiredTransitions = requirement.requiredTransitions ?? [];
+    const missingRequiredTransitions = requiredTransitions.filter(
+      (transition) =>
+        !transitionKeys.has(`${transition.from}->${transition.to}`),
+    );
+    if (missingRequiredTransitions.length > 0) {
+      violations.push({
+        surfaceId: descriptor.surfaceId,
+        type: "flow-transition-required",
+        message: `Flow "${flowId}" is missing required transition(s).`,
+        details: {
+          flowId,
+          requiredTransitions,
+          missingRequiredTransitions,
+          policy,
+          source: flowSource,
+        },
+      });
+    }
+
+    const terminalSteps = requirement.terminalSteps ?? [];
+    const invalidTerminalTransitions = transitionList.filter((transition) =>
+      terminalSteps.includes(transition.from),
+    );
+    if (invalidTerminalTransitions.length > 0) {
+      violations.push({
+        surfaceId: descriptor.surfaceId,
+        type: "flow-terminal-invalid",
+        message: `Flow "${flowId}" has outgoing transition(s) from terminal step(s).`,
+        details: {
+          flowId,
+          terminalSteps,
+          invalidTransitions: invalidTerminalTransitions,
+          policy,
+          source: flowSource,
+        },
+      });
+    }
+  }
+}
+
+function validateLandingPattern(
+  surface: ContractSurface,
+  descriptor: SurfaceDescriptor,
+  violations: DriftViolation[],
+): void {
+  const landingPattern = surface.layout.landingPattern;
+  if (!landingPattern || landingPattern.policy === "off") {
+    return;
+  }
+
+  const descriptorPattern = descriptor.layout.landingPattern;
+  if (!descriptorPattern) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-signal-missing",
+      message: `Landing pattern signals are missing for surface "${descriptor.surfaceId}".`,
+      details: {
+        policy: landingPattern.policy,
+      },
+    });
+    return;
+  }
+
+  const topLevelSections = new Set(descriptorPattern.topLevelSections);
+  const nestedSections = new Set(descriptorPattern.nestedSections);
+  const orderedSections = descriptorPattern.sectionOrder;
+
+  const requiredTopLevel = landingPattern.requireTopLevelSections ?? [];
+  const missingTopLevel = requiredTopLevel.filter(
+    (sectionId) => !topLevelSections.has(sectionId),
+  );
+  if (missingTopLevel.length > 0) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-top-level-missing",
+      message: `Landing sections must appear as top-level blocks for surface "${descriptor.surfaceId}": ${missingTopLevel.join(", ")}.`,
+      details: {
+        policy: landingPattern.policy,
+        expectedTopLevelSections: requiredTopLevel,
+        missingTopLevelSections: missingTopLevel,
+        source: descriptorPattern.source,
+      },
+    });
+  }
+
+  const disallowedNestedSections = requiredTopLevel.filter((sectionId) =>
+    nestedSections.has(sectionId),
+  );
+  if (disallowedNestedSections.length > 0) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-section-nested",
+      message: `Landing sections must not be nested inside other contract sections for surface "${descriptor.surfaceId}": ${disallowedNestedSections.join(", ")}.`,
+      details: {
+        policy: landingPattern.policy,
+        nestedSections: disallowedNestedSections,
+        source: descriptorPattern.source,
+      },
+    });
+  }
+
+  const expectedOrder = landingPattern.sectionOrder ?? [];
+  if (expectedOrder.length > 1) {
+    let lastIndex = -1;
+    const outOfOrderSections: string[] = [];
+
+    for (const sectionId of expectedOrder) {
+      const sectionIndex = orderedSections.indexOf(sectionId);
+      if (sectionIndex === -1) {
+        continue;
+      }
+      if (sectionIndex < lastIndex) {
+        outOfOrderSections.push(sectionId);
+      } else {
+        lastIndex = sectionIndex;
+      }
+    }
+
+    if (outOfOrderSections.length > 0) {
+      violations.push({
+        surfaceId: descriptor.surfaceId,
+        type: "landing-pattern-section-order",
+        message: `Landing section order does not match the shared pattern for surface "${descriptor.surfaceId}".`,
+        details: {
+          policy: landingPattern.policy,
+          expectedSectionOrder: expectedOrder,
+          foundSectionOrder: orderedSections,
+          outOfOrderSections,
+          source: descriptorPattern.source,
+        },
+      });
+    }
+  }
+
+  const expectedBackgroundMode = landingPattern.pageBackgroundMode;
+  if (
+    expectedBackgroundMode &&
+    descriptorPattern.pageBackgroundMode &&
+    descriptorPattern.pageBackgroundMode !== "unknown" &&
+    descriptorPattern.pageBackgroundMode !== expectedBackgroundMode
+  ) {
+    violations.push({
+      surfaceId: descriptor.surfaceId,
+      type: "landing-pattern-background-mode",
+      message: `Landing page background treatment for surface "${descriptor.surfaceId}" must be "${expectedBackgroundMode}".`,
+      details: {
+        policy: landingPattern.policy,
+        expectedBackgroundMode,
+        actualBackgroundMode: descriptorPattern.pageBackgroundMode,
+        source: descriptorPattern.source,
+      },
+    });
+  }
+}
+
 export function evaluateSurfaceCompliance(
   contract: InterfaceContract,
   descriptor: SurfaceDescriptor,
@@ -267,6 +537,8 @@ export function evaluateSurfaceCompliance(
 
   validateColorPolicy(contract, descriptor, violations);
   validateIconPolicy(surface, descriptor, violations);
+  validateFlowPolicy(surface, descriptor, violations);
+  validateLandingPattern(surface, descriptor, violations);
 
   const reportedWidth = descriptor.layout.maxContentWidth;
   if (reportedWidth === null || reportedWidth === undefined) {
@@ -666,6 +938,7 @@ export type {
   SurfaceMotionDescriptor,
   SurfaceLayoutDescriptor,
   PageFrameLayoutDescriptor,
+  LandingPatternDescriptor,
   SurfacePrimitiveDescriptor,
   SurfaceReport,
   DriftViolation,
@@ -682,6 +955,13 @@ export type {
   EnforcementPolicy,
   EnforcementMode,
   IconPolicy,
+  FlowPolicy,
+  FlowRequirement,
+  FlowTransitionRequirement,
+  LandingPatternPolicy,
+  SurfaceFlowDescriptor,
+  SurfaceFlowStepDescriptor,
+  SurfaceFlowTransitionDescriptor,
   AutofixRule,
   FixSummary,
   FixEntry,

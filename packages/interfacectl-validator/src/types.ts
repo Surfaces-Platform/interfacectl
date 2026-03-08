@@ -9,6 +9,44 @@ export interface PageFrameLayout {
   enforcement?: "strict" | "warn";
 }
 
+export type ChromePolicyTarget =
+  | "page-container"
+  | "top-level-section"
+  | "layout-container";
+
+export interface ChromePolicy {
+  policy: "off" | "warn" | "strict";
+  targets: ChromePolicyTarget[];
+  maxBorderRadiusPx: number;
+  allowOuterShadow: boolean;
+  allowInsetShadow: boolean;
+}
+
+export interface LandingPatternPolicy {
+  policy: "off" | "warn" | "strict";
+  requireTopLevelSections?: string[];
+  sectionOrder?: string[];
+  pageBackgroundMode?: "solid" | "custom";
+}
+
+export interface FlowTransitionRequirement {
+  from: string;
+  to: string;
+}
+
+export interface FlowRequirement {
+  flowId: string;
+  minSteps?: number;
+  requiredSteps?: string[];
+  requiredTransitions?: FlowTransitionRequirement[];
+  terminalSteps?: string[];
+}
+
+export interface FlowPolicy {
+  policy: "off" | "warn" | "strict";
+  requirements: FlowRequirement[];
+}
+
 export interface ContractSurface {
   id: string;
   displayName: string;
@@ -19,8 +57,11 @@ export interface ContractSurface {
     maxContentWidth: number;
     requiredContainers?: string[];
     pageFrame?: PageFrameLayout;
+    chromePolicy?: ChromePolicy;
+    landingPattern?: LandingPatternPolicy;
   };
   icons?: IconPolicy;
+  flows?: FlowPolicy;
   mustNotEmit?: string[];
   shellOwnedPrimitiveAllowSources?: string[];
 }
@@ -104,6 +145,22 @@ export interface SurfacePrimitiveDescriptor {
   sources?: string[];
 }
 
+export interface SurfaceFlowStepDescriptor {
+  id: string;
+}
+
+export interface SurfaceFlowTransitionDescriptor {
+  from: string;
+  to: string;
+}
+
+export interface SurfaceFlowDescriptor {
+  flowId: string;
+  steps: SurfaceFlowStepDescriptor[];
+  transitions: SurfaceFlowTransitionDescriptor[];
+  source?: string;
+}
+
 export interface PageFrameLayoutDescriptor {
   containerSelector: string;
   maxWidthPx?: number | null;
@@ -116,12 +173,21 @@ export interface PageFrameLayoutDescriptor {
   paddingHasClampCalc?: boolean;
 }
 
+export interface LandingPatternDescriptor {
+  sectionOrder: string[];
+  topLevelSections: string[];
+  nestedSections: string[];
+  pageBackgroundMode?: "solid" | "custom" | "unknown";
+  source?: string;
+}
+
 export interface SurfaceLayoutDescriptor {
   maxContentWidth?: number | null;
   containers?: string[];
   containerSources?: string[];
   source?: string;
   pageFrame?: PageFrameLayoutDescriptor;
+  landingPattern?: LandingPatternDescriptor;
 }
 
 export interface SurfaceDescriptor {
@@ -130,6 +196,8 @@ export interface SurfaceDescriptor {
   fonts: SurfaceFontDescriptor[];
   colors: SurfaceColorDescriptor[];
   icons?: SurfaceIconDescriptor[];
+  flows?: SurfaceFlowDescriptor[];
+  flowDescriptorPath?: string;
   layout: SurfaceLayoutDescriptor;
   motion: SurfaceMotionDescriptor[];
   primitives?: SurfacePrimitiveDescriptor[];
@@ -152,8 +220,19 @@ export type DriftViolationType =
   | "layout-pageframe-padding-mismatch"
   | "layout-pageframe-non-deterministic-value"
   | "layout-pageframe-unextractable-value"
+  | "landing-pattern-signal-missing"
+  | "landing-pattern-top-level-missing"
+  | "landing-pattern-section-order"
+  | "landing-pattern-section-nested"
+  | "landing-pattern-background-mode"
   | "motion-duration-not-allowed"
   | "motion-timing-not-allowed"
+  | "descriptor-flows-missing"
+  | "flow-required-missing"
+  | "flow-steps-min"
+  | "flow-steps-required"
+  | "flow-transition-required"
+  | "flow-terminal-invalid"
   | "descriptor-missing"
   | "descriptor-unused"
   | "shell-owned-primitive-emitted";

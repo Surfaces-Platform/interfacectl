@@ -5,6 +5,7 @@ const SECTION_ATTRIBUTE_REGEX = /data-(?:contract-)?section\s*=\s*(?:"([^"]+)"|'
 const CONTAINER_ATTRIBUTE_REGEX = /data-contract-container\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const CONTRACT_CONTAINER_TOKEN = "contract-container";
 const PAGE_CONTAINER_ATTRIBUTE_REGEX = /data-contract\s*=\s*(?:"page-container"|'page-container'|{`page-container`}|{\s*["'`]page-container["'`]\s*})/g;
+const MIN_SCREEN_CLASS_REGEX = /className\s*=\s*(?:"[^"]*\bmin-h-screen\b[^"]*\bw-full\b[^"]*"|'[^']*\bmin-h-screen\b[^']*\bw-full\b[^']*')/;
 // Inline style extraction
 const INLINE_STYLE_REGEX = /style\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const INLINE_MAX_WIDTH_REGEX = /max-width\s*:\s*([0-9.]+)\s*px/gi;
@@ -293,13 +294,114 @@ async function extractLayout(cssFilePaths, sectionFiles, workspaceRoot, fileCont
     if (surface?.layout.pageFrame) {
         pageFrame = await extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache, surface.layout.pageFrame);
     }
+    let landingPattern;
+    if (surface?.layout.landingPattern) {
+        landingPattern = await extractLandingPattern(sectionFiles, workspaceRoot, fileContentCache);
+    }
     return {
         maxContentWidth: maxWidth,
         containers: [...containers].sort(),
         containerSources: [...containerSources].sort(),
         source: layoutSource,
         pageFrame,
+        landingPattern,
     };
+}
+async function extractLandingPattern(sectionFiles, workspaceRoot, fileContentCache) {
+    const landingPagePath = selectLandingPageFile(sectionFiles);
+    if (!landingPagePath) {
+        return undefined;
+    }
+    const content = await readFileCached(landingPagePath, fileContentCache);
+    const sectionOrder = [];
+    const topLevelSections = [];
+    const nestedSections = [];
+    const sectionStack = [];
+    const tagRegex = /<\/?([A-Za-z][\w.-]*)\b[^>]*>/g;
+    let match;
+    while ((match = tagRegex.exec(content)) !== null) {
+        const tag = match[0];
+        const tagName = match[1];
+        const isClosing = tag.startsWith("</");
+        const isSelfClosing = /\/>\s*$/.test(tag);
+        if (isClosing) {
+            for (let index = sectionStack.length - 1; index >= 0; index -= 1) {
+                if (sectionStack[index]?.tagName === tagName) {
+                    sectionStack.splice(index, 1);
+                    break;
+                }
+            }
+            continue;
+        }
+        const sectionId = extractAttributeValue(tag, SECTION_ATTRIBUTE_REGEX);
+        if (!sectionId) {
+            continue;
+        }
+        sectionOrder.push(sectionId);
+        if (sectionStack.length === 0) {
+            topLevelSections.push(sectionId);
+        }
+        else if (!nestedSections.includes(sectionId)) {
+            nestedSections.push(sectionId);
+        }
+        if (!isSelfClosing) {
+            sectionStack.push({ tagName, id: sectionId });
+        }
+    }
+    return {
+        sectionOrder,
+        topLevelSections,
+        nestedSections,
+        pageBackgroundMode: extractPageBackgroundMode(content),
+        source: path.relative(workspaceRoot, landingPagePath),
+    };
+}
+function selectLandingPageFile(filePaths) {
+    const candidates = filePaths.filter((filePath) => filePath.endsWith(`${path.sep}page.tsx`));
+    if (candidates.length === 0) {
+        return undefined;
+    }
+    const ranked = [...candidates].sort((left, right) => {
+        const leftRank = getLandingPageRank(left);
+        const rightRank = getLandingPageRank(right);
+        if (leftRank !== rightRank) {
+            return leftRank - rightRank;
+        }
+        return left.localeCompare(right);
+    });
+    return ranked[0];
+}
+function getLandingPageRank(filePath) {
+    if (filePath.includes(`${path.sep}app${path.sep}page.tsx`))
+        return 0;
+    if (filePath.includes(`${path.sep}app${path.sep}(overview)${path.sep}page.tsx`))
+        return 1;
+    if (filePath.includes(`${path.sep}app${path.sep}(marketing)${path.sep}page.tsx`))
+        return 2;
+    return 10;
+}
+function extractAttributeValue(tag, regex) {
+    regex.lastIndex = 0;
+    const match = regex.exec(tag);
+    const value = match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4] ?? "";
+    return value || undefined;
+}
+function extractPageBackgroundMode(content) {
+    const tagRegex = /<[A-Za-z][\w.-]*\b[^>]*>/g;
+    let match;
+    while ((match = tagRegex.exec(content)) !== null) {
+        const tag = match[0];
+        if (!MIN_SCREEN_CLASS_REGEX.test(tag)) {
+            continue;
+        }
+        if (/\bbackground\s*:/.test(tag)) {
+            return "custom";
+        }
+        if (/\bbackgroundColor\s*:/.test(tag)) {
+            return "solid";
+        }
+    }
+    return "unknown";
 }
 async function extractPageFrameLayout(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache, pageFrameContract) {
     if (!pageFrameContract) {

@@ -397,3 +397,106 @@ test("collectSurfaceDescriptors captures deterministic icon sources from surface
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test("collectSurfaceDescriptors captures landing pattern topology and background mode", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-landing-pattern-"));
+  const surfaceId = "demo-landing";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app", "(overview)"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "layout.tsx"),
+      `
+        export default function RootLayout({ children }) {
+          return <html><body>{children}</body></html>;
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "(overview)", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <div className="min-h-screen w-full" style={{ background: "linear-gradient(#fff, #eee)" }}>
+              <section data-contract-section="landing.hero">
+                <h1>Hero</h1>
+                <section data-contract-section="landing.guidance">
+                  <p>Guidance</p>
+                </section>
+              </section>
+              <section data-contract-section="landing.actions">
+                <button>Action</button>
+              </section>
+            </div>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "test.contract",
+      version: "1.0.0",
+      sections: [
+        { id: "landing.hero", intent: "hero", description: "Hero section" },
+        { id: "landing.guidance", intent: "guidance", description: "Guidance section" },
+        { id: "landing.actions", intent: "actions", description: "Action section" },
+      ],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Demo Landing",
+          type: "web",
+          requiredSections: ["landing.hero", "landing.guidance", "landing.actions"],
+          allowedFonts: ["Inter"],
+          layout: {
+            maxContentWidth: 1120,
+            landingPattern: {
+              policy: "strict",
+              requireTopLevelSections: ["landing.hero", "landing.guidance", "landing.actions"],
+              sectionOrder: ["landing.hero", "landing.guidance", "landing.actions"],
+              pageBackgroundMode: "solid",
+            },
+          },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor?.layout.landingPattern, "landingPattern should be extracted");
+    assert.deepEqual(descriptor.layout.landingPattern.sectionOrder, [
+      "landing.hero",
+      "landing.guidance",
+      "landing.actions",
+    ]);
+    assert.deepEqual(descriptor.layout.landingPattern.topLevelSections, [
+      "landing.hero",
+      "landing.actions",
+    ]);
+    assert.deepEqual(descriptor.layout.landingPattern.nestedSections, ["landing.guidance"]);
+    assert.equal(descriptor.layout.landingPattern.pageBackgroundMode, "custom");
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});

@@ -410,6 +410,214 @@ function evaluateIconPolicy(contract, descriptors) {
   return { findings, evaluated };
 }
 
+function evaluateFlowPolicy(contract, descriptors) {
+  const findings = [];
+  let evaluated = false;
+  const surfaces = Array.isArray(contract?.surfaces) ? contract.surfaces : [];
+
+  for (const desc of descriptors) {
+    const surfaceId = desc?.surfaceId;
+    if (!surfaceId) continue;
+
+    const surface = surfaces.find((entry) => entry.id === surfaceId);
+    const flowPolicy = surface?.flows;
+    if (!flowPolicy || flowPolicy.policy === "off") continue;
+    if (flowPolicy.policy !== "warn" && flowPolicy.policy !== "strict") continue;
+    evaluated = true;
+
+    const requirements = Array.isArray(flowPolicy.requirements)
+      ? flowPolicy.requirements
+      : [];
+    const flowDescriptorPath =
+      typeof desc?.flowDescriptorPath === "string" ? desc.flowDescriptorPath : "";
+    if (!Array.isArray(desc?.flows)) {
+      findings.push(
+        makeFinding({
+          code: "descriptor.flows.missing",
+          severity: flowPolicy.policy === "strict" ? "error" : "warning",
+          policy: flowPolicy.policy,
+          message: `Descriptor for surface "${surfaceId}" is missing flows[] while flow policy is "${flowPolicy.policy}".`,
+          source: flowDescriptorPath,
+          evidence: {
+            source: "generationGuard",
+            surfaceId,
+            expected: "flows[]",
+            flowDescriptorPath,
+          },
+        }),
+      );
+      continue;
+    }
+
+    const descriptorFlows = new Map(
+      desc.flows
+        .map((flow) => [
+          typeof flow?.flowId === "string" ? flow.flowId.trim() : "",
+          flow,
+        ])
+        .filter(([flowId]) => flowId.length > 0),
+    );
+
+    for (const requirement of requirements) {
+      const flowId =
+        typeof requirement?.flowId === "string" ? requirement.flowId.trim() : "";
+      if (!flowId) continue;
+
+      const flow = descriptorFlows.get(flowId);
+      if (!flow) {
+        findings.push(
+          makeFinding({
+            code: "flow.required.missing",
+            severity: flowPolicy.policy === "strict" ? "error" : "warning",
+            policy: flowPolicy.policy,
+            message: `Flow "${flowId}" is required but missing for surface "${surfaceId}".`,
+            source: flowDescriptorPath,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              flowId,
+              flowDescriptorPath,
+            },
+          }),
+        );
+        continue;
+      }
+
+      const flowSource =
+        typeof flow?.source === "string" && flow.source.trim().length > 0
+          ? flow.source
+          : flowDescriptorPath;
+      const stepIds = new Set(
+        (Array.isArray(flow?.steps) ? flow.steps : [])
+          .map((step) =>
+            typeof step?.id === "string" ? step.id.trim() : "",
+          )
+          .filter(Boolean),
+      );
+      const transitions = (Array.isArray(flow?.transitions) ? flow.transitions : [])
+        .map((transition) => ({
+          from: typeof transition?.from === "string" ? transition.from.trim() : "",
+          to: typeof transition?.to === "string" ? transition.to.trim() : "",
+        }))
+        .filter((transition) => transition.from && transition.to);
+      const transitionKeys = new Set(
+        transitions.map((transition) => `${transition.from}->${transition.to}`),
+      );
+
+      const minSteps =
+        typeof requirement?.minSteps === "number"
+          ? Math.trunc(requirement.minSteps)
+          : undefined;
+      if (typeof minSteps === "number" && stepIds.size < minSteps) {
+        findings.push(
+          makeFinding({
+            code: "flow.steps.min",
+            severity: flowPolicy.policy === "strict" ? "error" : "warning",
+            policy: flowPolicy.policy,
+            message: `Flow "${flowId}" has ${stepIds.size} step(s); minimum is ${minSteps}.`,
+            source: flowSource,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              flowId,
+              minSteps,
+              actualStepCount: stepIds.size,
+              stepIds: [...stepIds],
+            },
+          }),
+        );
+      }
+
+      const requiredSteps = Array.isArray(requirement?.requiredSteps)
+        ? requirement.requiredSteps
+            .map((step) => String(step).trim())
+            .filter(Boolean)
+        : [];
+      const missingRequiredSteps = requiredSteps.filter(
+        (step) => !stepIds.has(step),
+      );
+      if (missingRequiredSteps.length > 0) {
+        findings.push(
+          makeFinding({
+            code: "flow.steps.required",
+            severity: flowPolicy.policy === "strict" ? "error" : "warning",
+            policy: flowPolicy.policy,
+            message: `Flow "${flowId}" is missing required step(s): ${missingRequiredSteps.join(", ")}.`,
+            source: flowSource,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              flowId,
+              requiredSteps,
+              missingRequiredSteps,
+            },
+          }),
+        );
+      }
+
+      const requiredTransitions = Array.isArray(requirement?.requiredTransitions)
+        ? requirement.requiredTransitions
+            .map((transition) => ({
+              from: String(transition?.from ?? "").trim(),
+              to: String(transition?.to ?? "").trim(),
+            }))
+            .filter((transition) => transition.from && transition.to)
+        : [];
+      const missingTransitions = requiredTransitions.filter(
+        (transition) =>
+          !transitionKeys.has(`${transition.from}->${transition.to}`),
+      );
+      if (missingTransitions.length > 0) {
+        findings.push(
+          makeFinding({
+            code: "flow.transition.required",
+            severity: flowPolicy.policy === "strict" ? "error" : "warning",
+            policy: flowPolicy.policy,
+            message: `Flow "${flowId}" is missing required transition(s).`,
+            source: flowSource,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              flowId,
+              requiredTransitions,
+              missingRequiredTransitions: missingTransitions,
+            },
+          }),
+        );
+      }
+
+      const terminalSteps = Array.isArray(requirement?.terminalSteps)
+        ? requirement.terminalSteps
+            .map((step) => String(step).trim())
+            .filter(Boolean)
+        : [];
+      const invalidTransitions = transitions.filter((transition) =>
+        terminalSteps.includes(transition.from),
+      );
+      if (invalidTransitions.length > 0) {
+        findings.push(
+          makeFinding({
+            code: "flow.terminal.invalid",
+            severity: flowPolicy.policy === "strict" ? "error" : "warning",
+            policy: flowPolicy.policy,
+            message: `Flow "${flowId}" has outgoing transition(s) from terminal step(s).`,
+            source: flowSource,
+            evidence: {
+              source: "generationGuard",
+              surfaceId,
+              flowId,
+              terminalSteps,
+              invalidTransitions,
+            },
+          }),
+        );
+      }
+    }
+  }
+
+  return { findings, evaluated };
+}
+
 function summarizeFindings(findings) {
   const blocking = findings.filter((finding) => finding.severity === "error").length;
   const warnings = findings.filter((finding) => finding.severity === "warning").length;
@@ -484,6 +692,7 @@ function failJson(msg) {
       shellBoundaryEvaluated: false,
       colorPolicyEvaluated: false,
       iconPolicyEvaluated: false,
+      flowPolicyEvaluated: false,
     },
     error: {
       code: "input.invalid",
@@ -516,6 +725,7 @@ function main() {
       ? { findings: [], evaluated: false }
       : evaluateColorPolicyLegacy(contract, descriptors);
     const iconPolicy = evaluateIconPolicy(contract, descriptors);
+    const flowPolicy = evaluateFlowPolicy(contract, descriptors);
 
     if (format === "text") {
       const legacyFindings = [...shellFindings, ...colorLegacy.findings];
@@ -530,6 +740,7 @@ function main() {
       ...colorCanonical.findings,
       ...colorLegacy.findings,
       ...iconPolicy.findings,
+      ...flowPolicy.findings,
     ];
     const summary = summarizeFindings(findings);
     outputJson({
@@ -544,6 +755,7 @@ function main() {
         shellBoundaryEvaluated: true,
         colorPolicyEvaluated: colorCanonical.evaluated || colorLegacy.evaluated,
         iconPolicyEvaluated: iconPolicy.evaluated,
+        flowPolicyEvaluated: flowPolicy.evaluated,
       },
     });
     process.exit(summary.blocking > 0 ? 2 : 0);

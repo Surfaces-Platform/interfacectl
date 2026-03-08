@@ -207,6 +207,82 @@ test("compile: includes surface icons policy when present in contract", async ()
   }
 });
 
+test("compile: includes surface flow policy when present in contract", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-flows-"));
+  const contractWithFlowsPath = path.join(outDir, "contract-with-flows.json");
+  try {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      contractWithFlowsPath,
+      JSON.stringify(
+        {
+          contractId: "demo-ui-flows",
+          version: "1.0.0",
+          surfaces: [
+            {
+              id: "demo-surface",
+              displayName: "Demo Surface",
+              type: "web",
+              requiredSections: ["main.hero"],
+              allowedFonts: ["Inter"],
+              layout: { maxContentWidth: 960 },
+              flows: {
+                policy: "warn",
+                requirements: [
+                  {
+                    flowId: "checkout",
+                    minSteps: 2,
+                    requiredSteps: ["start", "review"],
+                    requiredTransitions: [{ from: "start", to: "review" }],
+                    terminalSteps: ["review"],
+                  },
+                ],
+              },
+            },
+          ],
+          sections: [
+            { id: "main.hero", intent: "Hero", description: "Main hero" },
+          ],
+          constraints: {
+            motion: {
+              allowedDurationsMs: [120],
+              allowedTimingFunctions: ["linear"],
+            },
+          },
+          color: {
+            policy: "off",
+            allowedValues: [],
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runCompile(contractWithFlowsPath, outDir);
+    assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
+
+    const generatedSurface = await readJson(
+      path.join(outDir, "surfaces", "demo-surface.json"),
+    );
+    assert.deepEqual(generatedSurface.flows, {
+      policy: "warn",
+      requirements: [
+        {
+          flowId: "checkout",
+          minSteps: 2,
+          requiredSteps: ["start", "review"],
+          requiredTransitions: [{ from: "start", to: "review" }],
+          terminalSteps: ["review"],
+        },
+      ],
+    });
+  } finally {
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
 test("compile: invalid contract fails with non-zero exit", async () => {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-fail-"));
   const invalidContract = path.join(outDir, "invalid.json");
