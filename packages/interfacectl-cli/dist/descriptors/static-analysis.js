@@ -5,9 +5,13 @@ const SECTION_ATTRIBUTE_REGEX = /data-(?:contract-)?section\s*=\s*(?:"([^"]+)"|'
 const CONTAINER_ATTRIBUTE_REGEX = /data-contract-container\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const CONTRACT_CONTAINER_TOKEN = "contract-container";
 const PAGE_CONTAINER_ATTRIBUTE_REGEX = /data-contract\s*=\s*(?:"page-container"|'page-container'|{`page-container`}|{\s*["'`]page-container["'`]\s*})/g;
+const CHROME_IGNORE_ATTRIBUTE_REGEX = /data-contract-chrome-ignore\s*=\s*(?:"true"|'true'|{true}|{\s*true\s*})/;
 const MIN_SCREEN_CLASS_REGEX = /className\s*=\s*(?:"[^"]*\bmin-h-screen\b[^"]*\bw-full\b[^"]*"|'[^']*\bmin-h-screen\b[^']*\bw-full\b[^']*')/;
 // Inline style extraction
 const INLINE_STYLE_REGEX = /style\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const STYLE_OBJECT_ATTRIBUTE_REGEX = /\bstyle\s*=\s*{{([\s\S]*?)}}/;
+const STYLE_STRING_ATTRIBUTE_REGEX = /\bstyle\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const CLASSNAME_ATTRIBUTE_REGEX = /\bclass(?:Name)?\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
 const INLINE_MAX_WIDTH_REGEX = /max-width\s*:\s*([0-9.]+)\s*px/gi;
 const INLINE_MIN_WIDTH_REGEX = /min-width\s*:\s*([0-9.]+)\s*px/gi;
 const INLINE_PADDING_LEFT_REGEX = /padding-left\s*:\s*([0-9.]+)\s*px/gi;
@@ -33,6 +37,9 @@ const CALC_REGEX = /calc\s*\(/i;
 const PAGE_FRAME_MAX_WIDTH_VAR_REGEX = /--contract-page-frame-max-width\s*:\s*([0-9.]+)\s*px/i;
 const PAGE_FRAME_MIN_WIDTH_VAR_REGEX = /--contract-page-frame-min-width\s*:\s*([0-9.]+)\s*px/i;
 const PAGE_FRAME_PADDING_VAR_REGEX = /--contract-page-frame-padding-x\s*:\s*([0-9.]+)\s*px/i;
+const TAG_REGEX = /<\/?[A-Za-z][\w.:-]*\b[^>]*>/g;
+const CSS_RULE_REGEX = /([^{}]+)\{([^{}]+)\}/g;
+const CSS_CLASS_SELECTOR_REGEX = /\.([_a-zA-Z]+[\w-]*)/g;
 const COMMON_GLOBBY_IGNORES = [
     "**/node_modules/**",
     "**/.next/**",
@@ -95,6 +102,17 @@ const ICON_LIBRARY_PATTERNS = [
     /^remixicon-react$/,
     /^@fortawesome\//,
 ];
+const RADIUS_TOKEN_MAP = new Map([
+    ["rounded-none", 0],
+    ["rounded-sm", 2],
+    ["rounded", 4],
+    ["rounded-md", 6],
+    ["rounded-lg", 8],
+    ["rounded-xl", 12],
+    ["rounded-2xl", 16],
+    ["rounded-3xl", 24],
+    ["rounded-full", Number.POSITIVE_INFINITY],
+]);
 export async function collectSurfaceDescriptors(options) {
     const structuralDescriptors = [];
     const warnings = [];
@@ -152,7 +170,9 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
         gitignore: true,
         ignore: COMMON_GLOBBY_IGNORES,
     });
-    const layout = await extractLayout(layoutCssFiles, sectionFiles, workspaceRoot, fileContentCache, surface);
+    const layoutResult = await extractLayout(layoutCssFiles, sectionFiles, workspaceRoot, fileContentCache, surface);
+    warnings.push(...layoutResult.warnings);
+    const layout = layoutResult.layout;
     const fonts = await extractFonts(surfaceRoot, sectionFiles, workspaceRoot, fileContentCache);
     if (fonts.length === 0) {
         const globalsPath = path.join(surfaceRoot, "app", "globals.css");
@@ -264,6 +284,7 @@ async function extractColors(surfaceRoot, cssFilePaths, sectionFiles, workspaceR
 async function extractLayout(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache, surface) {
     let maxWidth = null;
     let layoutSource;
+    const warnings = [];
     for (const cssPath of cssFilePaths) {
         const cssContent = await readFileCached(cssPath, fileContentCache);
         const match = cssContent.match(MAX_WIDTH_VAR_REGEX);
@@ -298,14 +319,472 @@ async function extractLayout(cssFilePaths, sectionFiles, workspaceRoot, fileCont
     if (surface?.layout.landingPattern) {
         landingPattern = await extractLandingPattern(sectionFiles, workspaceRoot, fileContentCache);
     }
+    let chrome;
+    if (surface?.type === "web") {
+        const chromeResult = await extractChromeLayout(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache, surface.id);
+        chrome = chromeResult.chrome;
+        warnings.push(...chromeResult.warnings);
+    }
     return {
-        maxContentWidth: maxWidth,
-        containers: [...containers].sort(),
-        containerSources: [...containerSources].sort(),
-        source: layoutSource,
-        pageFrame,
-        landingPattern,
+        layout: {
+            maxContentWidth: maxWidth,
+            containers: [...containers].sort(),
+            containerSources: [...containerSources].sort(),
+            source: layoutSource,
+            pageFrame,
+            chrome,
+            landingPattern,
+        },
+        warnings,
     };
+}
+async function extractChromeLayout(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache, surfaceId) {
+    const wrappers = [];
+    for (const filePath of sectionFiles) {
+        const content = await readFileCached(filePath, fileContentCache);
+        wrappers.push(...collectChromeTargetWrappers(content, path.relative(workspaceRoot, filePath)));
+    }
+    if (wrappers.length === 0) {
+        return {
+            chrome: undefined,
+            warnings: [],
+        };
+    }
+    const cssRules = [];
+    for (const cssPath of cssFilePaths) {
+        const cssContent = await readFileCached(cssPath, fileContentCache);
+        cssRules.push(...parseChromeCssRules(cssContent, path.relative(workspaceRoot, cssPath)));
+    }
+    const targets = new Set();
+    const shadowKinds = new Set();
+    const sources = new Set();
+    let maxBorderRadiusPx = null;
+    let ambiguousRadius = false;
+    let ambiguousShadow = false;
+    for (const wrapper of wrappers) {
+        targets.add(wrapper.targetType);
+        sources.add(wrapper.source);
+        const inlineResult = parseChromeInlineSignals(wrapper.styleText, wrapper.source);
+        const classResult = parseChromeClassSignals(wrapper.classNames, wrapper.source);
+        ambiguousRadius = ambiguousRadius || inlineResult.ambiguousRadius || classResult.ambiguousRadius;
+        ambiguousShadow = ambiguousShadow || inlineResult.ambiguousShadow || classResult.ambiguousShadow;
+        const radiusSignals = [
+            ...inlineResult.radiusSignals,
+            ...classResult.radiusSignals,
+        ];
+        const shadowSignals = [
+            ...inlineResult.shadowSignals,
+            ...classResult.shadowSignals,
+        ];
+        for (const rule of cssRules) {
+            if (!rule.selectors.some((selector) => selectorMatchesChromeWrapper(selector, wrapper))) {
+                continue;
+            }
+            const cssResult = parseChromeCssSignals(rule);
+            ambiguousRadius = ambiguousRadius || cssResult.ambiguousRadius;
+            ambiguousShadow = ambiguousShadow || cssResult.ambiguousShadow;
+            radiusSignals.push(...cssResult.radiusSignals);
+            shadowSignals.push(...cssResult.shadowSignals);
+        }
+        for (const signal of radiusSignals) {
+            sources.add(signal.source);
+            if (maxBorderRadiusPx === null || signal.value > maxBorderRadiusPx) {
+                maxBorderRadiusPx = signal.value;
+            }
+        }
+        for (const signal of shadowSignals) {
+            sources.add(signal.source);
+            shadowKinds.add(signal.value);
+        }
+    }
+    const warnings = [];
+    if (ambiguousRadius) {
+        warnings.push({
+            surfaceId,
+            code: "chrome.radius-undetermined",
+            message: `Chrome border radius could not be deterministically extracted for one or more portable chrome markers on surface "${surfaceId}".`,
+        });
+    }
+    if (ambiguousShadow) {
+        warnings.push({
+            surfaceId,
+            code: "chrome.shadow-undetermined",
+            message: `Chrome shadow treatment could not be deterministically extracted for one or more portable chrome markers on surface "${surfaceId}".`,
+        });
+    }
+    return {
+        chrome: {
+            targets: [...targets].sort(),
+            maxBorderRadiusPx,
+            shadowKinds: [...shadowKinds].sort(),
+            source: [...sources].sort(),
+            hasAmbiguousSignals: ambiguousRadius || ambiguousShadow || undefined,
+        },
+        warnings,
+    };
+}
+function collectChromeTargetWrappers(content, source) {
+    const wrappers = [];
+    const sectionStack = [];
+    let match;
+    TAG_REGEX.lastIndex = 0;
+    while ((match = TAG_REGEX.exec(content)) !== null) {
+        const tag = match[0];
+        const tagName = extractTagName(tag);
+        if (!tagName) {
+            continue;
+        }
+        if (tag.startsWith("</")) {
+            for (let index = sectionStack.length - 1; index >= 0; index -= 1) {
+                if (sectionStack[index] === tagName) {
+                    sectionStack.splice(index, 1);
+                    break;
+                }
+            }
+            continue;
+        }
+        const sectionId = extractAttributeValue(tag, SECTION_ATTRIBUTE_REGEX);
+        const containerMarkerValue = extractAttributeValue(tag, CONTAINER_ATTRIBUTE_REGEX);
+        const classNames = extractClassNames(tag);
+        const styleText = extractTagStyleText(tag);
+        const isIgnored = hasChromeIgnoreAttribute(tag);
+        const isSelfClosing = /\/>\s*$/.test(tag);
+        const hasContractContainerClass = classNames.includes(CONTRACT_CONTAINER_TOKEN);
+        const isPageContainer = hasPageContainerAttribute(tag);
+        if (!isIgnored && isPageContainer) {
+            wrappers.push({
+                targetType: "page-container",
+                source,
+                classNames,
+                styleText,
+            });
+        }
+        if (!isIgnored && sectionId && sectionStack.length === 0) {
+            wrappers.push({
+                targetType: "top-level-section",
+                sectionId,
+                source,
+                classNames,
+                styleText,
+            });
+        }
+        if (!isIgnored && (hasContractContainerClass || containerMarkerValue)) {
+            wrappers.push({
+                targetType: "layout-container",
+                containerMarkerValue,
+                hasContractContainerClass,
+                source,
+                classNames,
+                styleText,
+            });
+        }
+        if (sectionId && !isSelfClosing) {
+            sectionStack.push(tagName);
+        }
+    }
+    return wrappers;
+}
+function extractTagName(tag) {
+    const match = tag.match(/^<\/?([A-Za-z][\w.:-]*)\b/);
+    return match?.[1];
+}
+function hasChromeIgnoreAttribute(tag) {
+    CHROME_IGNORE_ATTRIBUTE_REGEX.lastIndex = 0;
+    return CHROME_IGNORE_ATTRIBUTE_REGEX.test(tag);
+}
+function hasPageContainerAttribute(tag) {
+    PAGE_CONTAINER_ATTRIBUTE_REGEX.lastIndex = 0;
+    return PAGE_CONTAINER_ATTRIBUTE_REGEX.test(tag);
+}
+function extractClassNames(tag) {
+    const match = CLASSNAME_ATTRIBUTE_REGEX.exec(tag);
+    CLASSNAME_ATTRIBUTE_REGEX.lastIndex = 0;
+    const raw = match?.[1] ??
+        match?.[2] ??
+        match?.[3] ??
+        match?.[4] ??
+        "";
+    if (!raw) {
+        return [];
+    }
+    return raw
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+}
+function extractTagStyleText(tag) {
+    const objectMatch = STYLE_OBJECT_ATTRIBUTE_REGEX.exec(tag);
+    STYLE_OBJECT_ATTRIBUTE_REGEX.lastIndex = 0;
+    if (objectMatch?.[1]) {
+        return {
+            kind: "object",
+            value: objectMatch[1],
+        };
+    }
+    const stringMatch = STYLE_STRING_ATTRIBUTE_REGEX.exec(tag);
+    STYLE_STRING_ATTRIBUTE_REGEX.lastIndex = 0;
+    const raw = stringMatch?.[1] ??
+        stringMatch?.[2] ??
+        stringMatch?.[3] ??
+        stringMatch?.[4] ??
+        "";
+    if (!raw) {
+        return undefined;
+    }
+    return {
+        kind: "string",
+        value: raw,
+    };
+}
+function parseChromeInlineSignals(styleText, source) {
+    const radiusSignals = [];
+    const shadowSignals = [];
+    let ambiguousRadius = false;
+    let ambiguousShadow = false;
+    if (!styleText) {
+        return { radiusSignals, shadowSignals, ambiguousRadius, ambiguousShadow };
+    }
+    const body = styleText.value;
+    if (styleText.kind === "object") {
+        const radiusMatch = body.match(/\bborderRadius\s*:\s*([^,}]+)/);
+        if (radiusMatch?.[1]) {
+            const value = parseChromePxValue(radiusMatch[1]);
+            if (value === undefined) {
+                ambiguousRadius = true;
+            }
+            else {
+                radiusSignals.push({ type: "radius", source, value });
+            }
+        }
+        const shadowMatch = body.match(/\bboxShadow\s*:\s*([^,}]+(?:,(?!\s*[a-zA-Z0-9_]+\s*:)[^,}]+)*)/);
+        if (shadowMatch?.[1]) {
+            const value = classifyDeterministicShadow(shadowMatch[1]);
+            if (value === undefined) {
+                ambiguousShadow = true;
+            }
+            else {
+                shadowSignals.push({ type: "shadow", source, value });
+            }
+        }
+        return { radiusSignals, shadowSignals, ambiguousRadius, ambiguousShadow };
+    }
+    const radiusDecl = body.match(/\bborder-radius\s*:\s*([^;]+)/i);
+    if (radiusDecl?.[1]) {
+        const value = parseChromePxValue(radiusDecl[1]);
+        if (value === undefined) {
+            ambiguousRadius = true;
+        }
+        else {
+            radiusSignals.push({ type: "radius", source, value });
+        }
+    }
+    const shadowDecl = body.match(/\bbox-shadow\s*:\s*([^;]+)/i);
+    if (shadowDecl?.[1]) {
+        const value = classifyDeterministicShadow(shadowDecl[1]);
+        if (value === undefined) {
+            ambiguousShadow = true;
+        }
+        else {
+            shadowSignals.push({ type: "shadow", source, value });
+        }
+    }
+    return { radiusSignals, shadowSignals, ambiguousRadius, ambiguousShadow };
+}
+function parseChromeClassSignals(classNames, source) {
+    const radiusSignals = [];
+    const shadowSignals = [];
+    let ambiguousRadius = false;
+    let ambiguousShadow = false;
+    for (const className of classNames) {
+        if (RADIUS_TOKEN_MAP.has(className)) {
+            const value = RADIUS_TOKEN_MAP.get(className);
+            if (value !== undefined && Number.isFinite(value)) {
+                radiusSignals.push({ type: "radius", source, value });
+            }
+            else {
+                ambiguousRadius = true;
+            }
+            continue;
+        }
+        const arbitraryRadiusMatch = className.match(/^rounded(?:-[trblsexy]{1,2})?-\[(.+)\]$/);
+        if (arbitraryRadiusMatch?.[1]) {
+            const value = parseChromePxValue(arbitraryRadiusMatch[1]);
+            if (value === undefined) {
+                ambiguousRadius = true;
+            }
+            else {
+                radiusSignals.push({ type: "radius", source, value });
+            }
+            continue;
+        }
+        if (className === "shadow-none") {
+            shadowSignals.push({ type: "shadow", source, value: "none" });
+            continue;
+        }
+        if (className === "shadow-inner") {
+            shadowSignals.push({ type: "shadow", source, value: "inset" });
+            continue;
+        }
+        if (className === "shadow" ||
+            /^shadow-(xs|sm|md|lg|xl|2xl)$/.test(className) ||
+            /^drop-shadow(?:-.+)?$/.test(className)) {
+            shadowSignals.push({ type: "shadow", source, value: "outer" });
+            continue;
+        }
+        if (/^shadow-\[.+\]$/.test(className) || /^drop-shadow-\[.+\]$/.test(className)) {
+            ambiguousShadow = true;
+        }
+    }
+    return { radiusSignals, shadowSignals, ambiguousRadius, ambiguousShadow };
+}
+function parseChromeCssRules(content, source) {
+    const rules = [];
+    let match;
+    CSS_RULE_REGEX.lastIndex = 0;
+    while ((match = CSS_RULE_REGEX.exec(content)) !== null) {
+        const selectorText = match[1]?.trim();
+        const declarationText = match[2]?.trim();
+        if (!selectorText || !declarationText) {
+            continue;
+        }
+        const selectors = selectorText
+            .split(",")
+            .map((selector) => selector.trim())
+            .filter(Boolean);
+        if (selectors.length === 0) {
+            continue;
+        }
+        rules.push({
+            selectors,
+            declarationText,
+            source,
+        });
+    }
+    return rules;
+}
+function selectorMatchesChromeWrapper(selector, wrapper) {
+    const classMatches = [...selector.matchAll(CSS_CLASS_SELECTOR_REGEX)].map((match) => match[1]);
+    if (classMatches.length > 0 &&
+        !classMatches.every((className) => wrapper.classNames.includes(className))) {
+        return false;
+    }
+    if (wrapper.targetType === "page-container") {
+        const pageContainerSelector = selector.includes('[data-contract="page-container"]') ||
+            selector.includes("[data-contract='page-container']") ||
+            selector.includes("[data-contract=page-container]");
+        if (pageContainerSelector) {
+            return true;
+        }
+    }
+    if (wrapper.targetType === "top-level-section") {
+        const genericSection = selector.includes("[data-contract-section]");
+        const specificSection = wrapper.sectionId &&
+            (selector.includes(`[data-contract-section="${wrapper.sectionId}"]`) ||
+                selector.includes(`[data-contract-section='${wrapper.sectionId}']`) ||
+                selector.includes(`[data-contract-section=${wrapper.sectionId}]`));
+        if (genericSection || specificSection) {
+            return true;
+        }
+    }
+    if (wrapper.targetType === "layout-container") {
+        const contractContainerClassSelector = wrapper.hasContractContainerClass &&
+            classMatches.includes(CONTRACT_CONTAINER_TOKEN);
+        const genericContainerAttribute = wrapper.containerMarkerValue && selector.includes("[data-contract-container]");
+        const specificContainerAttribute = wrapper.containerMarkerValue &&
+            (selector.includes(`[data-contract-container="${wrapper.containerMarkerValue}"]`) ||
+                selector.includes(`[data-contract-container='${wrapper.containerMarkerValue}']`) ||
+                selector.includes(`[data-contract-container=${wrapper.containerMarkerValue}]`));
+        if (contractContainerClassSelector ||
+            genericContainerAttribute ||
+            specificContainerAttribute) {
+            return true;
+        }
+    }
+    return false;
+}
+function parseChromeCssSignals(rule) {
+    const radiusSignals = [];
+    const shadowSignals = [];
+    let ambiguousRadius = false;
+    let ambiguousShadow = false;
+    const radiusMatch = rule.declarationText.match(/\bborder-radius\s*:\s*([^;]+)/i);
+    if (radiusMatch?.[1]) {
+        const value = parseChromePxValue(radiusMatch[1]);
+        if (value === undefined) {
+            ambiguousRadius = true;
+        }
+        else {
+            radiusSignals.push({ type: "radius", source: rule.source, value });
+        }
+    }
+    const shadowMatch = rule.declarationText.match(/\bbox-shadow\s*:\s*([^;]+)/i);
+    if (shadowMatch?.[1]) {
+        const value = classifyDeterministicShadow(shadowMatch[1]);
+        if (value === undefined) {
+            ambiguousShadow = true;
+        }
+        else {
+            shadowSignals.push({ type: "shadow", source: rule.source, value });
+        }
+    }
+    return { radiusSignals, shadowSignals, ambiguousRadius, ambiguousShadow };
+}
+function parseChromePxValue(rawValue) {
+    const normalized = String(rawValue ?? "")
+        .trim()
+        .replace(/['"`]/g, "");
+    if (!normalized) {
+        return undefined;
+    }
+    if (normalized === "0") {
+        return 0;
+    }
+    const pxMatch = normalized.match(/^(-?\d+(?:\.\d+)?)px$/i);
+    if (pxMatch) {
+        return Number.parseFloat(pxMatch[1]);
+    }
+    if (/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+        return Number.parseFloat(normalized);
+    }
+    return undefined;
+}
+function classifyDeterministicShadow(rawValue) {
+    const raw = String(rawValue ?? "").trim();
+    if (!raw) {
+        return undefined;
+    }
+    if (/^[A-Za-z_$][\w$]*$/.test(raw)) {
+        return undefined;
+    }
+    const normalized = raw.toLowerCase();
+    if (normalized.includes("var(") ||
+        normalized.includes("${") ||
+        normalized === "inherit" ||
+        normalized === "initial" ||
+        normalized === "unset" ||
+        normalized === "revert" ||
+        normalized === "revert-layer") {
+        return undefined;
+    }
+    if (normalized === "none" || normalized === "0" || normalized === "0px") {
+        return "none";
+    }
+    const parts = normalized
+        .split(/,(?![^()]*\))/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+    if (parts.length === 0) {
+        return undefined;
+    }
+    const hasInset = parts.some((part) => /\binset\b/.test(part));
+    const hasOuter = parts.some((part) => !/\binset\b/.test(part));
+    if (hasInset && hasOuter) {
+        return "mixed";
+    }
+    if (hasInset) {
+        return "inset";
+    }
+    return "outer";
 }
 async function extractLandingPattern(sectionFiles, workspaceRoot, fileContentCache) {
     const landingPagePath = selectLandingPageFile(sectionFiles);

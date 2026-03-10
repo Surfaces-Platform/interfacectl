@@ -423,6 +423,11 @@ interfacectl generate-contract --app-root <path> --surface <id> [--out <path>] [
 **Description:**
 - Scans the app directory for routes (app router), layout shell (`app/layout.tsx` or `app/(shell)/layout.tsx`), `@surfaces/ui` component imports, and `/auth` routes.
 - Seeds `color.allowedValues` from observed descriptors and seeds `surfaces[*].icons` for web surfaces with `policy: "warn"` plus discovered icon source libraries.
+- Seeds `surfaces[*].layout.chromePolicy` conservatively when portable chrome markers are present and deterministic:
+  - `.contract-container` for `layout-container`
+  - top-level `data-contract-section` for `top-level-section`
+  - optional `data-contract="page-container"` for `page-container`
+  - legacy `data-contract-container` remains supported for compatibility
 - Writes a contract JSON (default `contracts/generated/<surfaceId>.contract.json`) and an extraction report (default `contracts/generated/<surfaceId>.extraction.json`).
 - Validates the generated contract against the schema before writing. Running the command twice produces identical output (stable key order, no timestamps).
 
@@ -440,7 +445,7 @@ interfacectl generate-contract --app-root <path> --surface <id> [--out <path>] [
 - `0`: Contract and report written successfully
 - `1`: Schema validation failed for generated contract
 
-**Phase 0 scope:** Routes, hasShell, designSystemComponents (from `@surfaces/ui`), authAware. Other fields use placeholders or defaults; the report lists warnings for any omitted extraction.
+**Phase 0 scope:** Routes, hasShell, designSystemComponents (from `@surfaces/ui`), authAware. Other fields use placeholders, conservative defaults, or descriptor seeding; the report lists warnings for omitted or ambiguous extraction.
 
 **Phase 0 guardrails:** No Babel or heavy AST. Uses filesystem + regex for determinism, debuggability, and minimal deps. See [docs/plans/phase-0-extraction-guardrails.md](docs/plans/phase-0-extraction-guardrails.md) for extraction limits and when AST tooling may be added.
 

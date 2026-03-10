@@ -398,6 +398,389 @@ test("collectSurfaceDescriptors captures deterministic icon sources from surface
   }
 });
 
+test("collectSurfaceDescriptors captures portable chrome markers and deterministic chrome signals", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-chrome-static-"));
+  const surfaceId = "demo-chrome";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "layout.tsx"),
+      `
+        export default function RootLayout({ children }) {
+          return (
+            <html>
+              <body
+                className="contract-container"
+                style={{ borderRadius: "4px" }}
+              >
+                <main data-contract="page-container" className="rounded-lg">
+                  {children}
+                </main>
+              </body>
+            </html>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <main>
+              <section
+                data-contract-section="main.hero"
+                style={{ boxShadow: "0 12px 24px rgba(0, 0, 0, 0.16)" }}
+              >
+                Hello
+              </section>
+            </main>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "globals.css"),
+      `
+        .contract-container {
+          box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "test.contract",
+      version: "1.0.0",
+      sections: [{ id: "main.hero", intent: "Hero", description: "Hero section" }],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Demo Chrome",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 960 },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(
+      result.warnings.some((warning) => warning.code.startsWith("chrome.")),
+      false,
+    );
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor?.layout.chrome, "chrome descriptor should be extracted");
+    assert.deepEqual(descriptor.layout.chrome.targets, [
+      "layout-container",
+      "page-container",
+      "top-level-section",
+    ]);
+    assert.equal(descriptor.layout.chrome.maxBorderRadiusPx, 8);
+    assert.deepEqual(descriptor.layout.chrome.shadowKinds, ["inset", "outer"]);
+    assert.equal(descriptor.layout.chrome.hasAmbiguousSignals, undefined);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("collectSurfaceDescriptors flags ambiguous chrome signals", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-chrome-ambiguous-"));
+  const surfaceId = "demo-chrome-ambiguous";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "layout.tsx"),
+      `
+        export default function RootLayout({ children }) {
+          return (
+            <html>
+              <body className="contract-container rounded-[var(--radius-lg)]">
+                {children}
+              </body>
+            </html>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <section data-contract-section="main.hero" style={{ boxShadow: chromeShadow }}>
+              Hello
+            </section>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "test.contract",
+      version: "1.0.0",
+      sections: [{ id: "main.hero", intent: "Hero", description: "Hero section" }],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Demo Chrome Ambiguous",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 960 },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(
+      result.warnings.some((warning) => warning.code === "chrome.radius-undetermined"),
+      true,
+    );
+    assert.equal(
+      result.warnings.some((warning) => warning.code === "chrome.shadow-undetermined"),
+      true,
+    );
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor?.layout.chrome, "chrome descriptor should still exist");
+    assert.equal(descriptor.layout.chrome.hasAmbiguousSignals, true);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("collectSurfaceDescriptors preserves legacy data-contract-container chrome extraction", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-chrome-legacy-"));
+  const surfaceId = "demo-chrome-legacy";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "layout.tsx"),
+      `
+        export default function RootLayout({ children }) {
+          return (
+            <html>
+              <body data-contract-container="shell">{children}</body>
+            </html>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <section
+              data-contract-section="main.hero"
+              className="shadow-lg"
+              style={{ borderRadius: "6px" }}
+            >
+              Hello
+            </section>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "globals.css"),
+      `
+        [data-contract-container="shell"] {
+          box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "test.contract",
+      version: "1.0.0",
+      sections: [{ id: "main.hero", intent: "Hero", description: "Hero section" }],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Demo Chrome Legacy",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 960 },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor?.layout.chrome, "chrome descriptor should be extracted");
+    assert.deepEqual(descriptor.layout.chrome.targets, [
+      "layout-container",
+      "top-level-section",
+    ]);
+    assert.equal(descriptor.layout.chrome.maxBorderRadiusPx, 6);
+    assert.deepEqual(descriptor.layout.chrome.shadowKinds, ["inset", "outer"]);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("collectSurfaceDescriptors only uses top-level contract sections for chrome extraction", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-chrome-top-level-"));
+  const surfaceId = "demo-chrome-top-level";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "layout.tsx"),
+      `
+        export default function RootLayout({ children }) {
+          return <html><body>{children}</body></html>;
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <section data-contract-section="landing.hero" style={{ borderRadius: "6px" }}>
+              <div>
+                <section data-contract-section="landing.guidance" style={{ boxShadow: chromeShadow }}>
+                  Nested content
+                </section>
+              </div>
+            </section>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "test.contract",
+      version: "1.0.0",
+      sections: [
+        { id: "landing.hero", intent: "Hero", description: "Hero section" },
+        { id: "landing.guidance", intent: "Guidance", description: "Guidance section" },
+      ],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Demo Chrome Top Level",
+          type: "web",
+          requiredSections: ["landing.hero", "landing.guidance"],
+          allowedFonts: ["Inter"],
+          layout: { maxContentWidth: 960 },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(
+      result.warnings.some((warning) => warning.code === "chrome.shadow-undetermined"),
+      false,
+    );
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor?.layout.chrome, "chrome descriptor should be extracted");
+    assert.deepEqual(descriptor.layout.chrome.targets, ["top-level-section"]);
+    assert.equal(descriptor.layout.chrome.maxBorderRadiusPx, 6);
+    assert.equal(descriptor.layout.chrome.hasAmbiguousSignals, undefined);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("collectSurfaceDescriptors captures landing pattern topology and background mode", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-landing-pattern-"));
   const surfaceId = "demo-landing";
