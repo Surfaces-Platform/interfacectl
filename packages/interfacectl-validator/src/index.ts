@@ -9,6 +9,9 @@ import {
   ContractSection,
   ContractSurface,
   PageFrameLayoutDescriptor,
+  ChromeLayoutDescriptor,
+  ChromePolicyTarget,
+  ChromeShadowKind,
 } from "./types.js";
 import bundledSchema from "./schema/web.surface.contract.schema.json" with {
   type: "json",
@@ -938,6 +941,9 @@ export type {
   SurfaceMotionDescriptor,
   SurfaceLayoutDescriptor,
   PageFrameLayoutDescriptor,
+  ChromeLayoutDescriptor,
+  ChromePolicyTarget,
+  ChromeShadowKind,
   LandingPatternDescriptor,
   SurfacePrimitiveDescriptor,
   SurfaceReport,

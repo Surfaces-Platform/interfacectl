@@ -22,6 +22,8 @@ export interface ChromePolicy {
   allowInsetShadow: boolean;
 }
 
+export type ChromeShadowKind = "none" | "outer" | "inset" | "mixed";
+
 export interface LandingPatternPolicy {
   policy: "off" | "warn" | "strict";
   requireTopLevelSections?: string[];
@@ -181,12 +183,21 @@ export interface LandingPatternDescriptor {
   source?: string;
 }
 
+export interface ChromeLayoutDescriptor {
+  targets: ChromePolicyTarget[];
+  maxBorderRadiusPx?: number | null;
+  shadowKinds: ChromeShadowKind[];
+  source?: string[];
+  hasAmbiguousSignals?: boolean;
+}
+
 export interface SurfaceLayoutDescriptor {
   maxContentWidth?: number | null;
   containers?: string[];
   containerSources?: string[];
   source?: string;
   pageFrame?: PageFrameLayoutDescriptor;
+  chrome?: ChromeLayoutDescriptor;
   landingPattern?: LandingPatternDescriptor;
 }
 

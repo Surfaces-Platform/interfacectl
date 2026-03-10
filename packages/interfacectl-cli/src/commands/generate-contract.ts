@@ -10,7 +10,7 @@ import {
   validateContractStructure,
 } from "@surfaces/interfacectl-validator";
 import { seedColorPolicyFromObservedDescriptors } from "../utils/color-policy-seeding.js";
-import { seedChromePolicyDefaults } from "../utils/chrome-policy-seeding.js";
+import { seedChromePolicyFromObservedDescriptors } from "../utils/chrome-policy-seeding.js";
 import { seedIconPolicyFromObservedDescriptors } from "../utils/icon-policy-seeding.js";
 
 export interface GenerateContractOptions {
@@ -59,7 +59,10 @@ export async function runGenerateContractCommand(
     surfaceId,
     contract: seeded.contract,
   });
-  const chromeSeeded = await seedChromePolicyDefaults({
+  const chromeSeeded = await seedChromePolicyFromObservedDescriptors({
+    workspaceRoot: cwd,
+    appRoot,
+    surfaceId,
     contract: iconSeeded.contract,
   });
   const contract = chromeSeeded.contract;

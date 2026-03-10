@@ -29,6 +29,18 @@ Optional surface layout fields:
 - `layout.requiredContainers` (array of strings)
 - `layout.pageFrame` (when present, enforced by validator)
   - `layout.pageFrame.containerMinWidthPx` (optional): exact deterministic min-width check in px for `[data-contract="page-container"]`.
+- `layout.chromePolicy` (when present, enforced by validator)
+  - Shared `generate-contract` can seed this conservatively from portable contract markers.
+
+### Portable chrome extraction
+
+Portable chrome extraction is opt-in and deterministic. Shared `interfacectl` only observes actual elements carrying contract-aware markers; it does not infer wrapper intent from generic DOM structure.
+
+- Use `.contract-container` on governed layout containers. This is the recommended portable `layout-container` signal.
+- Use top-level `data-contract-section="<id>"` wrappers for governed sections. Nested sections do not count toward chrome extraction.
+- Use `data-contract="page-container"` only when the repo wants explicit page-frame semantics. It remains optional.
+- `data-contract-container` remains supported for backward compatibility, but `.contract-container` is the recommended path for new adopters.
+- Dynamic radius/shadow values, unresolved custom properties, and runtime-only expressions are treated as ambiguous and will suppress generated `chromePolicy` seeding.
 
 Optional per-surface icon policy (web surfaces):
 
