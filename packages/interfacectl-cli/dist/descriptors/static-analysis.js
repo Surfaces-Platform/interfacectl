@@ -1,8 +1,16 @@
 import path from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { globby } from "globby";
+import { collectTokenDefinitionsFromContent, normalizeObservedTokens, } from "../utils/token-normalization.js";
 const SECTION_ATTRIBUTE_REGEX = /data-(?:contract-)?section\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const CONTAINER_ATTRIBUTE_REGEX = /data-contract-container\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const MARKETING_LAYOUT_PROFILE_ATTRIBUTE_REGEX = /data-contract-marketing-layout-profile\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const HERO_CONTAINER_MODE_ATTRIBUTE_REGEX = /data-contract-hero-container-mode\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const HERO_VISUAL_PLACEMENT_ATTRIBUTE_REGEX = /data-contract-hero-visual-placement\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const SECTION_DIVIDER_MODE_ATTRIBUTE_REGEX = /data-contract-section-divider-mode\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const SECTION_SPACING_PROFILE_ATTRIBUTE_REGEX = /data-contract-section-spacing-profile\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const TYPOGRAPHY_PROFILE_ATTRIBUTE_REGEX = /data-contract-typography-profile\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const COPY_ROLE_ATTRIBUTE_REGEX = /data-contract-copy-role\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const CONTRACT_CONTAINER_TOKEN = "contract-container";
 const PAGE_CONTAINER_ATTRIBUTE_REGEX = /data-contract\s*=\s*(?:"page-container"|'page-container'|{`page-container`}|{\s*["'`]page-container["'`]\s*})/g;
 const CHROME_IGNORE_ATTRIBUTE_REGEX = /data-contract-chrome-ignore\s*=\s*(?:"true"|'true'|{true}|{\s*true\s*})/;
@@ -58,6 +66,13 @@ const MOTION_TIMING_VAR_REGEX = /--contract-motion-timing\s*:\s*([a-z-]+)\s*;/i;
 const TRANSITION_DECL_REGEX = /transition[^:]*:\s*([^;]+);/gi;
 const DURATION_DECL_REGEX = /(animation|transition)-duration\s*:\s*([^;]+);/gi;
 const TIMING_DECL_REGEX = /(animation|transition)-timing-function\s*:\s*([^;]+);/gi;
+const GENERIC_VAR_REGEX = /var\((--[a-z0-9-]+)\)/gi;
+const TYPOGRAPHY_TOKEN_DECL_REGEX = /(?<![\w-])(font-size|line-height|letter-spacing|font-family)\s*:\s*([^;]+);/gi;
+const LAYOUT_TOKEN_DECL_REGEX = /(?<![\w-])(margin(?:-[a-z-]+)?|padding(?:-[a-z-]+)?|gap|row-gap|column-gap|width|max-width|min-width|min-height|height|border-radius)\s*:\s*([^;]+);/gi;
+const MOTION_TOKEN_DECL_REGEX = /(?<![\w-])(transition[^:]*|animation[^:]*|transition-duration|animation-duration|transition-timing-function|animation-timing-function)\s*:\s*([^;]+);/gi;
+const JSX_TYPOGRAPHY_TOKEN_DECL_REGEX = /\b(fontSize|lineHeight|letterSpacing|fontFamily)\s*:\s*([^,}]+)/g;
+const JSX_LAYOUT_TOKEN_DECL_REGEX = /\b(margin(?:Top|Right|Bottom|Left|Inline|InlineStart|InlineEnd|Block|BlockStart|BlockEnd)?|padding(?:Top|Right|Bottom|Left|Inline|InlineStart|InlineEnd|Block|BlockStart|BlockEnd)?|gap|rowGap|columnGap|width|maxWidth|minWidth|minHeight|height|borderRadius)\s*:\s*([^,}]+)/g;
+const JSX_MOTION_TOKEN_DECL_REGEX = /\b(transition(?:Duration|TimingFunction)?|animation(?:Duration|TimingFunction)?)\s*:\s*([^,}]+)/g;
 const NAV_REGEX = /<nav\b/gi;
 const NAV_COMPONENT_REGEX = /<Navigation\b/g;
 const HEADER_REGEX = /<header\b/gi;
@@ -205,6 +220,10 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
             message: `No motion declarations detected for surface "${surfaceId}".`,
         });
     }
+    const tokenUsage = await extractTokenUsage(layoutCssFiles, sectionFiles, workspaceRoot, fileContentCache);
+    warnings.push(...tokenUsage.warnings);
+    const marketingTypography = await extractMarketingTypography(layoutCssFiles, sectionFiles, workspaceRoot, fileContentCache);
+    warnings.push(...marketingTypography.warnings);
     const primitives = await extractPrimitives(sectionFiles, workspaceRoot, fileContentCache);
     const { icons, warnings: iconWarnings } = await extractIconSources(surfaceRoot, workspaceRoot, fileContentCache, surfaceId);
     warnings.push(...iconWarnings);
@@ -214,6 +233,8 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
         fonts,
         colors,
         icons,
+        tokenUsage: tokenUsage.tokenUsage,
+        marketingTypography: marketingTypography.typography,
         layout,
         motion,
         primitives,
@@ -757,6 +778,9 @@ function classifyDeterministicShadow(rawValue) {
         return undefined;
     }
     const normalized = raw.toLowerCase();
+    if (!normalized) {
+        return undefined;
+    }
     if (normalized.includes("var(") ||
         normalized.includes("${") ||
         normalized === "inherit" ||
@@ -787,7 +811,7 @@ function classifyDeterministicShadow(rawValue) {
     return "outer";
 }
 async function extractLandingPattern(sectionFiles, workspaceRoot, fileContentCache) {
-    const landingPagePath = selectLandingPageFile(sectionFiles);
+    const landingPagePath = await selectLandingPageFile(sectionFiles, fileContentCache);
     if (!landingPagePath) {
         return undefined;
     }
@@ -827,15 +851,58 @@ async function extractLandingPattern(sectionFiles, workspaceRoot, fileContentCac
             sectionStack.push({ tagName, id: sectionId });
         }
     }
+    const marketingLayoutProfile = extractAttributeValue(content, MARKETING_LAYOUT_PROFILE_ATTRIBUTE_REGEX);
+    const heroContainerMode = extractAttributeValue(content, HERO_CONTAINER_MODE_ATTRIBUTE_REGEX);
+    const heroVisualPlacement = extractAttributeValue(content, HERO_VISUAL_PLACEMENT_ATTRIBUTE_REGEX);
+    const sectionDividerMode = extractAttributeValue(content, SECTION_DIVIDER_MODE_ATTRIBUTE_REGEX);
+    const sectionSpacingProfile = extractAttributeValue(content, SECTION_SPACING_PROFILE_ATTRIBUTE_REGEX);
     return {
         sectionOrder,
         topLevelSections,
         nestedSections,
         pageBackgroundMode: extractPageBackgroundMode(content),
+        marketingLayoutProfile,
+        heroContainerMode,
+        heroVisualPlacement,
+        sectionDividerMode,
+        sectionSpacingProfile,
         source: path.relative(workspaceRoot, landingPagePath),
     };
 }
-function selectLandingPageFile(filePaths) {
+async function selectLandingPageFile(filePaths, fileContentCache) {
+    const scoredCandidates = [];
+    for (const filePath of filePaths) {
+        const content = await readFileCached(filePath, fileContentCache);
+        const sectionMatches = [...content.matchAll(SECTION_ATTRIBUTE_REGEX)].length;
+        const copyRoleMatches = [...content.matchAll(COPY_ROLE_ATTRIBUTE_REGEX)].length;
+        const marketingLayoutSignals = [...content.matchAll(MARKETING_LAYOUT_PROFILE_ATTRIBUTE_REGEX)].length +
+            [...content.matchAll(HERO_CONTAINER_MODE_ATTRIBUTE_REGEX)].length +
+            [...content.matchAll(HERO_VISUAL_PLACEMENT_ATTRIBUTE_REGEX)].length +
+            [...content.matchAll(SECTION_DIVIDER_MODE_ATTRIBUTE_REGEX)].length +
+            [...content.matchAll(SECTION_SPACING_PROFILE_ATTRIBUTE_REGEX)].length;
+        const typographySignals = [...content.matchAll(TYPOGRAPHY_PROFILE_ATTRIBUTE_REGEX)].length;
+        scoredCandidates.push({
+            filePath,
+            score: sectionMatches * 10 +
+                marketingLayoutSignals * 4 +
+                typographySignals * 4 +
+                copyRoleMatches,
+        });
+    }
+    const bestCandidate = [...scoredCandidates].sort((left, right) => {
+        if (left.score !== right.score) {
+            return right.score - left.score;
+        }
+        const leftRank = getLandingPageRank(left.filePath);
+        const rightRank = getLandingPageRank(right.filePath);
+        if (leftRank !== rightRank) {
+            return leftRank - rightRank;
+        }
+        return left.filePath.localeCompare(right.filePath);
+    })[0];
+    if (bestCandidate && bestCandidate.score > 0) {
+        return bestCandidate.filePath;
+    }
     const candidates = filePaths.filter((filePath) => filePath.endsWith(`${path.sep}page.tsx`));
     if (candidates.length === 0) {
         return undefined;
@@ -1403,6 +1470,144 @@ async function extractPrimitives(sectionFiles, workspaceRoot, fileContentCache) 
         sources: [...sources],
     }))
         .sort((a, b) => a.role.localeCompare(b.role));
+}
+async function extractTokenUsage(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache) {
+    const typography = new Map();
+    const layout = new Map();
+    const motion = new Map();
+    const tokenDefinitions = new Map();
+    for (const filePath of [...cssFilePaths, ...sectionFiles]) {
+        const content = await readFileCached(filePath, fileContentCache);
+        const source = path.relative(workspaceRoot, filePath);
+        const isCssSource = /\.css$/i.test(filePath);
+        collectTokenDefinitionsFromContent(content, source, tokenDefinitions);
+        collectTokenDescriptorsFromContent(content, source, TYPOGRAPHY_TOKEN_DECL_REGEX, typography);
+        collectTokenDescriptorsFromContent(content, source, LAYOUT_TOKEN_DECL_REGEX, layout);
+        collectTokenDescriptorsFromContent(content, source, MOTION_TOKEN_DECL_REGEX, motion);
+        if (!isCssSource) {
+            collectTokenDescriptorsFromMatches(content, source, JSX_TYPOGRAPHY_TOKEN_DECL_REGEX, typography);
+            collectTokenDescriptorsFromMatches(content, source, JSX_LAYOUT_TOKEN_DECL_REGEX, layout);
+            collectTokenDescriptorsFromMatches(content, source, JSX_MOTION_TOKEN_DECL_REGEX, motion);
+        }
+    }
+    const typographyNormalized = normalizeObservedTokens("typography", typography, tokenDefinitions);
+    const layoutNormalized = normalizeObservedTokens("layout", layout, tokenDefinitions);
+    const motionNormalized = normalizeObservedTokens("motion", motion, tokenDefinitions);
+    return {
+        tokenUsage: {
+            typography: typographyNormalized.tokens,
+            layout: layoutNormalized.tokens,
+            motion: motionNormalized.tokens,
+        },
+        warnings: [
+            ...typographyNormalized.warnings,
+            ...layoutNormalized.warnings,
+            ...motionNormalized.warnings,
+        ].map((warning) => ({
+            code: warning.code,
+            message: warning.message,
+            location: warning.location,
+        })),
+    };
+}
+function collectTokenDescriptorsFromContent(content, source, declarationRegex, tokenValues) {
+    collectTokenDescriptorsFromMatches(content, source, declarationRegex, tokenValues);
+}
+async function extractMarketingTypography(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache) {
+    const landingPagePath = await selectLandingPageFile(sectionFiles, fileContentCache);
+    if (!landingPagePath) {
+        return { typography: undefined, warnings: [] };
+    }
+    const tokenDefinitions = new Map();
+    for (const filePath of [...cssFilePaths, ...sectionFiles]) {
+        const content = await readFileCached(filePath, fileContentCache);
+        collectTokenDefinitionsFromContent(content, path.relative(workspaceRoot, filePath), tokenDefinitions);
+    }
+    const content = await readFileCached(landingPagePath, fileContentCache);
+    const source = path.relative(workspaceRoot, landingPagePath);
+    const profileId = extractAttributeValue(content, TYPOGRAPHY_PROFILE_ATTRIBUTE_REGEX);
+    const roleMaps = new Map();
+    const warnings = [];
+    TAG_REGEX.lastIndex = 0;
+    let match;
+    while ((match = TAG_REGEX.exec(content)) !== null) {
+        const tag = match[0];
+        if (tag.startsWith("</")) {
+            continue;
+        }
+        const role = extractAttributeValue(tag, COPY_ROLE_ATTRIBUTE_REGEX);
+        if (!role) {
+            continue;
+        }
+        if (!roleMaps.has(role)) {
+            roleMaps.set(role, {
+                tokens: new Map(),
+                source,
+            });
+        }
+        const entry = roleMaps.get(role);
+        if (!entry) {
+            continue;
+        }
+        collectTokenDescriptorsFromContent(tag, source, TYPOGRAPHY_TOKEN_DECL_REGEX, entry.tokens);
+        collectTokenDescriptorsFromMatches(tag, source, JSX_TYPOGRAPHY_TOKEN_DECL_REGEX, entry.tokens);
+    }
+    const roles = [];
+    for (const [role, entry] of roleMaps.entries()) {
+        const normalized = normalizeObservedTokens("typography", entry.tokens, tokenDefinitions);
+        roles.push({
+            role,
+            tokens: normalized.tokens,
+            source: entry.source,
+        });
+        warnings.push(...normalized.warnings.map((warning) => ({
+            code: warning.code,
+            message: warning.message,
+            location: warning.location,
+        })));
+    }
+    if (!profileId && roles.length === 0) {
+        return { typography: undefined, warnings };
+    }
+    return {
+        typography: {
+            profileId,
+            roles: roles.sort((left, right) => left.role.localeCompare(right.role)),
+            source,
+        },
+        warnings,
+    };
+}
+function collectTokenDescriptorsFromMatches(content, source, declarationRegex, tokenValues) {
+    declarationRegex.lastIndex = 0;
+    let match;
+    while ((match = declarationRegex.exec(content)) !== null) {
+        const attribute = normalizeTokenAttribute(match[1] ?? "");
+        const value = match[2] ?? "";
+        GENERIC_VAR_REGEX.lastIndex = 0;
+        let variableMatch;
+        while ((variableMatch = GENERIC_VAR_REGEX.exec(value)) !== null) {
+            const token = `var(${variableMatch[1]})`;
+            if (!tokenValues.has(token)) {
+                tokenValues.set(token, {
+                    observedValue: token,
+                    source,
+                    attributes: new Set(attribute ? [attribute] : []),
+                });
+                continue;
+            }
+            const existing = tokenValues.get(token);
+            if (existing && attribute) {
+                existing.attributes.add(attribute);
+            }
+        }
+    }
+}
+function normalizeTokenAttribute(attribute) {
+    return attribute
+        .trim()
+        .replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`)
+        .toLowerCase();
 }
 async function extractIconSources(surfaceRoot, workspaceRoot, fileContentCache, surfaceId) {
     const warnings = [];

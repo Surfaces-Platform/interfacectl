@@ -16,6 +16,7 @@ export function classifyViolationType(
     "font-not-allowed",
     "color-not-allowed",
     "icon-source-not-allowed",
+    "token-not-allowed",
     "motion-duration-not-allowed",
     "motion-timing-not-allowed",
   ];

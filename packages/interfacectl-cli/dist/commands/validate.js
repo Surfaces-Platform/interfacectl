@@ -314,6 +314,7 @@ function mapViolationsToFindings(summary) {
         "font-not-allowed": "font.disallowed",
         "color-not-allowed": "color.disallowed",
         "icon-source-not-allowed": "icon.source-disallowed",
+        "token-not-allowed": "token.disallowed",
         "layout-width-exceeded": "layout.width-exceeded",
         "layout-width-undetermined": "layout.width-undetermined",
         "layout-container-missing": "layout.container-missing",
@@ -329,6 +330,14 @@ function mapViolationsToFindings(summary) {
         "landing-pattern-section-order": "landing.pattern.section-order",
         "landing-pattern-section-nested": "landing.pattern.section-nested",
         "landing-pattern-background-mode": "landing.pattern.background-mode",
+        "landing-pattern-marketing-layout-missing": "landing.pattern.marketing-layout-missing",
+        "landing-pattern-hero-container-mode": "landing.pattern.hero-container-mode",
+        "landing-pattern-hero-visual-placement": "landing.pattern.hero-visual-placement",
+        "landing-pattern-section-divider-mode": "landing.pattern.section-divider-mode",
+        "landing-pattern-section-spacing-profile": "landing.pattern.section-spacing-profile",
+        "marketing-typography-profile-missing": "marketing.typography.profile-missing",
+        "marketing-typography-role-missing": "marketing.typography.role-missing",
+        "marketing-typography-role-token": "marketing.typography.role-token",
         "motion-duration-not-allowed": "motion.duration",
         "motion-timing-not-allowed": "motion.timing",
         "descriptor-flows-missing": "descriptor.flows.missing",
@@ -386,6 +395,49 @@ function mapViolationsToFindings(summary) {
                         ? details.allowedSources
                         : undefined;
                     finding.found = details.iconSource;
+                    if (details.policy === "warn") {
+                        finding.severity = "warning";
+                    }
+                    break;
+                }
+                case "token-not-allowed": {
+                    finding.expected = Array.isArray(details.allowedTokens)
+                        ? details.allowedTokens
+                        : undefined;
+                    finding.found = {
+                        category: details.tokenCategory,
+                        token: details.token,
+                        canonicalToken: details.canonicalToken,
+                        normalizedValue: details.normalizedValue,
+                    };
+                    if (details.policy === "warn") {
+                        finding.severity = "warning";
+                    }
+                    break;
+                }
+                case "landing-pattern-marketing-layout-missing":
+                case "landing-pattern-hero-container-mode":
+                case "landing-pattern-hero-visual-placement":
+                case "landing-pattern-section-divider-mode":
+                case "landing-pattern-section-spacing-profile":
+                case "marketing-typography-profile-missing":
+                case "marketing-typography-role-missing":
+                case "marketing-typography-role-token": {
+                    finding.expected =
+                        details.expectedProfileId ??
+                            details.expectedHeroContainerMode ??
+                            details.expectedHeroVisualPlacement ??
+                            details.expectedSectionDividerMode ??
+                            details.expectedSectionSpacingProfile ??
+                            details.allowedTokens;
+                    finding.found =
+                        details.actualProfileId ??
+                            details.actualHeroContainerMode ??
+                            details.actualHeroVisualPlacement ??
+                            details.actualSectionDividerMode ??
+                            details.actualSectionSpacingProfile ??
+                            details.token ??
+                            details.role;
                     if (details.policy === "warn") {
                         finding.severity = "warning";
                     }

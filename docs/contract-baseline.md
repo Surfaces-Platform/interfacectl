@@ -12,6 +12,7 @@ Every contract must include:
 - `sections` (array, at least one item): section catalog.
 - `constraints` (object): currently requires `motion` with `allowedDurationsMs` and `allowedTimingFunctions`.
 - `color` (object): required unified color policy with `policy` and `allowedValues`.
+- `tokens` (object, optional): allowlisted UI token categories for typography, layout, and motion.
 
 ## Per-surface required fields
 
@@ -46,6 +47,14 @@ Optional per-surface icon policy (web surfaces):
 
 - `icons.policy`: one of `"off"`, `"warn"`, `"strict"`.
 - `icons.allowedSources`: array of allowed icon source libraries (for example `lucide-react`, `@heroicons/react/24/outline`).
+
+Optional top-level UI token policies:
+
+- `tokens.typography`: allowlisted font and type-scale tokens used in font-family, font-size, line-height, and letter-spacing declarations.
+- `tokens.layout`: allowlisted spacing, width, sizing, and radius tokens used in layout declarations.
+- `tokens.motion`: allowlisted duration and easing tokens used in transition and animation declarations.
+- `tokens.<category>.allowedTokens`: canonical token refs used for enforcement.
+- `tokens.<category>.tokenMetadata` (optional): generated metadata for canonical tokens, including normalized values, observed attributes, and collapsed aliases.
 
 ## Section required fields
 

@@ -29,6 +29,8 @@ export interface LandingPatternPolicy {
   requireTopLevelSections?: string[];
   sectionOrder?: string[];
   pageBackgroundMode?: "solid" | "custom";
+  marketingLayoutProfile?: string;
+  marketingLayoutPolicy?: "off" | "warn" | "strict";
 }
 
 export interface FlowTransitionRequirement {
@@ -55,6 +57,8 @@ export interface ContractSurface {
   type: SurfaceType;
   requiredSections: string[];
   allowedFonts: string[];
+  marketingTypographyProfile?: string;
+  marketingTypographyPolicy?: "off" | "warn" | "strict";
   layout: {
     maxContentWidth: number;
     requiredContainers?: string[];
@@ -96,6 +100,67 @@ export interface IconPolicy {
   allowedSources: string[];
 }
 
+export type TokenCategory = "typography" | "layout" | "motion";
+
+export interface TokenMetadata {
+  token: string;
+  normalizedValue: string;
+  attributes: string[];
+  aliases: string[];
+}
+
+export interface TokenPolicy {
+  policy: "off" | "warn" | "strict";
+  allowedTokens: string[];
+  tokenMetadata?: TokenMetadata[];
+}
+
+export interface ContractTokenPolicies {
+  typography?: TokenPolicy;
+  layout?: TokenPolicy;
+  motion?: TokenPolicy;
+}
+
+export type MarketingHeroContainerMode = "open-flow" | "framed";
+export type MarketingHeroVisualPlacement =
+  | "inline-end"
+  | "inline-start"
+  | "stacked"
+  | "none";
+export type MarketingSectionDividerMode = "none" | "border-top";
+export type MarketingSectionSpacingProfile = "compact" | "roomy";
+export type MarketingTypographyRole =
+  | "heroEyebrow"
+  | "heroTitle"
+  | "heroBody"
+  | "sectionTitle"
+  | "body";
+
+export interface MarketingLayoutProfile {
+  id: string;
+  description?: string;
+  heroContainerMode: MarketingHeroContainerMode;
+  heroVisualPlacement: MarketingHeroVisualPlacement;
+  sectionDividerMode: MarketingSectionDividerMode;
+  sectionSpacingProfile: MarketingSectionSpacingProfile;
+}
+
+export interface MarketingTypographyRoleProfile {
+  role: MarketingTypographyRole;
+  allowedTokens: string[];
+}
+
+export interface MarketingTypographyProfile {
+  id: string;
+  description?: string;
+  roles: MarketingTypographyRoleProfile[];
+}
+
+export interface ContractMarketingProfiles {
+  layout?: MarketingLayoutProfile[];
+  typography?: MarketingTypographyProfile[];
+}
+
 export interface InterfaceContract {
   contractId: string;
   version: string;
@@ -104,6 +169,8 @@ export interface InterfaceContract {
   sections: ContractSection[];
   constraints: ContractConstraints;
   color: ColorPolicy;
+  tokens?: ContractTokenPolicies;
+  marketingProfiles?: ContractMarketingProfiles;
   x_extracted?: {
     routes?: string[];
     hasShell?: boolean;
@@ -139,6 +206,20 @@ export interface SurfaceMotionDescriptor {
   durationMs: number;
   timingFunction: string;
   source?: string;
+}
+
+export interface SurfaceTokenDescriptor {
+  value: string;
+  observedValue?: string;
+  source?: string;
+  attributes?: string[];
+  normalizedValue?: string;
+}
+
+export interface SurfaceTokenUsage {
+  typography: SurfaceTokenDescriptor[];
+  layout: SurfaceTokenDescriptor[];
+  motion: SurfaceTokenDescriptor[];
 }
 
 export interface SurfacePrimitiveDescriptor {
@@ -180,6 +261,23 @@ export interface LandingPatternDescriptor {
   topLevelSections: string[];
   nestedSections: string[];
   pageBackgroundMode?: "solid" | "custom" | "unknown";
+  marketingLayoutProfile?: string;
+  heroContainerMode?: MarketingHeroContainerMode;
+  heroVisualPlacement?: MarketingHeroVisualPlacement;
+  sectionDividerMode?: MarketingSectionDividerMode;
+  sectionSpacingProfile?: MarketingSectionSpacingProfile;
+  source?: string;
+}
+
+export interface SurfaceMarketingTypographyRoleDescriptor {
+  role: MarketingTypographyRole;
+  tokens: SurfaceTokenDescriptor[];
+  source?: string;
+}
+
+export interface SurfaceMarketingTypographyDescriptor {
+  profileId?: string;
+  roles: SurfaceMarketingTypographyRoleDescriptor[];
   source?: string;
 }
 
@@ -207,6 +305,8 @@ export interface SurfaceDescriptor {
   fonts: SurfaceFontDescriptor[];
   colors: SurfaceColorDescriptor[];
   icons?: SurfaceIconDescriptor[];
+  tokenUsage?: SurfaceTokenUsage;
+  marketingTypography?: SurfaceMarketingTypographyDescriptor;
   flows?: SurfaceFlowDescriptor[];
   flowDescriptorPath?: string;
   layout: SurfaceLayoutDescriptor;
@@ -221,6 +321,7 @@ export type DriftViolationType =
   | "font-not-allowed"
   | "color-not-allowed"
   | "icon-source-not-allowed"
+  | "token-not-allowed"
   | "layout-width-exceeded"
   | "layout-width-undetermined"
   | "layout-container-missing"
@@ -236,6 +337,14 @@ export type DriftViolationType =
   | "landing-pattern-section-order"
   | "landing-pattern-section-nested"
   | "landing-pattern-background-mode"
+  | "landing-pattern-marketing-layout-missing"
+  | "landing-pattern-hero-container-mode"
+  | "landing-pattern-hero-visual-placement"
+  | "landing-pattern-section-divider-mode"
+  | "landing-pattern-section-spacing-profile"
+  | "marketing-typography-profile-missing"
+  | "marketing-typography-role-missing"
+  | "marketing-typography-role-token"
   | "motion-duration-not-allowed"
   | "motion-timing-not-allowed"
   | "descriptor-flows-missing"
