@@ -5,7 +5,7 @@ import path from "node:path";
 import { stableStringify } from "@surfaces/interfacectl-extractor";
 
 type ValidationOutcome = "pass" | "warn" | "fail" | "unknown";
-type RunSource = "bootstrap" | "generation" | "ci" | "runtime";
+export type OnboardingRunSource = "bootstrap" | "generation" | "ci" | "runtime";
 
 interface ContractRunsDocument {
   schemaVersion: number;
@@ -16,7 +16,7 @@ interface ContractRun {
   runId: string;
   createdAt: string;
   surfaceId: string;
-  source: RunSource;
+  source: OnboardingRunSource;
   contract: {
     id: string;
     version: string;
@@ -39,7 +39,7 @@ interface ContractLineageDocument {
   surfaces: Record<string, {
     lastRunId: string;
     lastRunAt: string;
-    lastSource: RunSource;
+    lastSource: OnboardingRunSource;
     lastStatus: ValidationOutcome;
     contract: {
       id: string;
@@ -138,6 +138,16 @@ export function suggestSurfaceName(surfaceId: string): string {
     .join(" ");
 }
 
+export function suggestSurfaceIdFromPath(rawPath: string): string {
+  const candidate = path.basename(rawPath);
+  const normalized = candidate
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized.length > 0 ? normalized : "surface";
+}
+
 export function buildBootstrapContract(input: {
   surfaceId: string;
   surfaceName: string;
@@ -234,9 +244,10 @@ async function readCanonicalContract(rootDir: string): Promise<{
   }
 }
 
-export async function emitBootstrapRunArtifact(input: {
+export async function emitOnboardingRunArtifact(input: {
   rootDir: string;
   surfaceId: string;
+  source: OnboardingRunSource;
   status: ValidationOutcome;
   findingCodes: string[];
   extractionPath: string;
@@ -262,7 +273,7 @@ export async function emitBootstrapRunArtifact(input: {
     runId,
     createdAt,
     surfaceId: input.surfaceId,
-    source: "bootstrap",
+    source: input.source,
     contract: canonical,
     artifacts: {
       extractionPath: toRelative(input.rootDir, input.extractionPath),
@@ -294,4 +305,18 @@ export async function emitBootstrapRunArtifact(input: {
   await writeJsonAtomic(runsPath, runsDoc);
   await writeJsonAtomic(lineagePath, lineageDoc);
   return { runId };
+}
+
+export async function emitBootstrapRunArtifact(input: {
+  rootDir: string;
+  surfaceId: string;
+  status: ValidationOutcome;
+  findingCodes: string[];
+  extractionPath: string;
+  reportPath: string;
+}): Promise<{ runId: string }> {
+  return emitOnboardingRunArtifact({
+    ...input,
+    source: "bootstrap",
+  });
 }

@@ -10,6 +10,164 @@
 
 ## Commands
 
+### `init`
+
+First-run onboarding for web surfaces.
+
+**Synopsis:**
+```bash
+interfacectl init [options]
+```
+
+**Description:**
+`init` is the primary user-facing entry point for Surfaces onboarding on web surfaces. It:
+- analyzes either a local app root (`--app-root`) or a live URL (`--url`)
+- classifies the surface as `marketing`, `application`, or `unknown` using platform-owned heuristics
+- extracts UI-system attributes across typography, color, layout, motion, icons, shell/auth primitives, sections, and copy-role signals
+- decides whether to adopt an existing design system or synthesize a first draft from repeated norms
+- writes four artifacts under `contracts/generated/`
+- runs `validate-extracted` plus contract validation and prints a short summary
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--url <url>` | Surface URL for remote onboarding | none |
+| `--app-root <path>` | Local app root for source-backed onboarding | none |
+| `--extract-mode <remote-url\|local-root>` | Source mode override | inferred from inputs |
+| `--surface <id>` | Surface identifier override | inferred from URL/path |
+| `--surface-name <name>` | Surface display name override | derived from surface id |
+| `--surface-kind <marketing\|application\|unknown>` | Confirm low-confidence classification in non-interactive flows | inferred |
+| `--auth-profile <name>` | Replay a saved browser-session auth profile for protected remote onboarding | none |
+| `--non-interactive` | Disable prompts | `false` |
+| `--out-dir <path>` | Output directory for generated artifacts | `contracts/generated` |
+| `--analysis-out <path>` | Explicit output path for `<surface>.analysis.json` | derived from `--out-dir` |
+| `--draft-out <path>` | Explicit output path for `<surface>.design-system.draft.json` | derived from `--out-dir` |
+| `--contract-out <path>` | Explicit output path for `<surface>.contract.json` | derived from `--out-dir` |
+| `--report-out <path>` | Explicit output path for `<surface>.extraction.json` | derived from `--out-dir` |
+
+**Artifacts:**
+
+- `contracts/generated/<surface>.analysis.json`
+- `contracts/generated/<surface>.design-system.draft.json`
+- `contracts/generated/<surface>.contract.json`
+- `contracts/generated/<surface>.extraction.json`
+
+**Notes:**
+- First-run output is warn-first. Findings are surfaced in the summary rather than blocking the onboarding command unless artifact generation or validation infrastructure fails.
+- If surface-kind inference is low confidence, interactive mode asks for confirmation. Non-interactive mode must pass `--surface-kind`.
+- For protected remote URLs, `--auth-profile` must point at a replay-ready profile. Interactive `init` can capture one; non-interactive mode fails fast if the profile is missing, expired, legacy, or not replayable.
+- First-party or dogfood surfaces are not used as baselines for inference or starter recommendations.
+
+---
+
+### `analyze`
+
+Machine-readable first-run analysis for web surfaces.
+
+**Synopsis:**
+```bash
+interfacectl analyze [options]
+```
+
+**Description:**
+`analyze` uses the same first-run analysis engine as `init` but writes only the analysis artifact. It is intended for power users and CI preparation when you want explainable classification and extraction evidence without generating the draft contract/draft-system artifacts.
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--url <url>` | Surface URL for remote analysis | none |
+| `--app-root <path>` | Local app root for source-backed analysis | none |
+| `--extract-mode <remote-url\|local-root>` | Source mode override | inferred from inputs |
+| `--surface <id>` | Surface identifier override | inferred from URL/path |
+| `--surface-name <name>` | Surface display name override | derived from surface id |
+| `--surface-kind <marketing\|application\|unknown>` | Optional classification confirmation override | inferred |
+| `--auth-profile <name>` | Replay a saved browser-session auth profile for protected remote analysis | none |
+| `--out <path>` | Output file path for the analysis artifact | `contracts/generated/<surface>.analysis.json` |
+| `--out-dir <path>` | Output directory when `--out` is not supplied | `contracts/generated` |
+
+**Output:**
+- `contracts/generated/<surface>.analysis.json`
+
+---
+
+### `auth`
+
+Manage replayable browser-session auth profiles for protected remote onboarding.
+
+**Synopsis:**
+```bash
+interfacectl auth <subcommand> [options]
+```
+
+**Subcommands:**
+
+#### `auth capture`
+
+Launches Chromium, opens a clean browser context, waits for manual sign-in, then stores the resulting Playwright `storageState` as a replayable auth profile.
+
+```bash
+interfacectl auth capture --profile <name> --url <exact-host-url> [--format text|json]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--profile <name>` | Profile name | required |
+| `--url <url>` | URL on the exact host to capture | required |
+| `--format <text\|json>` | Output format | `text` |
+
+Notes:
+- Profiles are exact-host scoped in v1. If capture ends on a different hostname, the command fails and requires a capture on that host instead.
+- Replay state is stored separately from metadata. `interfacectl` uses keychain-first storage with encrypted local-file fallback.
+- Generated onboarding artifacts and CLI JSON outputs never include cookies, storage entries, or tokens.
+
+#### `auth list`
+
+Lists locally stored auth profiles and their replay readiness.
+
+```bash
+interfacectl auth list [--format text|json]
+```
+
+The output includes `status`, `replayReady`, `capturedAt`, `expiresAt`, and storage mode metadata.
+
+#### `auth test`
+
+Validates a local auth profile. Without `--url`, it checks replay readiness only. With `--url`, it performs a real replayed navigation using the same browser observer as remote onboarding.
+
+```bash
+interfacectl auth test --profile <name> [--domain <host>] [--url <protected-url>] [--format text|json]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--profile <name>` | Profile name | required |
+| `--domain <domain>` | Optional exact-host scope override | inferred from `--url` when present |
+| `--url <url>` | Protected URL to validate authenticated replay against | none |
+| `--format <text\|json>` | Output format | `text` |
+
+Notes:
+- If `--auth-profile` is explicitly supplied to `init` or `analyze`, interfacectl does not silently fall back to anonymous access.
+- Legacy v1 profiles remain listable but are not replayable; they must be re-captured.
+
+#### `auth revoke` / `auth clear`
+
+Deletes local auth profile metadata and any stored replay state.
+
+```bash
+interfacectl auth revoke --profile <name> --domain <host>
+interfacectl auth clear --all
+```
+
+If Chromium is not installed locally, install it with:
+
+```bash
+pnpm --filter @surfaces/interfacectl-cli exec playwright install chromium
+```
+
+---
+
 ### `validate`
 
 Validates configured surfaces against a shared interface contract.
@@ -457,7 +615,7 @@ Fails if the contract’s Phase 0 expectations (`surfaces[].phase0`) conflict wi
 
 **Synopsis:**
 ```bash
-interfacectl validate-extracted --contract <path> --extracted <path> [--surface <id>] [--format text|json] [--exit-codes v1|v2]
+interfacectl validate-extracted --contract <path> --extracted <path> [--surface <id>] [--format text|json] [--out <path>] [--exit-codes v1|v2]
 ```
 
 **Contract shape (policy only; no x_* in policy):**  

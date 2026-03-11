@@ -32,5 +32,7 @@ jobs:
         run: bash scripts/verify-source-files.sh
       - name: Build packages
         run: pnpm run build
+      - name: Install Playwright Chromium
+        run: pnpm --filter @surfaces/interfacectl-cli exec playwright install chromium
       - name: Run tests
         run: pnpm run test

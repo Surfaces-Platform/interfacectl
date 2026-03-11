@@ -9,7 +9,8 @@ import { runMigrateColorPolicyCommand } from "./commands/migrate-color-policy.js
 import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
 import { runDescribeCommand } from "./commands/describe.js";
 import { runInitCommand } from "./commands/init.js";
-import { runAuthClearCommand, runAuthListCommandWithOptions, runAuthTestCommand, } from "./commands/auth.js";
+import { runAnalyzeCommand } from "./commands/analyze.js";
+import { runAuthCaptureCommand, runAuthClearCommand, runAuthListCommandWithOptions, runAuthTestCommand, } from "./commands/auth.js";
 import pkg from "../package.json" with { type: "json" };
 const program = new Command();
 program
@@ -226,33 +227,90 @@ program
     process.exitCode = exitCode;
 });
 program
+    .command("analyze")
+    .description("Analyze a web surface and emit first-run onboarding evidence")
+    .option("--url <url>", "Surface URL for remote analysis")
+    .option("--app-root <path>", "Local app root for local-root analysis")
+    .option("--extract-mode <remote-url|local-root>", "Analysis mode")
+    .option("--surface <id>", "Surface identifier override")
+    .option("--surface-name <name>", "Surface display name override")
+    .option("--surface-kind <marketing|application|unknown>", "Optional surface-kind confirmation override")
+    .option("--auth-profile <name>", "Replay an existing auth profile during remote analysis")
+    .option("--out <path>", "Output path for the analysis artifact")
+    .option("--out-dir <path>", "Output directory for generated analysis artifacts")
+    .action(async (options) => {
+    const extractMode = options.extractMode === "local-root"
+        ? "local-root"
+        : options.extractMode === "remote-url"
+            ? "remote-url"
+            : undefined;
+    process.exitCode = await runAnalyzeCommand({
+        url: options.url,
+        appRoot: options.appRoot,
+        extractMode,
+        surface: options.surface,
+        surfaceName: options.surfaceName,
+        surfaceKind: options.surfaceKind,
+        authProfile: options.authProfile,
+        out: options.out,
+        outDir: options.outDir,
+    });
+});
+program
     .command("init")
     .description("Interactive onboarding for first-surface extraction")
     .option("--url <url>", "Surface URL for onboarding")
     .option("--surface <id>", "Surface identifier override")
     .option("--surface-name <name>", "Surface display name override")
-    .option("--extract-mode <remote-url|local-root>", "Extraction mode", "remote-url")
-    .option("--app-root <path>", "Local app root (required when extract-mode is local-root)")
-    .option("--auth-profile <name>", "Auth profile name for browser-session onboarding")
-    .option("--non-interactive", "Run without prompts (requires --url)")
+    .option("--surface-kind <marketing|application|unknown>", "Optional surface-kind confirmation override")
+    .option("--extract-mode <remote-url|local-root>", "Extraction mode")
+    .option("--app-root <path>", "Local app root (required for local-root)")
+    .option("--auth-profile <name>", "Replay or capture an auth profile for browser-session onboarding")
+    .option("--non-interactive", "Run without prompts")
     .option("--out-dir <path>", "Output directory for generated onboarding artifacts")
+    .option("--analysis-out <path>", "Explicit output path for the analysis artifact")
+    .option("--draft-out <path>", "Explicit output path for the design-system draft artifact")
+    .option("--contract-out <path>", "Explicit output path for the generated contract")
+    .option("--report-out <path>", "Explicit output path for the extraction report")
     .action(async (options) => {
-    const extractMode = options.extractMode === "local-root" ? "local-root" : "remote-url";
+    const extractMode = options.extractMode === "local-root"
+        ? "local-root"
+        : options.extractMode === "remote-url"
+            ? "remote-url"
+            : undefined;
     const exitCode = await runInitCommand({
         url: options.url,
         surface: options.surface,
         surfaceName: options.surfaceName,
+        surfaceKind: options.surfaceKind,
         extractMode,
         appRoot: options.appRoot,
         authProfile: options.authProfile,
         nonInteractive: options.nonInteractive === true,
         outDir: options.outDir,
+        analysisOut: options.analysisOut,
+        draftOut: options.draftOut,
+        contractOut: options.contractOut,
+        reportOut: options.reportOut,
     });
     process.exitCode = exitCode;
 });
 const auth = program
     .command("auth")
     .description("Manage onboarding browser-session auth profiles");
+auth
+    .command("capture")
+    .description("Capture or refresh a replayable browser-session auth profile")
+    .requiredOption("--profile <name>", "Profile name")
+    .requiredOption("--url <url>", "URL on the exact host to capture")
+    .option("--format <text|json>", "Output format", "text")
+    .action(async (options) => {
+    process.exitCode = await runAuthCaptureCommand({
+        profile: options.profile,
+        url: options.url,
+        format: options.format === "json" ? "json" : "text",
+    });
+});
 auth
     .command("list")
     .description("List local auth profiles")
@@ -267,11 +325,13 @@ auth
     .description("Validate a local auth profile by name")
     .requiredOption("--profile <name>", "Profile name")
     .option("--domain <domain>", "Optional domain scope")
+    .option("--url <url>", "Optional URL to test authenticated replay against")
     .option("--format <text|json>", "Output format", "text")
     .action(async (options) => {
     process.exitCode = await runAuthTestCommand({
         profile: options.profile,
         domain: options.domain,
+        url: options.url,
         format: options.format === "json" ? "json" : "text",
     });
 });
@@ -332,6 +392,7 @@ program
     .requiredOption("--extracted <path>", "Path to extraction report or generated contract with x_extracted")
     .option("--surface <id>", "Surface id when not inferrable from extracted file")
     .option("--format <format>", "Output format (text|json)", "text")
+    .option("--out <path>", "Write output to the provided file path instead of stdout")
     .option("--exit-codes <v1|v2>", "Exit code version (default: v1; v2: 0 success, 10 E0, 30 E2)")
     .action(async (options) => {
     const exitCodeVersion = options.exitCodes === "v1" || options.exitCodes === "v2" ? options.exitCodes : undefined;
@@ -340,6 +401,7 @@ program
         extractedPath: options.extracted,
         surfaceId: options.surface,
         format: (options.format ?? "text").toLowerCase() === "json" ? "json" : "text",
+        outputPath: options.out,
         exitCodes: exitCodeVersion,
     });
     process.exitCode = exitCode;

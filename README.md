@@ -19,7 +19,7 @@ This repository contains three packages:
 
 - **`@surfaces/interfacectl-cli`** — Command-line interface that consumes the validator to run contract checks from any repository. Most users only need this package.
 
-- **`@surfaces/interfacectl-extractor`** — Library that extracts a contract from a Next.js app (Phase 0). Used by the CLI `generate-contract` command. Exports `extractContractFromNextApp({ appRoot, surfaceId })`.
+- **`@surfaces/interfacectl-extractor`** — Library that extracts a contract from a Next.js app (Phase 0). Used by the CLI `init`, `analyze`, and `generate-contract` flows. Exports `extractContractFromNextApp({ appRoot, surfaceId })`.
 
 ## Requirements
 
@@ -36,17 +36,67 @@ pnpm add -D @surfaces/interfacectl-cli
 
 ## Quick Start
 
-After installation, validate your surfaces against a contract:
+For a first-time web surface experience, start with `init`:
 
 ```bash
-interfacectl validate --root . --contract ./contracts/ui.contract.json
+interfacectl init --app-root apps/my-app --surface my-app
 ```
 
-For detailed command documentation, see [API.md](API.md).
+This inspects your surface, classifies it as `marketing`, `application`, or `unknown`, drafts a schema-valid contract, and emits a first design-system draft from repeated UI norms. For detailed command documentation, see [API.md](API.md).
+
+For protected remote apps, capture a replayable browser session first:
+
+```bash
+interfacectl auth capture --profile staging-admin --url https://app.example.com/login
+interfacectl init --url https://app.example.com --surface customer-app --auth-profile staging-admin
+```
+
+`interfacectl` replays the saved browser session in Chromium, analyzes the rendered authenticated page, and keeps auth state out of generated artifacts.
 
 ## Commands Overview
 
-The CLI provides four main commands:
+The CLI provides two first-run commands, browser-session auth helpers, and the validation and enforcement commands:
+
+### `init`
+
+First-run onboarding for web surfaces. `init` analyzes either a local app root or a URL, drafts a first contract, writes a draft design-system artifact, runs validation, and prints a short onboarding summary grouped as adopted, normalized, flagged, and next steps.
+
+```bash
+interfacectl init [options]
+```
+
+Outputs:
+
+- `contracts/generated/<surface>.analysis.json`
+- `contracts/generated/<surface>.design-system.draft.json`
+- `contracts/generated/<surface>.contract.json`
+- `contracts/generated/<surface>.extraction.json`
+
+Default behavior is warn-first. If surface-kind inference is low confidence, interactive mode asks for confirmation and non-interactive mode requires `--surface-kind marketing|application|unknown`.
+
+### `analyze`
+
+Machine-readable first-run analysis for power users. `analyze` uses the same platform-owned heuristics as `init` but only writes the analysis artifact; it does not mutate contracts outside `contracts/generated/<surface>.analysis.json`.
+
+```bash
+interfacectl analyze [options]
+```
+
+### `auth`
+
+Browser-session profile management for protected remote onboarding. Use `auth capture` to create or refresh a replayable profile, `auth list` to inspect readiness, `auth test --url ...` to verify real authenticated replay, and `auth revoke` / `auth clear` to remove stored state.
+
+```bash
+interfacectl auth capture --profile <name> --url <exact-host-url>
+interfacectl auth test --profile <name> --url <protected-url>
+interfacectl auth list
+```
+
+Notes:
+
+- Profiles are exact-host scoped in v1.
+- Remote analysis never silently falls back to anonymous access when `--auth-profile` is explicitly supplied.
+- If Chromium is missing locally, install it with `pnpm --filter @surfaces/interfacectl-cli exec playwright install chromium`.
 
 ### `validate`
 
@@ -82,9 +132,9 @@ This command does **not** perform enforcement or runtime gating. It produces a s
 interfacectl compile --contract <path> --out <dir>
 ```
 
-### `generate-contract` (Phase 0)
+### `generate-contract` (Phase 0 expert command)
 
-Extracts a **deterministic contract artifact** from a Next.js app by analyzing app code and config. This is **contract extraction only** — no enforcement, no network calls.
+Extracts a **deterministic contract artifact** from a Next.js app by analyzing app code and config. This is **contract extraction only** — no first-run classification, no design-system draft, and no onboarding summary. Prefer `interfacectl init` for the user-facing entry point.
 
 **Phase 0 scope:** Routes (app router), layout shell presence (`app/layout.tsx` or `app/(shell)/layout.tsx`), design system usage (`@surfaces/ui` component imports), and auth posture (`/auth` routes). The command also seeds `color.allowedValues` and web-surface `icons.allowedSources` from observed descriptors (default `icons.policy: "warn"`). Values that cannot be extracted safely are omitted and reported as warnings in the extraction report.
 
@@ -101,9 +151,9 @@ interfacectl generate-contract --app-root <path> --surface <surfaceId> [--out <p
 
 Running the command twice produces identical contract and report (stable key order, no timestamps). See [API.md](API.md) for full options.
 
-### `validate-extracted` (Phase 0.5)
+### `validate-extracted` (Phase 0.5 expert command)
 
-Validates that the **declared policy** (contract `surfaces[].phase0`) matches **extracted reality** (from the extraction report or generated contract). Use after `generate-contract` in CI to fail when auth posture, shell, auth routes, or design-system expectations disagree with what was extracted.
+Validates that the **declared policy** (contract `surfaces[].phase0`) matches **extracted reality** (from the extraction report or generated contract). `init` already runs this during onboarding; use the command directly in CI or for focused debugging.
 
 ```bash
 interfacectl validate-extracted --contract <path> --extracted <path> [--surface <id>] [--format text|json] [--exit-codes v2]
@@ -175,6 +225,27 @@ Runtime (not implemented here)
 ```
 
 ## Usage Examples
+
+### First run
+
+Analyze and draft a first contract from a local web app:
+
+```bash
+interfacectl init --app-root apps/my-app --surface my-app
+```
+
+Inspect a public URL without writing a contract:
+
+```bash
+interfacectl analyze --url https://example.com --surface example-site
+```
+
+Capture a protected app session and analyze the authenticated surface:
+
+```bash
+interfacectl auth capture --profile customer-admin --url https://app.example.com/login
+interfacectl analyze --url https://app.example.com/dashboard --surface customer-app --auth-profile customer-admin
+```
 
 ### Validation
 

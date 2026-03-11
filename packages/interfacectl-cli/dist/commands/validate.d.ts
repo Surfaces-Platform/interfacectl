@@ -1,3 +1,4 @@
+import { type SurfaceDescriptor } from "@surfaces/interfacectl-validator";
 import { type ExitCodeVersion } from "../utils/exit-codes.js";
 type OutputFormat = "text" | "json";
 export interface ValidateCommandOptions {
@@ -5,6 +6,7 @@ export interface ValidateCommandOptions {
     schemaPath?: string;
     workspaceRoot?: string;
     surfaceFilters?: string[];
+    descriptorOverrides?: SurfaceDescriptor[];
     outputFormat?: OutputFormat;
     outputPath?: string;
     configPath?: string;

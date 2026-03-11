@@ -56,6 +56,15 @@ export function suggestSurfaceName(surfaceId) {
         .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
         .join(" ");
 }
+export function suggestSurfaceIdFromPath(rawPath) {
+    const candidate = path.basename(rawPath);
+    const normalized = candidate
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    return normalized.length > 0 ? normalized : "surface";
+}
 export function buildBootstrapContract(input) {
     const url = new URL(input.sourceUrl);
     return {
@@ -131,7 +140,7 @@ async function readCanonicalContract(rootDir) {
         return { id: "unknown", version: "unknown", sha256: "0".repeat(64) };
     }
 }
-export async function emitBootstrapRunArtifact(input) {
+export async function emitOnboardingRunArtifact(input) {
     const generatedDir = path.resolve(input.rootDir, "contracts", "generated");
     const runsPath = path.join(generatedDir, "contract-runs.json");
     const lineagePath = path.join(generatedDir, "contract-lineage.json");
@@ -150,7 +159,7 @@ export async function emitBootstrapRunArtifact(input) {
         runId,
         createdAt,
         surfaceId: input.surfaceId,
-        source: "bootstrap",
+        source: input.source,
         contract: canonical,
         artifacts: {
             extractionPath: toRelative(input.rootDir, input.extractionPath),
@@ -181,4 +190,10 @@ export async function emitBootstrapRunArtifact(input) {
     await writeJsonAtomic(runsPath, runsDoc);
     await writeJsonAtomic(lineagePath, lineageDoc);
     return { runId };
+}
+export async function emitBootstrapRunArtifact(input) {
+    return emitOnboardingRunArtifact({
+        ...input,
+        source: "bootstrap",
+    });
 }
