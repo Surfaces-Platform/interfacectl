@@ -4,6 +4,7 @@ import bundledSchema from "./schema/web.surface.contract.schema.json" with {
     type: "json"
 };
 import { normalizeColorValue } from "./color-policy.js";
+import { matchTokenPolicy } from "./token-policy.js";
 const frozenBundledSchema = Object.freeze(bundledSchema);
 export function getBundledContractSchema() {
     return frozenBundledSchema;
@@ -22,11 +23,34 @@ export function validateContractStructure(contractData, schema) {
             errors: formatAjvErrors(validate.errors),
         };
     }
+    const marketingReferenceErrors = validateMarketingProfileReferences(contractData);
+    if (marketingReferenceErrors.length > 0) {
+        return {
+            ok: false,
+            errors: marketingReferenceErrors,
+        };
+    }
     return {
         ok: true,
         errors: [],
         contract: contractData,
     };
+}
+function validateMarketingProfileReferences(contract) {
+    const errors = [];
+    const layoutProfiles = new Set((contract.marketingProfiles?.layout ?? []).map((profile) => profile.id));
+    const typographyProfiles = new Set((contract.marketingProfiles?.typography ?? []).map((profile) => profile.id));
+    for (const surface of contract.surfaces) {
+        const layoutProfileRef = surface.layout.landingPattern?.marketingLayoutProfile;
+        if (layoutProfileRef && !layoutProfiles.has(layoutProfileRef)) {
+            errors.push(`/surfaces/${surface.id}/layout/landingPattern/marketingLayoutProfile must reference a declared marketingProfiles.layout id`);
+        }
+        const typographyProfileRef = surface.marketingTypographyProfile;
+        if (typographyProfileRef && !typographyProfiles.has(typographyProfileRef)) {
+            errors.push(`/surfaces/${surface.id}/marketingTypographyProfile must reference a declared marketingProfiles.typography id`);
+        }
+    }
+    return errors;
 }
 function validateColorPolicy(contract, descriptor, violations) {
     const colorPolicy = contract.color;
@@ -82,6 +106,49 @@ function validateIconPolicy(surface, descriptor, violations) {
             },
         });
     }
+}
+function validateTokenPolicyCategory(surfaceId, category, policy, observedTokens, violations) {
+    if (!policy || policy.policy === "off") {
+        return;
+    }
+    const allowedTokens = new Set(policy.allowedTokens);
+    const seenTokens = new Set();
+    for (const token of observedTokens ?? []) {
+        const observedToken = (token.observedValue ?? token.value).trim();
+        const dedupeKey = `${token.value.trim()}::${observedToken}::${token.normalizedValue ?? ""}`;
+        if (!observedToken || seenTokens.has(dedupeKey)) {
+            continue;
+        }
+        seenTokens.add(dedupeKey);
+        const match = matchTokenPolicy(policy, token);
+        if (match.matched) {
+            continue;
+        }
+        violations.push({
+            surfaceId,
+            type: "token-not-allowed",
+            message: `${category} token "${observedToken}" is not allowed for surface "${surfaceId}".`,
+            details: {
+                token: observedToken,
+                canonicalToken: match.canonicalToken,
+                normalizedValue: match.normalizedValue,
+                tokenCategory: category,
+                source: token.source,
+                allowedTokens: [...allowedTokens].sort((a, b) => a.localeCompare(b)),
+                policy: policy.policy,
+                jsonPointer: `/tokens/${category}/allowedTokens`,
+            },
+        });
+    }
+}
+function validateTokenPolicies(contract, descriptor, violations) {
+    const tokenUsage = descriptor.tokenUsage;
+    if (!contract.tokens || !tokenUsage) {
+        return;
+    }
+    validateTokenPolicyCategory(descriptor.surfaceId, "typography", contract.tokens.typography, tokenUsage.typography, violations);
+    validateTokenPolicyCategory(descriptor.surfaceId, "layout", contract.tokens.layout, tokenUsage.layout, violations);
+    validateTokenPolicyCategory(descriptor.surfaceId, "motion", contract.tokens.motion, tokenUsage.motion, violations);
 }
 function validateFlowPolicy(surface, descriptor, violations) {
     const flowPolicy = surface.flows;
@@ -204,7 +271,7 @@ function validateFlowPolicy(surface, descriptor, violations) {
         }
     }
 }
-function validateLandingPattern(surface, descriptor, violations) {
+function validateLandingPattern(surface, contract, descriptor, violations) {
     const landingPattern = surface.layout.landingPattern;
     if (!landingPattern || landingPattern.policy === "off") {
         return;
@@ -299,6 +366,207 @@ function validateLandingPattern(surface, descriptor, violations) {
                 source: descriptorPattern.source,
             },
         });
+    }
+    validateMarketingLandingPattern(surface, contract, descriptor, violations);
+}
+function validateMarketingLandingPattern(surface, contract, descriptor, violations) {
+    const landingPattern = surface.layout.landingPattern;
+    const policy = landingPattern?.marketingLayoutPolicy ??
+        (landingPattern?.marketingLayoutProfile ? "warn" : "off");
+    if (!landingPattern || policy === "off" || !landingPattern.marketingLayoutProfile) {
+        return;
+    }
+    const descriptorPattern = descriptor.layout.landingPattern;
+    const expectedProfile = contract.marketingProfiles?.layout?.find((profile) => profile.id === landingPattern.marketingLayoutProfile);
+    if (!expectedProfile) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "landing-pattern-marketing-layout-missing",
+            message: `Marketing layout profile "${landingPattern.marketingLayoutProfile}" is missing from the contract for surface "${descriptor.surfaceId}".`,
+            details: {
+                expectedProfileId: landingPattern.marketingLayoutProfile,
+                policy,
+            },
+        });
+        return;
+    }
+    if (!descriptorPattern) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "landing-pattern-marketing-layout-missing",
+            message: `Marketing layout signals are missing for surface "${descriptor.surfaceId}".`,
+            details: {
+                expectedProfileId: expectedProfile.id,
+                policy,
+            },
+        });
+        return;
+    }
+    if (!descriptorPattern.marketingLayoutProfile ||
+        descriptorPattern.marketingLayoutProfile !== expectedProfile.id) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "landing-pattern-marketing-layout-missing",
+            message: `Surface "${descriptor.surfaceId}" must declare marketing layout profile "${expectedProfile.id}".`,
+            details: {
+                expectedProfileId: expectedProfile.id,
+                actualProfileId: descriptorPattern.marketingLayoutProfile,
+                policy,
+                source: descriptorPattern.source,
+            },
+        });
+    }
+    if (descriptorPattern.heroContainerMode &&
+        descriptorPattern.heroContainerMode !== expectedProfile.heroContainerMode) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "landing-pattern-hero-container-mode",
+            message: `Hero container mode for surface "${descriptor.surfaceId}" must be "${expectedProfile.heroContainerMode}".`,
+            details: {
+                expectedHeroContainerMode: expectedProfile.heroContainerMode,
+                actualHeroContainerMode: descriptorPattern.heroContainerMode,
+                policy,
+                source: descriptorPattern.source,
+            },
+        });
+    }
+    if (descriptorPattern.heroVisualPlacement &&
+        descriptorPattern.heroVisualPlacement !== expectedProfile.heroVisualPlacement) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "landing-pattern-hero-visual-placement",
+            message: `Hero visual placement for surface "${descriptor.surfaceId}" must be "${expectedProfile.heroVisualPlacement}".`,
+            details: {
+                expectedHeroVisualPlacement: expectedProfile.heroVisualPlacement,
+                actualHeroVisualPlacement: descriptorPattern.heroVisualPlacement,
+                policy,
+                source: descriptorPattern.source,
+            },
+        });
+    }
+    if (descriptorPattern.sectionDividerMode &&
+        descriptorPattern.sectionDividerMode !== expectedProfile.sectionDividerMode) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "landing-pattern-section-divider-mode",
+            message: `Section divider mode for surface "${descriptor.surfaceId}" must be "${expectedProfile.sectionDividerMode}".`,
+            details: {
+                expectedSectionDividerMode: expectedProfile.sectionDividerMode,
+                actualSectionDividerMode: descriptorPattern.sectionDividerMode,
+                policy,
+                source: descriptorPattern.source,
+            },
+        });
+    }
+    if (descriptorPattern.sectionSpacingProfile &&
+        descriptorPattern.sectionSpacingProfile !== expectedProfile.sectionSpacingProfile) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "landing-pattern-section-spacing-profile",
+            message: `Section spacing profile for surface "${descriptor.surfaceId}" must be "${expectedProfile.sectionSpacingProfile}".`,
+            details: {
+                expectedSectionSpacingProfile: expectedProfile.sectionSpacingProfile,
+                actualSectionSpacingProfile: descriptorPattern.sectionSpacingProfile,
+                policy,
+                source: descriptorPattern.source,
+            },
+        });
+    }
+}
+function validateMarketingTypography(surface, contract, descriptor, violations) {
+    const expectedProfileId = surface.marketingTypographyProfile;
+    const policy = surface.marketingTypographyPolicy ??
+        (expectedProfileId ? "warn" : "off");
+    if (!expectedProfileId || policy === "off") {
+        return;
+    }
+    const expectedProfile = contract.marketingProfiles?.typography?.find((profile) => profile.id === expectedProfileId);
+    if (!expectedProfile) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "marketing-typography-profile-missing",
+            message: `Marketing typography profile "${expectedProfileId}" is missing from the contract for surface "${descriptor.surfaceId}".`,
+            details: {
+                expectedProfileId,
+                policy,
+            },
+        });
+        return;
+    }
+    const observedTypography = descriptor.marketingTypography;
+    if (!observedTypography) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "marketing-typography-profile-missing",
+            message: `Marketing typography signals are missing for surface "${descriptor.surfaceId}".`,
+            details: {
+                expectedProfileId,
+                policy,
+            },
+        });
+        return;
+    }
+    if (!observedTypography.profileId ||
+        observedTypography.profileId !== expectedProfileId) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "marketing-typography-profile-missing",
+            message: `Surface "${descriptor.surfaceId}" must declare marketing typography profile "${expectedProfileId}".`,
+            details: {
+                expectedProfileId,
+                actualProfileId: observedTypography.profileId,
+                policy,
+                source: observedTypography.source,
+            },
+        });
+    }
+    const roleDescriptors = new Map(observedTypography.roles.map((roleDescriptor) => [
+        roleDescriptor.role,
+        roleDescriptor,
+    ]));
+    const roleTokenMetadata = contract.tokens?.typography?.tokenMetadata ?? [];
+    for (const expectedRole of expectedProfile.roles) {
+        const observedRole = roleDescriptors.get(expectedRole.role);
+        if (!observedRole || observedRole.tokens.length === 0) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "marketing-typography-role-missing",
+                message: `Marketing typography role "${expectedRole.role}" is missing for surface "${descriptor.surfaceId}".`,
+                details: {
+                    expectedProfileId,
+                    role: expectedRole.role,
+                    policy,
+                    source: observedRole?.source ?? observedTypography.source,
+                },
+            });
+            continue;
+        }
+        const rolePolicy = {
+            policy,
+            allowedTokens: expectedRole.allowedTokens,
+            tokenMetadata: roleTokenMetadata.filter((entry) => expectedRole.allowedTokens.includes(entry.token)),
+        };
+        for (const token of observedRole.tokens) {
+            const match = matchTokenPolicy(rolePolicy, token);
+            if (match.matched) {
+                continue;
+            }
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "marketing-typography-role-token",
+                message: `Marketing typography role "${expectedRole.role}" uses a token outside profile "${expectedProfileId}" for surface "${descriptor.surfaceId}".`,
+                details: {
+                    expectedProfileId,
+                    role: expectedRole.role,
+                    token: token.observedValue ?? token.value,
+                    canonicalToken: match.canonicalToken,
+                    normalizedValue: match.normalizedValue,
+                    allowedTokens: expectedRole.allowedTokens,
+                    policy,
+                    source: token.source ?? observedRole.source,
+                },
+            });
+        }
     }
 }
 export function evaluateSurfaceCompliance(contract, descriptor) {
@@ -421,9 +689,11 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
         }
     }
     validateColorPolicy(contract, descriptor, violations);
+    validateTokenPolicies(contract, descriptor, violations);
     validateIconPolicy(surface, descriptor, violations);
     validateFlowPolicy(surface, descriptor, violations);
-    validateLandingPattern(surface, descriptor, violations);
+    validateLandingPattern(surface, contract, descriptor, violations);
+    validateMarketingTypography(surface, contract, descriptor, violations);
     const reportedWidth = descriptor.layout.maxContentWidth;
     if (reportedWidth === null || reportedWidth === undefined) {
         violations.push({
@@ -769,3 +1039,4 @@ function findSurface(surfaces, surfaceId) {
 }
 export { getBundledDiffSchema, getBundledPolicySchema, getBundledFixSummarySchema, validateDiffOutput, validatePolicy, validateFixSummary, } from "./schema-validate.js";
 export { normalizeColorValue, normalizeColorValues, } from "./color-policy.js";
+export { matchTokenPolicy, normalizeTokenLiteralValue, } from "./token-policy.js";

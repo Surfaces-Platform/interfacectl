@@ -339,6 +339,312 @@ test("icon policy warn emits policy metadata for warn-level handling", () => {
   assert.equal(iconViolation.details?.policy, "warn");
 });
 
+test("marketing layout and typography drift emit warn-mode violations", () => {
+  const contract = {
+    ...baseContract,
+    tokens: {
+      typography: {
+        policy: "warn",
+        allowedTokens: [
+          "var(--marketing-sans-hero-title-size)",
+          "var(--marketing-sans-body-size)",
+        ],
+      },
+    },
+    marketingProfiles: {
+      layout: [
+        {
+          id: "marketing-open-flow-split",
+          heroContainerMode: "open-flow",
+          heroVisualPlacement: "inline-end",
+          sectionDividerMode: "border-top",
+          sectionSpacingProfile: "roomy",
+        },
+      ],
+      typography: [
+        {
+          id: "marketing-sans",
+          roles: [
+            {
+              role: "heroTitle",
+              allowedTokens: ["var(--marketing-sans-hero-title-size)"],
+            },
+            {
+              role: "body",
+              allowedTokens: ["var(--marketing-sans-body-size)"],
+            },
+          ],
+        },
+      ],
+    },
+    surfaces: [
+      {
+        id: "surface-marketing",
+        displayName: "Surface Marketing",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-marketing)"],
+        marketingTypographyProfile: "marketing-sans",
+        marketingTypographyPolicy: "warn",
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+          landingPattern: {
+            policy: "strict",
+            marketingLayoutProfile: "marketing-open-flow-split",
+            marketingLayoutPolicy: "warn",
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-marketing",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-marketing)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    tokenUsage: {
+      typography: [{ value: "var(--marketing-sans-hero-title-size)" }],
+      layout: [],
+      motion: [],
+    },
+    marketingTypography: {
+      profileId: "marketing-sans",
+      roles: [
+        {
+          role: "heroTitle",
+          tokens: [{ value: "var(--marketing-sans-body-size)" }],
+        },
+      ],
+    },
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+      landingPattern: {
+        sectionOrder: ["main.hero"],
+        topLevelSections: ["main.hero"],
+        nestedSections: [],
+        marketingLayoutProfile: "marketing-open-flow-split",
+        heroContainerMode: "framed",
+        heroVisualPlacement: "inline-end",
+        sectionDividerMode: "border-top",
+        sectionSpacingProfile: "roomy",
+      },
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const marketingViolations = report.violations.filter((violation) =>
+    violation.type.startsWith("landing-pattern-") ||
+    violation.type.startsWith("marketing-typography-"),
+  );
+
+  assert.ok(
+    marketingViolations.some(
+      (violation) => violation.type === "landing-pattern-hero-container-mode",
+    ),
+  );
+  assert.ok(
+    marketingViolations.some(
+      (violation) => violation.type === "marketing-typography-role-token",
+    ),
+  );
+  assert.ok(
+    marketingViolations.every((violation) => violation.details?.policy === "warn"),
+  );
+});
+
+test("token policies report disallowed typography, layout, and motion tokens", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-token-policy",
+        displayName: "Surface Token Policy",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-sans)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+      },
+    ],
+    tokens: {
+      typography: {
+        policy: "warn",
+        allowedTokens: ["var(--text-body)", "var(--font-sans)"],
+      },
+      layout: {
+        policy: "strict",
+        allowedTokens: ["var(--space-6)"],
+      },
+      motion: {
+        policy: "warn",
+        allowedTokens: ["var(--motion-duration-fast)"],
+      },
+    },
+  };
+
+  const descriptor = {
+    surfaceId: "surface-token-policy",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-sans)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    tokenUsage: {
+      typography: [{ value: "var(--text-display)", source: "app/globals.css" }],
+      layout: [{ value: "var(--space-12)", source: "app/globals.css" }],
+      motion: [{ value: "var(--motion-duration-slow)", source: "app/globals.css" }],
+    },
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const tokenViolations = report.violations.filter((item) => item.type === "token-not-allowed");
+  assert.equal(tokenViolations.length, 3);
+  assert.deepEqual(
+    tokenViolations.map((item) => item.details?.tokenCategory).sort(),
+    ["layout", "motion", "typography"],
+  );
+  assert.equal(
+    tokenViolations.find((item) => item.details?.tokenCategory === "layout")?.details?.policy,
+    "strict",
+  );
+});
+
+test("token policy accepts observed aliases that normalize to an allowlisted canonical token", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-token-alias",
+        displayName: "Surface Token Alias",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-sans)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+      },
+    ],
+    tokens: {
+      layout: {
+        policy: "strict",
+        allowedTokens: ["var(--space-4)"],
+        tokenMetadata: [
+          {
+            token: "var(--space-4)",
+            normalizedValue: "16px",
+            attributes: ["padding-inline"],
+            aliases: ["var(--space-md)"],
+          },
+        ],
+      },
+    },
+  };
+
+  const descriptor = {
+    surfaceId: "surface-token-alias",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-sans)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    tokenUsage: {
+      typography: [],
+      layout: [
+        {
+          value: "var(--space-4)",
+          observedValue: "var(--space-md)",
+          normalizedValue: "16px",
+          attributes: ["padding-inline"],
+          source: "app/globals.css",
+        },
+      ],
+      motion: [],
+    },
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const tokenViolations = report.violations.filter((item) => item.type === "token-not-allowed");
+  assert.equal(tokenViolations.length, 0);
+});
+
+test("token policy violation exposes normalized details for unmatched token groups", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-token-details",
+        displayName: "Surface Token Details",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-sans)"],
+        layout: {
+          maxContentWidth: 1200,
+          requiredContainers: [],
+        },
+      },
+    ],
+    tokens: {
+      motion: {
+        policy: "warn",
+        allowedTokens: ["var(--motion-duration-fast)"],
+        tokenMetadata: [
+          {
+            token: "var(--motion-duration-fast)",
+            normalizedValue: "200ms",
+            attributes: ["transition-duration"],
+            aliases: [],
+          },
+        ],
+      },
+    },
+  };
+
+  const descriptor = {
+    surfaceId: "surface-token-details",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-sans)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    tokenUsage: {
+      typography: [],
+      layout: [],
+      motion: [
+        {
+          value: "var(--motion-duration-slow)",
+          observedValue: "var(--motion-duration-slow)",
+          normalizedValue: "300ms",
+          attributes: ["transition-duration"],
+          source: "app/globals.css",
+        },
+      ],
+    },
+    layout: {
+      maxContentWidth: 1000,
+      containers: [],
+    },
+    motion: [],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find((item) => item.type === "token-not-allowed");
+  assert.ok(violation);
+  assert.equal(violation.details?.token, "var(--motion-duration-slow)");
+  assert.equal(violation.details?.canonicalToken, "var(--motion-duration-slow)");
+  assert.equal(violation.details?.normalizedValue, "300ms");
+});
+
 test("mixed allowed values pass exact matching through one path", () => {
   const contract = {
     ...baseContract,

@@ -62,6 +62,7 @@ test("collectSurfaceDescriptors captures sections, containers, fonts, colors, an
           --contract-max-width: 960px;
           --contract-motion-duration: 120ms;
           --contract-motion-timing: ease-in;
+          --font-demo: "Demo Sans";
           --color-primary: #0066cc;
           --color-background: #ffffff;
         }
@@ -269,6 +270,203 @@ test("detects shell-owned primitives (navigation/footer/auth-shell) in descripto
     assert.equal(roles.navigation, 1, "should detect navigation primitive");
     assert.equal(roles.footer, 1, "should detect footer primitive");
     assert.equal(roles["auth-shell"], 1, "should detect auth-shell primitive");
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("collectSurfaceDescriptors extracts marketing layout signals and typography-role tokens", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-marketing-"));
+  const surfaceId = "marketing-surface";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "globals.css"),
+      `
+        :root {
+          --contract-max-width: 1120px;
+          --contract-motion-duration: 120ms;
+          --contract-motion-timing: linear;
+          --font-marketing: "Inter";
+          --color-marketing-text: #111827;
+          --marketing-sans-hero-title-size: 32px;
+          --marketing-sans-hero-title-line-height: 1.2;
+          --marketing-sans-body-size: 14px;
+          --marketing-sans-body-line-height: 1.6;
+        }
+
+        body {
+          font-family: var(--font-marketing), Inter, sans-serif;
+          color: var(--color-marketing-text);
+          transition: opacity var(--contract-motion-duration) linear;
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <div
+              data-contract="page-container"
+              data-contract-typography-profile="marketing-sans"
+              className="min-h-screen w-full"
+            >
+              <section
+                data-contract-section="landing.hero"
+                data-contract-marketing-layout-profile="marketing-open-flow-split"
+                data-contract-hero-container-mode="open-flow"
+                data-contract-hero-visual-placement="inline-end"
+                data-contract-section-divider-mode="border-top"
+                data-contract-section-spacing-profile="roomy"
+              >
+                <h1
+                  data-contract-copy-role="heroTitle"
+                  style={{
+                    fontSize: "var(--marketing-sans-hero-title-size)",
+                    lineHeight: "var(--marketing-sans-hero-title-line-height)"
+                  }}
+                >
+                  Marketing Surface
+                </h1>
+                <p
+                  data-contract-copy-role="body"
+                  style={{
+                    fontSize: "var(--marketing-sans-body-size)",
+                    lineHeight: "var(--marketing-sans-body-line-height)"
+                  }}
+                >
+                  Body copy
+                </p>
+              </section>
+            </div>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "marketing.contract",
+      version: "1.0.0",
+      sections: [
+        {
+          id: "landing.hero",
+          intent: "hero",
+          description: "Hero section",
+        },
+      ],
+      constraints: {
+        motion: {
+          allowedDurationsMs: [120],
+          allowedTimingFunctions: ["linear"],
+        },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Marketing Surface",
+          type: "web",
+          requiredSections: ["landing.hero"],
+          allowedFonts: ["Inter", "var(--font-marketing)", "sans-serif"],
+          layout: {
+            maxContentWidth: 1120,
+            landingPattern: {
+              policy: "warn",
+              marketingLayoutProfile: "marketing-open-flow-split",
+              marketingLayoutPolicy: "warn",
+            },
+          },
+          marketingTypographyProfile: "marketing-sans",
+          marketingTypographyPolicy: "warn",
+        },
+      ],
+      marketingProfiles: {
+        layout: [
+          {
+            id: "marketing-open-flow-split",
+            heroContainerMode: "open-flow",
+            heroVisualPlacement: "inline-end",
+            sectionDividerMode: "border-top",
+            sectionSpacingProfile: "roomy",
+          },
+        ],
+        typography: [
+          {
+            id: "marketing-sans",
+            roles: [
+              {
+                role: "heroTitle",
+                allowedTokens: [
+                  "var(--marketing-sans-hero-title-size)",
+                  "var(--marketing-sans-hero-title-line-height)",
+                ],
+              },
+              {
+                role: "body",
+                allowedTokens: [
+                  "var(--marketing-sans-body-size)",
+                  "var(--marketing-sans-body-line-height)",
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      color: {
+        policy: "warn",
+        allowedValues: ["var(--color-marketing-text)"],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.warnings.length, 0);
+
+    const descriptor = result.descriptors[0];
+    assert.equal(
+      descriptor.layout.landingPattern?.marketingLayoutProfile,
+      "marketing-open-flow-split",
+    );
+    assert.equal(
+      descriptor.layout.landingPattern?.heroContainerMode,
+      "open-flow",
+    );
+    assert.equal(
+      descriptor.layout.landingPattern?.heroVisualPlacement,
+      "inline-end",
+    );
+    assert.equal(
+      descriptor.layout.landingPattern?.sectionDividerMode,
+      "border-top",
+    );
+    assert.equal(
+      descriptor.layout.landingPattern?.sectionSpacingProfile,
+      "roomy",
+    );
+    assert.equal(descriptor.marketingTypography?.profileId, "marketing-sans");
+    assert.deepEqual(
+      descriptor.marketingTypography?.roles.map((role) => role.role),
+      ["body", "heroTitle"],
+    );
+    assert.deepEqual(
+      descriptor.marketingTypography?.roles.find((role) => role.role === "heroTitle")?.tokens.map((token) => token.value),
+      [
+        "var(--marketing-sans-hero-title-line-height)",
+        "var(--marketing-sans-hero-title-size)",
+      ],
+    );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

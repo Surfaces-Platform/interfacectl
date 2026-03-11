@@ -148,6 +148,124 @@ test("validateContractStructure accepts optional surface.layout.chromePolicy", (
   assert.equal(result.ok, true);
 });
 
+test("validateContractStructure accepts optional top-level token policies", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({}, {
+    tokens: {
+      typography: {
+        policy: "warn",
+        allowedTokens: ["var(--text-body)", "var(--font-sans)"],
+        tokenMetadata: [
+          {
+            token: "var(--font-sans)",
+            normalizedValue: "inter, sans-serif",
+            attributes: ["font-family", "font-size"],
+            aliases: ["var(--text-body)"],
+          },
+        ],
+      },
+      layout: {
+        policy: "warn",
+        allowedTokens: ["var(--space-6)", "var(--container-xl)"],
+      },
+      motion: {
+        policy: "warn",
+        allowedTokens: ["var(--motion-duration-fast)", "var(--motion-ease-standard)"],
+      },
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true);
+});
+
+test("validateContractStructure accepts optional marketing layout and typography profiles", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({
+    marketingTypographyProfile: "marketing-sans",
+    marketingTypographyPolicy: "warn",
+    layout: {
+      maxContentWidth: 1200,
+      landingPattern: {
+        policy: "strict",
+        marketingLayoutProfile: "marketing-open-flow-split",
+        marketingLayoutPolicy: "warn",
+      },
+    },
+  }, {
+    marketingProfiles: {
+      layout: [
+        {
+          id: "marketing-open-flow-split",
+          heroContainerMode: "open-flow",
+          heroVisualPlacement: "inline-end",
+          sectionDividerMode: "border-top",
+          sectionSpacingProfile: "roomy",
+        },
+      ],
+      typography: [
+        {
+          id: "marketing-sans",
+          roles: [
+            {
+              role: "heroTitle",
+              allowedTokens: ["var(--marketing-sans-hero-title-size)"],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true);
+});
+
+test("validateContractStructure rejects invalid marketing profile references", () => {
+  const schema = getBundledContractSchema();
+  const contract = buildContract({
+    marketingTypographyProfile: "missing-typography-profile",
+    layout: {
+      maxContentWidth: 1200,
+      landingPattern: {
+        policy: "strict",
+        marketingLayoutProfile: "missing-layout-profile",
+      },
+    },
+  }, {
+    marketingProfiles: {
+      layout: [
+        {
+          id: "marketing-open-flow-split",
+          heroContainerMode: "open-flow",
+          heroVisualPlacement: "inline-end",
+          sectionDividerMode: "border-top",
+          sectionSpacingProfile: "roomy",
+        },
+      ],
+      typography: [
+        {
+          id: "marketing-sans",
+          roles: [
+            {
+              role: "heroTitle",
+              allowedTokens: ["var(--marketing-sans-hero-title-size)"],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("marketingLayoutProfile")),
+    `expected marketingLayoutProfile error, got ${JSON.stringify(result.errors)}`,
+  );
+  assert.ok(
+    result.errors.some((error) => error.includes("marketingTypographyProfile")),
+    `expected marketingTypographyProfile error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
 test("validateContractStructure rejects invalid surface.layout.chromePolicy target", () => {
   const schema = getBundledContractSchema();
   const contract = buildContract({

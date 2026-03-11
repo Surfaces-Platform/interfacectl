@@ -12,6 +12,7 @@ import {
 import { seedColorPolicyFromObservedDescriptors } from "../utils/color-policy-seeding.js";
 import { seedChromePolicyFromObservedDescriptors } from "../utils/chrome-policy-seeding.js";
 import { seedIconPolicyFromObservedDescriptors } from "../utils/icon-policy-seeding.js";
+import { seedObservedUiContract } from "../utils/observed-ui-seeding.js";
 
 export interface GenerateContractOptions {
   appRoot: string;
@@ -47,11 +48,17 @@ export async function runGenerateContractCommand(
     surfaceId,
   });
 
-  const seeded = await seedColorPolicyFromObservedDescriptors({
+  const uiSeeded = await seedObservedUiContract({
     workspaceRoot: cwd,
     appRoot,
     surfaceId,
     contract: extractedContract as unknown as InterfaceContract,
+  });
+  const seeded = await seedColorPolicyFromObservedDescriptors({
+    workspaceRoot: cwd,
+    appRoot,
+    surfaceId,
+    contract: uiSeeded.contract,
   });
   const iconSeeded = await seedIconPolicyFromObservedDescriptors({
     workspaceRoot: cwd,
@@ -66,10 +73,14 @@ export async function runGenerateContractCommand(
     contract: iconSeeded.contract,
   });
   const contract = chromeSeeded.contract;
+  const filteredReportWarnings = report.warnings.filter(
+    (warning) => !uiSeeded.resolvedPlaceholderWarnings.includes(warning.code),
+  );
   const reportWithSeedWarnings = {
     ...report,
     warnings: [
-      ...report.warnings,
+      ...filteredReportWarnings,
+      ...uiSeeded.warnings,
       ...seeded.warnings,
       ...iconSeeded.warnings,
       ...chromeSeeded.warnings,

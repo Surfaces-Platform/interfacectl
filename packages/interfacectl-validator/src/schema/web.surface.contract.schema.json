@@ -49,6 +49,12 @@
     "color": {
       "$ref": "#/$defs/color"
     },
+    "tokens": {
+      "$ref": "#/$defs/contractTokens"
+    },
+    "marketingProfiles": {
+      "$ref": "#/$defs/marketingProfiles"
+    },
     "x_extracted": {
       "type": "object",
       "description": "Phase 0: fields extracted from app code; not used by validator semantics.",
@@ -133,6 +139,18 @@
             "minLength": 1
           },
           "uniqueItems": true
+        },
+        "marketingTypographyProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "marketingTypographyPolicy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
         },
         "layout": {
           "type": "object",
@@ -395,6 +413,210 @@
         }
       }
     },
+    "tokenPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "allowedTokens"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "allowedTokens": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "tokenMetadata": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tokenMetadata"
+          }
+        }
+      }
+    },
+    "tokenMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "token",
+        "normalizedValue",
+        "attributes",
+        "aliases"
+      ],
+      "properties": {
+        "token": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalizedValue": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "contractTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "typography": {
+          "$ref": "#/$defs/tokenPolicy"
+        },
+        "layout": {
+          "$ref": "#/$defs/tokenPolicy"
+        },
+        "motion": {
+          "$ref": "#/$defs/tokenPolicy"
+        }
+      }
+    },
+    "marketingProfiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layout": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/marketingLayoutProfile"
+          }
+        },
+        "typography": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/marketingTypographyProfile"
+          }
+        }
+      }
+    },
+    "marketingLayoutProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "heroContainerMode",
+        "heroVisualPlacement",
+        "sectionDividerMode",
+        "sectionSpacingProfile"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "heroContainerMode": {
+          "type": "string",
+          "enum": [
+            "open-flow",
+            "framed"
+          ]
+        },
+        "heroVisualPlacement": {
+          "type": "string",
+          "enum": [
+            "inline-end",
+            "inline-start",
+            "stacked",
+            "none"
+          ]
+        },
+        "sectionDividerMode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "border-top"
+          ]
+        },
+        "sectionSpacingProfile": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "roomy"
+          ]
+        }
+      }
+    },
+    "marketingTypographyProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "roles"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/marketingTypographyRoleProfile"
+          }
+        }
+      }
+    },
+    "marketingTypographyRoleProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "allowedTokens"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "heroEyebrow",
+            "heroTitle",
+            "heroBody",
+            "sectionTitle",
+            "body"
+          ]
+        },
+        "allowedTokens": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
     "landingPattern": {
       "type": "object",
       "additionalProperties": false,
@@ -431,6 +653,18 @@
           "enum": [
             "solid",
             "custom"
+          ]
+        },
+        "marketingLayoutProfile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "marketingLayoutPolicy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
           ]
         }
       }
