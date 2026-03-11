@@ -1,4 +1,5 @@
 type ValidationOutcome = "pass" | "warn" | "fail" | "unknown";
+export type OnboardingRunSource = "bootstrap" | "generation" | "ci" | "runtime";
 export interface BootstrapExtractionReport {
     surfaceId: string;
     appRoot: string;
@@ -29,6 +30,7 @@ export interface BootstrapExtractionReport {
 }
 export declare function suggestSurfaceIdFromUrl(rawUrl: string): string;
 export declare function suggestSurfaceName(surfaceId: string): string;
+export declare function suggestSurfaceIdFromPath(rawPath: string): string;
 export declare function buildBootstrapContract(input: {
     surfaceId: string;
     surfaceName: string;
@@ -44,6 +46,17 @@ export declare function writeBootstrapArtifacts(input: {
 }): Promise<{
     contractPath: string;
     reportPath: string;
+}>;
+export declare function emitOnboardingRunArtifact(input: {
+    rootDir: string;
+    surfaceId: string;
+    source: OnboardingRunSource;
+    status: ValidationOutcome;
+    findingCodes: string[];
+    extractionPath: string;
+    reportPath: string;
+}): Promise<{
+    runId: string;
 }>;
 export declare function emitBootstrapRunArtifact(input: {
     rootDir: string;

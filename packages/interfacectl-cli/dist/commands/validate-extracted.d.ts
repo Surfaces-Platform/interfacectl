@@ -17,6 +17,7 @@ export interface ValidateExtractedOptions {
     extractedPath: string;
     surfaceId?: string;
     format?: "text" | "json";
+    outputPath?: string;
     exitCodes?: "v1" | "v2";
 }
 export interface Finding {

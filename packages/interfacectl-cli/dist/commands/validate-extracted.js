@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getExitCodeVersion } from "../utils/exit-codes.js";
 const AUTH_ROUTES = ["/auth/login", "/auth/callback", "/auth/session", "/auth/logout"];
 function normalizeExtracted(raw) {
@@ -144,6 +144,21 @@ export async function runValidateExtractedCommand(options) {
     const cwd = process.cwd();
     const exitCodeVersion = getExitCodeVersion({ exitCodes: options.exitCodes });
     const format = (options.format ?? "text").toLowerCase() === "json" ? "json" : "text";
+    const outputPath = options.outputPath
+        ? path.resolve(cwd, options.outputPath)
+        : undefined;
+    const emit = async (contents, stream = "stdout") => {
+        if (outputPath) {
+            await mkdir(path.dirname(outputPath), { recursive: true });
+            await writeFile(outputPath, contents, "utf-8");
+            return;
+        }
+        if (stream === "stderr") {
+            process.stderr.write(contents);
+            return;
+        }
+        process.stdout.write(contents);
+    };
     let contract;
     try {
         const contractResolved = path.resolve(cwd, options.contractPath);
@@ -153,7 +168,7 @@ export async function runValidateExtractedCommand(options) {
     catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (format === "json") {
-            console.log(JSON.stringify({
+            await emit(`${JSON.stringify({
                 ok: false,
                 findings: [
                     {
@@ -163,7 +178,7 @@ export async function runValidateExtractedCommand(options) {
                         message: `Failed to load contract: ${message}`,
                     },
                 ],
-            }, null, 2));
+            }, null, 2)}\n`);
         }
         else {
             console.error(`Failed to load contract: ${message}`);
@@ -177,7 +192,7 @@ export async function runValidateExtractedCommand(options) {
     catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (format === "json") {
-            console.log(JSON.stringify({
+            await emit(`${JSON.stringify({
                 ok: false,
                 findings: [
                     {
@@ -187,7 +202,7 @@ export async function runValidateExtractedCommand(options) {
                         message: `Failed to load extracted file: ${message}`,
                     },
                 ],
-            }, null, 2));
+            }, null, 2)}\n`);
         }
         else {
             console.error("Extracted file must be an extraction report (surfaceId + extracted) or a generated contract with x_extracted. Use --surface <id> when surfaceId cannot be inferred.");
@@ -197,7 +212,7 @@ export async function runValidateExtractedCommand(options) {
     }
     if (!extractedData) {
         if (format === "json") {
-            console.log(JSON.stringify({
+            await emit(`${JSON.stringify({
                 ok: false,
                 findings: [
                     {
@@ -207,7 +222,7 @@ export async function runValidateExtractedCommand(options) {
                         message: "Could not parse extracted file or infer surfaceId; provide --surface if using generated contract without surfaces[0].id.",
                     },
                 ],
-            }, null, 2));
+            }, null, 2)}\n`);
         }
         else {
             console.error("Could not parse extracted file or infer surfaceId; provide --surface if using generated contract without surfaces[0].id.");
@@ -217,7 +232,7 @@ export async function runValidateExtractedCommand(options) {
     const phase0 = getPhase0ForSurface(contract, extractedData.surfaceId);
     if (!phase0) {
         if (format === "json") {
-            console.log(JSON.stringify({ ok: true, findings: [], message: "No phase0 block for surface; nothing to compare." }, null, 2));
+            await emit(`${JSON.stringify({ ok: true, findings: [], message: "No phase0 block for surface; nothing to compare." }, null, 2)}\n`);
         }
         else {
             console.log(`No phase0 block for surface ${extractedData.surfaceId}; nothing to compare.`);
@@ -229,7 +244,7 @@ export async function runValidateExtractedCommand(options) {
     const ok = sorted.length === 0;
     const exitCode = ok ? 0 : exitCodeVersion === "v2" ? 30 : 1;
     if (format === "json") {
-        console.log(JSON.stringify({ ok, findings: sorted }, null, 2));
+        await emit(`${JSON.stringify({ ok, findings: sorted }, null, 2)}\n`);
         return exitCode;
     }
     if (sorted.length === 0) {

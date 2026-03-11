@@ -6,6 +6,7 @@ import {
   evaluateContractCompliance,
   getBundledContractSchema,
   type InterfaceContract,
+  type SurfaceDescriptor,
   type ValidationSummary,
   type DriftViolationType,
   type SurfaceFlowDescriptor,
@@ -62,6 +63,7 @@ export interface ValidateCommandOptions {
   schemaPath?: string;
   workspaceRoot?: string;
   surfaceFilters?: string[];
+  descriptorOverrides?: SurfaceDescriptor[];
   outputFormat?: OutputFormat;
   outputPath?: string;
   configPath?: string;
@@ -262,78 +264,86 @@ export async function runValidateCommand(
     (options.surfaceFilters ?? []).map((value) => value.trim()),
   );
 
-  const structuralDescriptorResult = await collectSurfaceDescriptors({
-    workspaceRoot,
-    contract,
-    surfaceFilters,
-    surfaceRootMap,
-  });
+  let descriptorsWithFlowArtifacts: SurfaceDescriptor[];
 
-  if (structuralDescriptorResult.warnings.length > 0) {
-    if (!isJson) {
-      printHeader(
-        pc.yellow("⚠ Surface descriptor warnings"),
-        textReporter,
-      );
-      for (const warning of structuralDescriptorResult.warnings) {
-        textReporter.warn(pc.yellow(`  • ${warning.message}`));
-      }
-    }
-    for (const warning of structuralDescriptorResult.warnings) {
-      findings.push(issueToFinding(warning, "warning"));
-    }
-  }
-
-  if (structuralDescriptorResult.errors.length > 0) {
-    if (!isJson) {
-      printHeader(pc.red("✖ Surface descriptor errors"), textReporter);
-      for (const error of structuralDescriptorResult.errors) {
-        textReporter.error(pc.red(`  • ${error.message}`));
-      }
-    }
-    for (const error of structuralDescriptorResult.errors) {
-      findings.push(issueToFinding(error, "error"));
-    }
-    const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
-    return finalize(e0ExitCode, contract.version ?? initialContractVersion);
-  }
-
-  const flowDescriptorResult = await loadFlowDescriptorArtifacts({
-    workspaceRoot,
-    contract,
-    surfaceFilters,
-    flowDescriptorPathMap,
-  });
-  if (!flowDescriptorResult.ok) {
-    const message = `Failed to load flow descriptor artifact: ${flowDescriptorResult.error}`;
-    if (!isJson) {
-      printHeader(pc.red("✖ Flow descriptor artifact load failed"), textReporter);
-      textReporter.error(pc.red(flowDescriptorResult.error));
-    }
-    findings.push({
-      code: "flow-descriptor.load-error",
-      severity: "error",
-      category: "E0",
-      message,
-      surface: flowDescriptorResult.surfaceId,
-      location: flowDescriptorResult.path,
+  if (options.descriptorOverrides && options.descriptorOverrides.length > 0) {
+    descriptorsWithFlowArtifacts = options.descriptorOverrides.filter((descriptor) =>
+      surfaceFilters.size === 0 ? true : surfaceFilters.has(descriptor.surfaceId),
+    );
+  } else {
+    const structuralDescriptorResult = await collectSurfaceDescriptors({
+      workspaceRoot,
+      contract,
+      surfaceFilters,
+      surfaceRootMap,
     });
-    const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
-    return finalize(e0ExitCode, contract.version ?? initialContractVersion);
-  }
 
-  const descriptorsWithFlowArtifacts = structuralDescriptorResult.descriptors.map(
-    (descriptor) => {
-      const flowDescriptorPath = flowDescriptorResult.paths.get(
-        descriptor.surfaceId,
-      );
-      return {
-        ...descriptor,
-        flows: flowDescriptorResult.flowsBySurface.get(descriptor.surfaceId),
-        flowDescriptorPath,
-      };
-    },
-  );
+    if (structuralDescriptorResult.warnings.length > 0) {
+      if (!isJson) {
+        printHeader(
+          pc.yellow("⚠ Surface descriptor warnings"),
+          textReporter,
+        );
+        for (const warning of structuralDescriptorResult.warnings) {
+          textReporter.warn(pc.yellow(`  • ${warning.message}`));
+        }
+      }
+      for (const warning of structuralDescriptorResult.warnings) {
+        findings.push(issueToFinding(warning, "warning"));
+      }
+    }
+
+    if (structuralDescriptorResult.errors.length > 0) {
+      if (!isJson) {
+        printHeader(pc.red("✖ Surface descriptor errors"), textReporter);
+        for (const error of structuralDescriptorResult.errors) {
+          textReporter.error(pc.red(`  • ${error.message}`));
+        }
+      }
+      for (const error of structuralDescriptorResult.errors) {
+        findings.push(issueToFinding(error, "error"));
+      }
+      const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
+      return finalize(e0ExitCode, contract.version ?? initialContractVersion);
+    }
+
+    const flowDescriptorResult = await loadFlowDescriptorArtifacts({
+      workspaceRoot,
+      contract,
+      surfaceFilters,
+      flowDescriptorPathMap,
+    });
+    if (!flowDescriptorResult.ok) {
+      const message = `Failed to load flow descriptor artifact: ${flowDescriptorResult.error}`;
+      if (!isJson) {
+        printHeader(pc.red("✖ Flow descriptor artifact load failed"), textReporter);
+        textReporter.error(pc.red(flowDescriptorResult.error));
+      }
+      findings.push({
+        code: "flow-descriptor.load-error",
+        severity: "error",
+        category: "E0",
+        message,
+        surface: flowDescriptorResult.surfaceId,
+        location: flowDescriptorResult.path,
+      });
+      const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
+      return finalize(e0ExitCode, contract.version ?? initialContractVersion);
+    }
+
+    descriptorsWithFlowArtifacts = structuralDescriptorResult.descriptors.map(
+      (descriptor) => {
+        const flowDescriptorPath = flowDescriptorResult.paths.get(
+          descriptor.surfaceId,
+        );
+        return {
+          ...descriptor,
+          flows: flowDescriptorResult.flowsBySurface.get(descriptor.surfaceId),
+          flowDescriptorPath,
+        };
+      },
+    );
+  }
 
   const summary = evaluateContractCompliance(
     contract,
