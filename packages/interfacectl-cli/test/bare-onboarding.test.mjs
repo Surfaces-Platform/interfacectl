@@ -19,7 +19,7 @@ const forceWelcomeEnv = { INTERFACECTL_FORCE_BARE_WELCOME: "1" };
 async function run(args, options = {}) {
   const child = spawn("node", [cliPath, ...args], {
     cwd: options.cwd,
-    env: { ...process.env, ...(options.env ?? {}) },
+    env: { ...process.env, NODE_NO_WARNINGS: "1", ...(options.env ?? {}) },
   });
   if (options.input) {
     child.stdin.write(options.input);
@@ -52,7 +52,7 @@ async function run(args, options = {}) {
 async function runInteractive(args, options = {}) {
   const child = spawn("node", [cliPath, ...args], {
     cwd: options.cwd,
-    env: { ...process.env, ...(options.env ?? {}) },
+    env: { ...process.env, NODE_NO_WARNINGS: "1", ...(options.env ?? {}) },
   });
 
   let stdout = "";
