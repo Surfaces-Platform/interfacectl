@@ -64,8 +64,8 @@ async function runInteractive(args, options = {}) {
   const tryAdvance = () => {
     while (stepIndex < steps.length) {
       const step = steps[stepIndex];
-      const combined = `${stdout}${stderr}`;
-      if (!step.when.test(combined)) {
+      const matched = step.when.test(stdout) || step.when.test(stderr) || step.when.test(`${stdout}${stderr}`);
+      if (!matched) {
         return;
       }
       child.stdin.write(step.input);
