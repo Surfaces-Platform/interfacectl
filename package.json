@@ -7,7 +7,7 @@
     "node": ">=18.20.0 || >=20.10.0"
   },
   "scripts": {
-    "build": "pnpm --filter \"./packages/interfacectl-validator\" run build && pnpm -r --filter \"./packages/**\" run build",
+    "build": "pnpm --filter \"./packages/interfacectl-validator\" run build && pnpm --filter \"./packages/interfacectl-extractor\" run build && pnpm --filter \"./packages/interfacectl-onboarding\" run build && pnpm --filter \"./packages/interfacectl-cli\" run build",
     "clean": "pnpm -r run clean",
     "test": "pnpm -r --filter \"./packages/**\" run test",
     "verify": "bash scripts/verify-source-files.sh",
