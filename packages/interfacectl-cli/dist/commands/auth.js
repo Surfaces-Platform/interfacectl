@@ -1,5 +1,4 @@
-import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-session.js";
-import { clearAuthProfiles, getAuthStorageMode, inspectAuthProfile, isLegacyAuthProfile, isProfileExpired, isProfileReplayReady, listAuthProfiles, saveReplayAuthProfile, } from "../utils/auth-profiles.js";
+import { captureBrowserStorageState, observeRemotePage, clearAuthProfiles, getAuthStorageMode, inspectAuthProfile, isLegacyAuthProfile, isProfileExpired, isProfileReplayReady, listAuthProfiles, saveReplayAuthProfile, } from "@surfaces/interfacectl-onboarding";
 function buildProfileStatus(profile) {
     if (!profile) {
         return "missing";

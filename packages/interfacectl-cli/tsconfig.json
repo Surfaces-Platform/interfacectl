@@ -3,6 +3,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@surfaces/interfacectl-onboarding": [
+        "../interfacectl-onboarding/dist/index.d.ts"
+      ],
       "@surfaces/interfacectl-validator": [
         "../interfacectl-validator/dist/index.d.ts"
       ]
@@ -12,4 +15,3 @@
   },
   "include": ["src/**/*.ts"]
 }
-

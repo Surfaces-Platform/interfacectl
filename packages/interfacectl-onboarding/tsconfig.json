@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@surfaces/interfacectl-extractor": [
+        "../interfacectl-extractor/dist/index.d.ts"
+      ],
+      "@surfaces/interfacectl-validator": [
+        "../interfacectl-validator/dist/index.d.ts"
+      ]
+    },
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -28,9 +28,8 @@ jobs:
         run: pnpm run build
       - name: Run tests
         run: pnpm run test
-      # Publishing to npm is disabled for now
-      # To enable, uncomment the following step and add NPM_TOKEN secret:
-      # - name: Publish packages
-      #   run: pnpm changeset publish
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish packages
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        run: pnpm changeset publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

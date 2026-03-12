@@ -61,6 +61,10 @@ interfacectl init --url https://app.example.com --surface customer-app --auth-pr
 
 `interfacectl` replays the saved browser session in Chromium, analyzes the rendered authenticated page, and keeps auth state out of generated artifacts.
 
+## Ownership
+
+`interfacectl` is the canonical source of truth for reusable onboarding behavior, auth-gate semantics, artifact generation, and validator-facing platform rules. Consumer repos such as `surfaces-webapps` may provide product-specific onboarding UI or API wrappers, but they should delegate to `interfacectl` rather than reimplement onboarding logic locally.
+
 ## Commands Overview
 
 The CLI provides two first-run commands, browser-session auth helpers, and the validation and enforcement commands:

@@ -22,10 +22,10 @@
   },
   "pnpm": {
     "overrides": {
+      "@surfaces/interfacectl-onboarding": "link:packages/interfacectl-onboarding",
       "@surfaces/interfacectl-extractor": "link:packages/interfacectl-extractor",
       "@surfaces/interfacectl-validator": "link:packages/interfacectl-validator"
     }
   },
   "packageManager": "pnpm@10.26.2"
 }
-

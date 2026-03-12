@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@surfaces/interfacectl-onboarding': link:packages/interfacectl-onboarding
   '@surfaces/interfacectl-extractor': link:packages/interfacectl-extractor
   '@surfaces/interfacectl-validator': link:packages/interfacectl-validator
 
@@ -27,6 +28,9 @@ importers:
       '@surfaces/interfacectl-extractor':
         specifier: link:../interfacectl-extractor
         version: link:../interfacectl-extractor
+      '@surfaces/interfacectl-onboarding':
+        specifier: link:../interfacectl-onboarding
+        version: link:../interfacectl-onboarding
       '@surfaces/interfacectl-validator':
         specifier: link:../interfacectl-validator
         version: link:../interfacectl-validator
@@ -51,6 +55,28 @@ importers:
         version: 5.9.3
 
   packages/interfacectl-extractor:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.9
+        version: 20.19.27
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
+  packages/interfacectl-onboarding:
+    dependencies:
+      '@surfaces/interfacectl-extractor':
+        specifier: link:../interfacectl-extractor
+        version: link:../interfacectl-extractor
+      '@surfaces/interfacectl-validator':
+        specifier: link:../interfacectl-validator
+        version: link:../interfacectl-validator
+      globby:
+        specifier: ^14.0.2
+        version: 14.1.0
+      playwright:
+        specifier: ^1.58.2
+        version: 1.58.2
     devDependencies:
       '@types/node':
         specifier: ^20.14.9

@@ -1,5 +1,6 @@
-import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-session.js";
 import {
+  captureBrowserStorageState,
+  observeRemotePage,
   clearAuthProfiles,
   findAuthProfile,
   getAuthStorageMode,
@@ -9,7 +10,7 @@ import {
   isProfileReplayReady,
   listAuthProfiles,
   saveReplayAuthProfile,
-} from "../utils/auth-profiles.js";
+} from "@surfaces/interfacectl-onboarding";
 
 export interface AuthCommandOptions {
   profile?: string;

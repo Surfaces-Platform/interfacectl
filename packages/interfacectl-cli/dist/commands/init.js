@@ -5,12 +5,8 @@ import path from "node:path";
 import { getBundledContractSchema, validateContractStructure, } from "@surfaces/interfacectl-validator";
 import { runValidateCommand } from "./validate.js";
 import { runValidateExtractedCommand } from "./validate-extracted.js";
-import { getAuthStorageMode, inspectAuthProfile, saveReplayAuthProfile, } from "../utils/auth-profiles.js";
-import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-session.js";
-import { analyzeSurface, stringifyStableArtifact, } from "../utils/first-run-analysis.js";
-import { emitOnboardingRunArtifact, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "../utils/onboarding.js";
+import { getAuthStorageMode, inspectAuthProfile, saveReplayAuthProfile, captureBrowserStorageState, observeRemotePage, analyzeSurface, emitOnboardingRunArtifact, redactSensitiveText, stringifyStableArtifact, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "@surfaces/interfacectl-onboarding";
 import { inferSourceMode, normalizeSurfaceId, promptGateResolution, promptInteractiveInitInputs, promptSurfaceKindConfirmation, promptWriteConfirmation, } from "../utils/init-interactive.js";
-import { redactSensitiveText } from "../utils/redaction.js";
 const DEFAULT_OUT_DIR = "contracts/generated";
 async function maybeCaptureAuthProfile(inputValue) {
     if (!inputValue.requiresAuth) {

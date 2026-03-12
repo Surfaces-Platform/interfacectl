@@ -1,15 +1,17 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { inspectAuthProfile } from "../utils/auth-profiles.js";
 import {
   analyzeSurface,
+  inspectAuthProfile,
+  redactSensitiveText,
   stringifyStableArtifact,
+  suggestSurfaceIdFromPath,
+  suggestSurfaceIdFromUrl,
+  suggestSurfaceName,
   type AnalysisSourceMode,
   type WebSurfaceKind,
-} from "../utils/first-run-analysis.js";
-import { suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName } from "../utils/onboarding.js";
-import { redactSensitiveText } from "../utils/redaction.js";
+} from "@surfaces/interfacectl-onboarding";
 
 type ExtractMode = AnalysisSourceMode;
 

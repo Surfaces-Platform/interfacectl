@@ -1,4 +1,4 @@
-import { type AnalysisSourceMode, type WebSurfaceKind } from "../utils/first-run-analysis.js";
+import { type AnalysisSourceMode, type WebSurfaceKind } from "@surfaces/interfacectl-onboarding";
 type ExtractMode = AnalysisSourceMode;
 export interface AnalyzeCommandOptions {
     url?: string;

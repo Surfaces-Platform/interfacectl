@@ -12,19 +12,17 @@ import {
   getAuthStorageMode,
   inspectAuthProfile,
   saveReplayAuthProfile,
-} from "../utils/auth-profiles.js";
-import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-session.js";
-import {
+  captureBrowserStorageState,
+  observeRemotePage,
   analyzeSurface,
-  stringifyStableArtifact,
-  type SurfaceAnalysisArtifact,
-} from "../utils/first-run-analysis.js";
-import {
   emitOnboardingRunArtifact,
+  redactSensitiveText,
+  stringifyStableArtifact,
   suggestSurfaceIdFromPath,
   suggestSurfaceIdFromUrl,
   suggestSurfaceName,
-} from "../utils/onboarding.js";
+  type SurfaceAnalysisArtifact,
+} from "@surfaces/interfacectl-onboarding";
 import {
   inferSourceMode,
   normalizeSurfaceId,
@@ -37,7 +35,6 @@ import {
   type InteractiveInitOptions,
   type ResolvedInitInputs,
 } from "../utils/init-interactive.js";
-import { redactSensitiveText } from "../utils/redaction.js";
 
 interface ValidateJsonFinding {
   code: string;
