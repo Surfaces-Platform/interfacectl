@@ -46,3 +46,8 @@ Goal: prevent generators from emitting shell-owned primitives (e.g., navigation)
 ## Notes
 - If both `mustNotEmit` and `shell.owns` are absent, the checker is a no-op for that surface.
 - Role naming: use the canonical role string `navigation` for nav bars; if you introduce aliases, normalize them before writing the descriptor.
+
+## Related docs
+- [Shell Boundary Semantics](./shell-boundary.md)
+- [AI Generator Adapter Quick Start](./ai-generator-adapter-quickstart.md)
+- [Generator-Aware Contract Consumption](./generator-consumption.md)

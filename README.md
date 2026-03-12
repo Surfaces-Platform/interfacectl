@@ -61,6 +61,19 @@ interfacectl init --url https://app.example.com --surface customer-app --auth-pr
 
 `interfacectl` replays the saved browser session in Chromium, analyzes the rendered authenticated page, and keeps auth state out of generated artifacts.
 
+## Canonical docs
+
+Reusable platform semantics live in `interfacectl`:
+
+- [API reference](API.md)
+- [Contract validation reference](docs/contract-validation.md)
+- [Runtime (edge) enforcement guide](docs/runtime-edge.md)
+- [AI Generator Adapter Quick Start](docs/ai-generator-adapter-quickstart.md)
+- [AI Generator Adapter API](docs/ai-generator-adapter-api.md)
+- [AI Tool Playbooks](docs/ai-tool-playbooks.md)
+- [Generator-Aware Contract Consumption](docs/generator-consumption.md)
+- [Shell Boundary Semantics](docs/shell-boundary.md)
+
 ## Commands Overview
 
 The CLI provides two first-run commands, browser-session auth helpers, and the validation and enforcement commands:
