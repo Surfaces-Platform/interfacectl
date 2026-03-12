@@ -1,6 +1,8 @@
 import AjvModule, { type ErrorObject } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import {
+  ContractComponent,
+  ContractSlot,
   InterfaceContract,
   SurfaceDescriptor,
   SurfaceReport,
@@ -57,10 +59,17 @@ export function validateContractStructure(
   const marketingReferenceErrors = validateMarketingProfileReferences(
     contractData as InterfaceContract,
   );
-  if (marketingReferenceErrors.length > 0) {
+  const authoringReferenceErrors = validateAuthoringMetadata(
+    contractData as InterfaceContract,
+  );
+  const validationErrors = [
+    ...marketingReferenceErrors,
+    ...authoringReferenceErrors,
+  ];
+  if (validationErrors.length > 0) {
     return {
       ok: false,
-      errors: marketingReferenceErrors,
+      errors: validationErrors,
     };
   }
 
@@ -99,6 +108,276 @@ function validateMarketingProfileReferences(
   }
 
   return errors;
+}
+
+function validateAuthoringMetadata(contract: InterfaceContract): string[] {
+  const errors: string[] = [];
+  const hasWebSurface = contract.surfaces.some((surface) => surface.type === "web");
+  const hasAuthoringMetadata =
+    (contract.components?.length ?? 0) > 0 ||
+    contract.sections.some(
+      (section) =>
+        section.anatomy !== undefined ||
+        section.editPolicy !== undefined ||
+        section.responsive !== undefined,
+    ) ||
+    contract.surfaces.some(
+      (surface) =>
+        (surface.viewports?.length ?? 0) > 0 || surface.authoring !== undefined,
+    );
+
+  if (hasAuthoringMetadata && !hasWebSurface) {
+    errors.push(
+      "/components authoring metadata requires at least one web surface in the contract",
+    );
+  }
+
+  const declaredViewportIds = new Set<string>();
+  for (const surface of contract.surfaces) {
+    const hasWebOnlyAuthoring =
+      (surface.viewports?.length ?? 0) > 0 || surface.authoring !== undefined;
+    if (hasWebOnlyAuthoring && surface.type !== "web") {
+      errors.push(
+        `/surfaces/${surface.id} authoring metadata is only supported when type is "web"`,
+      );
+    }
+
+    const viewportIds = new Set<string>();
+    for (const viewport of surface.viewports ?? []) {
+      if (viewportIds.has(viewport.id)) {
+        errors.push(
+          `/surfaces/${surface.id}/viewports/${viewport.id} must use unique viewport ids within a surface`,
+        );
+      }
+      viewportIds.add(viewport.id);
+      declaredViewportIds.add(viewport.id);
+
+      if (
+        viewport.minWidthPx !== undefined &&
+        viewport.maxWidthPx !== undefined &&
+        viewport.minWidthPx > viewport.maxWidthPx
+      ) {
+        errors.push(
+          `/surfaces/${surface.id}/viewports/${viewport.id} maxWidthPx must be greater than or equal to minWidthPx`,
+        );
+      }
+    }
+  }
+
+  const components = contract.components ?? [];
+  const componentIds = new Set<string>();
+  const componentsById = new Map<string, ContractComponent>();
+  for (const component of components) {
+    if (componentIds.has(component.id)) {
+      errors.push(`/components/${component.id} must use a unique component id`);
+      continue;
+    }
+    componentIds.add(component.id);
+    componentsById.set(component.id, component);
+  }
+
+  for (const component of components) {
+    validateComponentAuthoring(component, componentIds, errors);
+  }
+
+  for (const section of contract.sections) {
+    validateSectionAuthoring(
+      section,
+      componentIds,
+      componentsById,
+      declaredViewportIds,
+      errors,
+    );
+  }
+
+  return errors;
+}
+
+function validateComponentAuthoring(
+  component: ContractComponent,
+  componentIds: ReadonlySet<string>,
+  errors: string[],
+): void {
+  const slotIds = new Set<string>();
+  for (const slot of component.slots) {
+    if (slotIds.has(slot.id)) {
+      errors.push(
+        `/components/${component.id}/slots/${slot.id} must use a unique slot id within the component`,
+      );
+    }
+    slotIds.add(slot.id);
+    validateSlotDefinition(
+      slot,
+      `/components/${component.id}/slots/${slot.id}`,
+      componentIds,
+      errors,
+    );
+  }
+
+  const stateIds = new Set<string>();
+  for (const state of component.states ?? []) {
+    if (stateIds.has(state.id)) {
+      errors.push(
+        `/components/${component.id}/states/${state.id} must use a unique state id within the component`,
+      );
+    }
+    stateIds.add(state.id);
+
+    for (const requiredSlot of state.requiredSlots ?? []) {
+      if (!slotIds.has(requiredSlot)) {
+        errors.push(
+          `/components/${component.id}/states/${state.id}/requiredSlots/${requiredSlot} must reference a declared slot id`,
+        );
+      }
+    }
+
+    for (const hiddenSlot of state.hiddenSlots ?? []) {
+      if (!slotIds.has(hiddenSlot)) {
+        errors.push(
+          `/components/${component.id}/states/${state.id}/hiddenSlots/${hiddenSlot} must reference a declared slot id`,
+        );
+      }
+    }
+  }
+
+  const interactionIds = new Set<string>();
+  for (const interaction of component.interactions ?? []) {
+    if (interactionIds.has(interaction.id)) {
+      errors.push(
+        `/components/${component.id}/interactions/${interaction.id} must use a unique interaction id within the component`,
+      );
+    }
+    interactionIds.add(interaction.id);
+
+    if (
+      interaction.resultingState !== undefined &&
+      !stateIds.has(interaction.resultingState)
+    ) {
+      errors.push(
+        `/components/${component.id}/interactions/${interaction.id}/resultingState must reference a declared state id`,
+      );
+    }
+  }
+
+  const implementation = component.implementation;
+  if (
+    implementation?.preferredSource &&
+    implementation.allowedSources?.length &&
+    !implementation.allowedSources.includes(implementation.preferredSource)
+  ) {
+    errors.push(
+      `/components/${component.id}/implementation/preferredSource must be included in implementation.allowedSources when both are provided`,
+    );
+  }
+}
+
+function validateSectionAuthoring(
+  section: ContractSection,
+  componentIds: ReadonlySet<string>,
+  componentsById: ReadonlyMap<string, ContractComponent>,
+  declaredViewportIds: ReadonlySet<string>,
+  errors: string[],
+): void {
+  const anatomy = section.anatomy;
+  const knownSlotIds = new Set<string>();
+
+  if (anatomy?.defaultComponent && !componentIds.has(anatomy.defaultComponent)) {
+    errors.push(
+      `/sections/${section.id}/anatomy/defaultComponent must reference a declared component id`,
+    );
+  }
+
+  for (const componentId of anatomy?.allowedComponents ?? []) {
+    if (!componentIds.has(componentId)) {
+      errors.push(
+        `/sections/${section.id}/anatomy/allowedComponents/${componentId} must reference a declared component id`,
+      );
+    }
+  }
+
+  if (
+    anatomy?.defaultComponent &&
+    anatomy.allowedComponents?.length &&
+    !anatomy.allowedComponents.includes(anatomy.defaultComponent)
+  ) {
+    errors.push(
+      `/sections/${section.id}/anatomy/defaultComponent must be included in anatomy.allowedComponents when both are provided`,
+    );
+  }
+
+  for (const slot of anatomy?.slots ?? []) {
+    if (knownSlotIds.has(slot.id)) {
+      errors.push(
+        `/sections/${section.id}/anatomy/slots/${slot.id} must use a unique slot id within the section`,
+      );
+    }
+    knownSlotIds.add(slot.id);
+    validateSlotDefinition(
+      slot,
+      `/sections/${section.id}/anatomy/slots/${slot.id}`,
+      componentIds,
+      errors,
+    );
+  }
+
+  if (knownSlotIds.size === 0 && anatomy?.defaultComponent) {
+    for (const slot of componentsById.get(anatomy.defaultComponent)?.slots ?? []) {
+      knownSlotIds.add(slot.id);
+    }
+  }
+
+  for (const rule of section.responsive?.rules ?? []) {
+    if (declaredViewportIds.size === 0) {
+      errors.push(
+        `/sections/${section.id}/responsive/rules/${rule.viewport} must reference a declared surfaces[*].viewports id; none were declared`,
+      );
+    } else if (!declaredViewportIds.has(rule.viewport)) {
+      errors.push(
+        `/sections/${section.id}/responsive/rules/${rule.viewport} must reference a declared surfaces[*].viewports id`,
+      );
+    }
+
+    for (const slotBehavior of rule.slotBehaviors ?? []) {
+      if (knownSlotIds.size > 0 && !knownSlotIds.has(slotBehavior.slotId)) {
+        errors.push(
+          `/sections/${section.id}/responsive/rules/${rule.viewport}/slotBehaviors/${slotBehavior.slotId} must reference a declared anatomy slot id`,
+        );
+      }
+    }
+  }
+}
+
+function validateSlotDefinition(
+  slot: ContractSlot,
+  path: string,
+  componentIds: ReadonlySet<string>,
+  errors: string[],
+): void {
+  if (
+    slot.minItems !== undefined &&
+    slot.maxItems !== undefined &&
+    slot.minItems > slot.maxItems
+  ) {
+    errors.push(`${path}/maxItems must be greater than or equal to minItems`);
+  }
+
+  if (
+    slot.contentRules?.minLength !== undefined &&
+    slot.contentRules?.maxLength !== undefined &&
+    slot.contentRules.minLength > slot.contentRules.maxLength
+  ) {
+    errors.push(
+      `${path}/contentRules/maxLength must be greater than or equal to minLength`,
+    );
+  }
+
+  for (const componentId of slot.acceptsComponents ?? []) {
+    if (!componentIds.has(componentId)) {
+      errors.push(
+        `${path}/acceptsComponents/${componentId} must reference a declared component id`,
+      );
+    }
+  }
 }
 
 function validateColorPolicy(
@@ -1323,6 +1602,31 @@ function findSurface(
 
 export type {
   InterfaceContract,
+  ContractComponent,
+  ContractSlot,
+  ContractSlotKind,
+  ContractSlotContentRules,
+  ContractComponentVariant,
+  ContractState,
+  ContractInteraction,
+  ContractInteractionEffect,
+  ContractComponentImplementation,
+  ExternalReference,
+  ExternalReferenceSystem,
+  AuthoringSource,
+  SectionAnatomy,
+  SectionEditPolicy,
+  SectionEditMode,
+  SectionAllowedOperation,
+  SectionResponsive,
+  SectionResponsiveRule,
+  ResponsiveLayoutIntent,
+  ResponsiveSlotBehavior,
+  ResponsiveSlotBehaviorKind,
+  ViewportProfile,
+  SurfaceAuthoring,
+  SurfaceAuthoringStyling,
+  SurfaceAuthoringLibraries,
   ContractSurface,
   ContractSection,
   ContractConstraints,

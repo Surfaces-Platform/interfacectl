@@ -51,6 +51,190 @@ export interface FlowPolicy {
   requirements: FlowRequirement[];
 }
 
+export type ExternalReferenceSystem =
+  | "figma"
+  | "code"
+  | "story"
+  | "url"
+  | "asset";
+
+export type AuthoringSource = "contract" | ExternalReferenceSystem;
+
+export interface ExternalReference {
+  system: ExternalReferenceSystem;
+  kind: string;
+  ref: string;
+  name?: string;
+}
+
+export type ContractSlotKind =
+  | "text"
+  | "richText"
+  | "media"
+  | "action"
+  | "icon"
+  | "container"
+  | "item-list";
+
+export interface ContractSlotContentRules {
+  minLength?: number;
+  maxLength?: number;
+  allowHtml?: boolean;
+  allowedMimeTypes?: string[];
+}
+
+export interface ContractSlot {
+  id: string;
+  kind: ContractSlotKind;
+  required: boolean;
+  repeatable?: boolean;
+  minItems?: number;
+  maxItems?: number;
+  textRole?: string;
+  acceptsComponents?: string[];
+  contentRules?: ContractSlotContentRules;
+}
+
+export interface ContractComponentVariant {
+  id: string;
+  label?: string;
+  description?: string;
+  when?: string;
+}
+
+export interface ContractState {
+  id: string;
+  label?: string;
+  when?: string;
+  requiredSlots?: string[];
+  hiddenSlots?: string[];
+  notes?: string;
+}
+
+export type ContractInteractionEffect =
+  | "navigate"
+  | "open"
+  | "close"
+  | "submit"
+  | "filter"
+  | "toggle"
+  | "expand"
+  | "collapse"
+  | "select"
+  | "set-state";
+
+export interface ContractInteraction {
+  id: string;
+  trigger: string;
+  effect: ContractInteractionEffect;
+  target?: string;
+  resultingState?: string;
+  navigationTarget?: string;
+  notes?: string;
+}
+
+export interface ContractComponentImplementation {
+  preferredSource?: AuthoringSource;
+  allowedSources?: AuthoringSource[];
+  htmlFallback?: string;
+  accessibilityNotes?: string[];
+}
+
+export interface ContractComponent {
+  id: string;
+  intent: string;
+  description?: string;
+  variants?: ContractComponentVariant[];
+  slots: ContractSlot[];
+  states?: ContractState[];
+  interactions?: ContractInteraction[];
+  implementation?: ContractComponentImplementation;
+  references?: ExternalReference[];
+}
+
+export interface SectionAnatomy {
+  pattern: string;
+  defaultComponent?: string;
+  allowedComponents?: string[];
+  slots?: ContractSlot[];
+}
+
+export type SectionEditMode = "locked" | "slot-bound" | "freeform";
+
+export type SectionAllowedOperation =
+  | "update-copy"
+  | "swap-variant"
+  | "reorder-items"
+  | "change-media"
+  | "adjust-layout"
+  | "bind-data"
+  | "wire-interaction";
+
+export interface SectionEditPolicy {
+  mode: SectionEditMode;
+  allowedOperations?: SectionAllowedOperation[];
+}
+
+export type ResponsiveLayoutIntent =
+  | "stack"
+  | "columns"
+  | "auto-fit-grid"
+  | "sidebar-main"
+  | "single-column-form";
+
+export type ResponsiveSlotBehaviorKind =
+  | "stack"
+  | "inline"
+  | "grid"
+  | "hide"
+  | "collapse"
+  | "pin";
+
+export interface ResponsiveSlotBehavior {
+  slotId: string;
+  behavior: ResponsiveSlotBehaviorKind;
+  notes?: string;
+}
+
+export interface SectionResponsiveRule {
+  viewport: string;
+  layoutIntent: ResponsiveLayoutIntent;
+  slotBehaviors?: ResponsiveSlotBehavior[];
+  notes?: string;
+}
+
+export interface SectionResponsive {
+  rules: SectionResponsiveRule[];
+}
+
+export interface ViewportProfile {
+  id: string;
+  label?: string;
+  minWidthPx?: number;
+  maxWidthPx?: number;
+  density?: "compact" | "comfortable" | "spacious";
+  notes?: string;
+}
+
+export interface SurfaceAuthoringStyling {
+  strategy?: string;
+  tokenPrefix?: string;
+}
+
+export interface SurfaceAuthoringLibraries {
+  components?: string[];
+  icons?: string[];
+  data?: string[];
+}
+
+export interface SurfaceAuthoring {
+  framework?: string;
+  routing?: string;
+  styling?: SurfaceAuthoringStyling;
+  preferredLibraries?: SurfaceAuthoringLibraries;
+  sourcePriority: AuthoringSource[];
+}
+
 export interface ContractSurface {
   id: string;
   displayName: string;
@@ -70,12 +254,17 @@ export interface ContractSurface {
   flows?: FlowPolicy;
   mustNotEmit?: string[];
   shellOwnedPrimitiveAllowSources?: string[];
+  viewports?: ViewportProfile[];
+  authoring?: SurfaceAuthoring;
 }
 
 export interface ContractSection {
   id: string;
   intent: string;
   description: string;
+  anatomy?: SectionAnatomy;
+  editPolicy?: SectionEditPolicy;
+  responsive?: SectionResponsive;
 }
 
 export interface ContractConstraints {
@@ -167,6 +356,7 @@ export interface InterfaceContract {
   description?: string;
   surfaces: ContractSurface[];
   sections: ContractSection[];
+  components?: ContractComponent[];
   constraints: ContractConstraints;
   color: ColorPolicy;
   tokens?: ContractTokenPolicies;

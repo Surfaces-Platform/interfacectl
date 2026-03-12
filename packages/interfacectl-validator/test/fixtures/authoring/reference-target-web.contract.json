@@ -1,0 +1,318 @@
+{
+  "$schema": "https://contracts.surfaces.local/web.surface.contract.schema.json",
+  "contractId": "reference-target-web.authoring-example",
+  "version": "0.1.0",
+  "description": "Annotated authoring example for the deterministic reference target surface.",
+  "surfaces": [
+    {
+      "id": "reference-target-web",
+      "displayName": "Reference Target Web",
+      "type": "web",
+      "requiredSections": [
+        "page.intro",
+        "page.featurecards",
+        "page.footer"
+      ],
+      "allowedFonts": [
+        "Inter"
+      ],
+      "layout": {
+        "maxContentWidth": 1160
+      },
+      "viewports": [
+        {
+          "id": "mobile",
+          "maxWidthPx": 767,
+          "density": "comfortable",
+          "notes": "Single-column reading flow."
+        },
+        {
+          "id": "desktop",
+          "minWidthPx": 768,
+          "density": "comfortable",
+          "notes": "Card grid can spread across columns."
+        }
+      ],
+      "authoring": {
+        "framework": "react",
+        "routing": "static-anchor",
+        "styling": {
+          "strategy": "css-variables"
+        },
+        "preferredLibraries": {
+          "components": [
+            "custom"
+          ],
+          "icons": [
+            "custom"
+          ]
+        },
+        "sourcePriority": [
+          "contract",
+          "figma",
+          "code",
+          "url"
+        ]
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": "page.intro",
+      "intent": "intro",
+      "description": "Introductory copy block near the top of the page.",
+      "anatomy": {
+        "pattern": "copy-block",
+        "defaultComponent": "copy-block",
+        "allowedComponents": [
+          "copy-block"
+        ]
+      },
+      "editPolicy": {
+        "mode": "slot-bound",
+        "allowedOperations": [
+          "update-copy",
+          "swap-variant",
+          "adjust-layout"
+        ]
+      },
+      "responsive": {
+        "rules": [
+          {
+            "viewport": "mobile",
+            "layoutIntent": "stack"
+          },
+          {
+            "viewport": "desktop",
+            "layoutIntent": "columns"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page.featurecards",
+      "intent": "feature-list",
+      "description": "Repeated feature summaries presented as cards.",
+      "anatomy": {
+        "pattern": "repeated-card-list",
+        "defaultComponent": "feature-card",
+        "allowedComponents": [
+          "feature-card"
+        ],
+        "slots": [
+          {
+            "id": "items",
+            "kind": "item-list",
+            "required": true,
+            "repeatable": true,
+            "minItems": 3,
+            "acceptsComponents": [
+              "feature-card"
+            ]
+          }
+        ]
+      },
+      "editPolicy": {
+        "mode": "slot-bound",
+        "allowedOperations": [
+          "update-copy",
+          "reorder-items",
+          "change-media"
+        ]
+      },
+      "responsive": {
+        "rules": [
+          {
+            "viewport": "mobile",
+            "layoutIntent": "stack",
+            "slotBehaviors": [
+              {
+                "slotId": "items",
+                "behavior": "stack"
+              }
+            ]
+          },
+          {
+            "viewport": "desktop",
+            "layoutIntent": "auto-fit-grid",
+            "slotBehaviors": [
+              {
+                "slotId": "items",
+                "behavior": "grid"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "page.footer",
+      "intent": "footer-info",
+      "description": "Compact footer metadata row.",
+      "anatomy": {
+        "pattern": "meta-row"
+      },
+      "editPolicy": {
+        "mode": "locked"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "copy-block",
+      "intent": "copy block",
+      "description": "Reusable copy cluster with optional primary action.",
+      "variants": [
+        {
+          "id": "standard",
+          "label": "Standard"
+        }
+      ],
+      "slots": [
+        {
+          "id": "eyebrow",
+          "kind": "text",
+          "required": false,
+          "textRole": "eyebrow"
+        },
+        {
+          "id": "headline",
+          "kind": "text",
+          "required": true,
+          "textRole": "headline",
+          "contentRules": {
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        {
+          "id": "body",
+          "kind": "richText",
+          "required": true,
+          "contentRules": {
+            "minLength": 1,
+            "maxLength": 280
+          }
+        },
+        {
+          "id": "primary-action",
+          "kind": "action",
+          "required": false
+        }
+      ],
+      "implementation": {
+        "preferredSource": "contract",
+        "allowedSources": [
+          "contract",
+          "figma",
+          "code",
+          "url"
+        ],
+        "htmlFallback": "section > h1 + p",
+        "accessibilityNotes": [
+          "Preserve the page heading hierarchy."
+        ]
+      },
+      "references": [
+        {
+          "system": "url",
+          "kind": "live-example",
+          "ref": "https://reference-target-web.vercel.app/#hero",
+          "name": "Intro block"
+        }
+      ]
+    },
+    {
+      "id": "feature-card",
+      "intent": "feature summary card",
+      "description": "Single feature summary used inside the repeated card list.",
+      "slots": [
+        {
+          "id": "title",
+          "kind": "text",
+          "required": true,
+          "textRole": "title",
+          "contentRules": {
+            "maxLength": 40
+          }
+        },
+        {
+          "id": "body",
+          "kind": "text",
+          "required": true,
+          "contentRules": {
+            "maxLength": 120
+          }
+        },
+        {
+          "id": "cta",
+          "kind": "action",
+          "required": false
+        }
+      ],
+      "states": [
+        {
+          "id": "default",
+          "requiredSlots": [
+            "title",
+            "body"
+          ]
+        }
+      ],
+      "interactions": [
+        {
+          "id": "open-detail",
+          "trigger": "activate card action",
+          "effect": "navigate",
+          "navigationTarget": "feature-detail"
+        }
+      ],
+      "references": [
+        {
+          "system": "url",
+          "kind": "live-example",
+          "ref": "https://reference-target-web.vercel.app/#capabilities",
+          "name": "Feature list"
+        }
+      ]
+    }
+  ],
+  "constraints": {
+    "motion": {
+      "allowedDurationsMs": [
+        120
+      ],
+      "allowedTimingFunctions": [
+        "linear"
+      ]
+    }
+  },
+  "color": {
+    "policy": "warn",
+    "allowedValues": [
+      "rgb(15, 23, 42)",
+      "rgb(244, 246, 251)",
+      "rgb(255, 255, 255)"
+    ]
+  },
+  "tokens": {
+    "layout": {
+      "policy": "warn",
+      "allowedTokens": [
+        "var(--max-content)"
+      ]
+    },
+    "typography": {
+      "policy": "warn",
+      "allowedTokens": [
+        "var(--font-inter)"
+      ]
+    }
+  },
+  "shell": {
+    "owns": [
+      "navigation"
+    ],
+    "contentSlot": "page-root"
+  }
+}
