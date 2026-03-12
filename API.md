@@ -4,6 +4,8 @@
 
 `interfacectl` is a command-line tool for managing interface contracts in the Surfaces ecosystem. It validates, compares, and enforces compliance between defined interface contracts and actual implementation artifacts across multiple surfaces.
 
+In an interactive terminal, running bare `interfacectl` with no arguments opens the first-run onboarding screen. In non-interactive contexts, bare `interfacectl` keeps the existing help output and exit behavior so scripts and CI remain stable.
+
 ## Generation-time gating
 
 `interfacectl validate` is the canonical command for contract compliance. Use it to gate changes before merge or deployment. For deterministic, category-based exit codes, use `--exit-codes v2` or set `INTERFACECTL_EXIT_CODES=v2`. The command `enforce --mode fail` runs a structural diff and applies a policy threshold. It is optional and useful when you want to block on diff severity separately from compliance. For the minimal contract format and where contract semantics live in the repo, see [docs/contract-baseline.md](docs/contract-baseline.md).
@@ -26,7 +28,7 @@ interfacectl init [options]
 - extracts UI-system attributes across typography, color, layout, motion, icons, shell/auth primitives, sections, and copy-role signals
 - decides whether to adopt an existing design system or synthesize a first draft from repeated norms
 - writes four artifacts under `contracts/generated/`
-- runs `validate-extracted` plus contract validation and prints a short summary
+- validates preview artifacts before write and, in interactive mode, asks for confirmation before writing anything
 
 **Options:**
 
@@ -40,6 +42,7 @@ interfacectl init [options]
 | `--surface-kind <marketing\|application\|unknown>` | Confirm low-confidence classification in non-interactive flows | inferred |
 | `--auth-profile <name>` | Replay a saved browser-session auth profile for protected remote onboarding | none |
 | `--non-interactive` | Disable prompts | `false` |
+| `--continue-on-gate` | Allow provisional output when remote onboarding resolves to a login or access-denied page | `false` |
 | `--out-dir <path>` | Output directory for generated artifacts | `contracts/generated` |
 | `--analysis-out <path>` | Explicit output path for `<surface>.analysis.json` | derived from `--out-dir` |
 | `--draft-out <path>` | Explicit output path for `<surface>.design-system.draft.json` | derived from `--out-dir` |
@@ -57,6 +60,7 @@ interfacectl init [options]
 - First-run output is warn-first. Findings are surfaced in the summary rather than blocking the onboarding command unless artifact generation or validation infrastructure fails.
 - If surface-kind inference is low confidence, interactive mode asks for confirmation. Non-interactive mode must pass `--surface-kind`.
 - For protected remote URLs, `--auth-profile` must point at a replay-ready profile. Interactive `init` can capture one; non-interactive mode fails fast if the profile is missing, expired, legacy, or not replayable.
+- If a remote URL resolves to a login or access-denied page, interactive mode stops and offers next actions before any artifacts are written. Non-interactive mode must pass `--continue-on-gate` to accept provisional output.
 - First-party or dogfood surfaces are not used as baselines for inference or starter recommendations.
 
 ---

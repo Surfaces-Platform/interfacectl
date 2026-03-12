@@ -743,7 +743,7 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
     const allowedDurations = new Set(contract.constraints.motion.allowedDurationsMs);
     const allowedTimingFunctions = new Set(contract.constraints.motion.allowedTimingFunctions);
     for (const motion of descriptor.motion) {
-        if (!allowedDurations.has(motion.durationMs)) {
+        if (motion.durationMs >= 1 && !allowedDurations.has(motion.durationMs)) {
             violations.push({
                 surfaceId: descriptor.surfaceId,
                 type: "motion-duration-not-allowed",

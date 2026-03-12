@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -118,6 +119,60 @@ function createProtectedServer() {
   });
 }
 
+function createPublicNextLikeServer() {
+  return createServer((req, res) => {
+    if (req.url === "/styles.css") {
+      res.writeHead(200, { "content-type": "text/css" });
+      res.end(`
+        body { font-family: "Founders Grotesk", sans-serif; color: #101820; background: #ffffff; }
+        .hero { max-width: 72rem; border-radius: 24px; }
+        .shim { border-right: 1px solid rgba(0, 0, 0, .403); }
+      `);
+      return;
+    }
+
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`
+      <!doctype html>
+      <html>
+        <head>
+          <link rel="stylesheet" href="/styles.css" />
+          <script>
+            self.__next_f = self.__next_f || [];
+            self.__next_f.push(["forbidden","$undefined","unauthorized","$undefined"]);
+          </script>
+        </head>
+        <body>
+          <main>
+            <section class="hero" data-contract-section="landing.hero">
+              <h1>Public product site</h1>
+              <p>Draft a contract from the rendered surface, not the framework payload.</p>
+              <a href="/docs">Read the docs</a>
+            </section>
+          </main>
+        </body>
+      </html>
+    `);
+  });
+}
+
+function createAccessDeniedServer() {
+  return createServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`
+      <!doctype html>
+      <html>
+        <body>
+          <main>
+            <h1>Access denied</h1>
+            <p>You do not have access to this workspace.</p>
+          </main>
+        </body>
+      </html>
+    `);
+  });
+}
+
 test("init: non-interactive remote-url writes first-run artifacts and run metadata", async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-remote-"));
   const profilePath = path.join(cwd, "auth-profiles.json");
@@ -219,9 +274,100 @@ test("init: non-interactive remote-url writes first-run artifacts and run metada
     assert.equal(contract.surfaces[0].id, "customer-products");
     assert.equal(extraction.onboarding.extractMode, "remote-url");
     assert.equal(extraction.onboarding.authMode, "none");
+    assert.equal(analysis.sourceHealth.status, "ok");
+    assert.equal(extraction.sourceHealth.confidence, "full");
     assert.equal(runs.schemaVersion, 1);
     assert.equal(runs.runs[0].source, "generation");
     assert.equal(lineage.surfaces["customer-products"].lastSource, "generation");
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("init: remote-url ignores zero-duration timing-only motion when seeding contract constraints", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-remote-motion-zero-"));
+  const profilePath = path.join(cwd, "auth-profiles.json");
+  const server = createServer((req, res) => {
+    if (req.url === "/styles.css") {
+      res.writeHead(200, { "content-type": "text/css" });
+      res.end(`
+        body { font-family: "Founders Grotesk", sans-serif; color: #101820; background: #ffffff; }
+        .hero { max-width: 72rem; border-radius: 24px; }
+        .cta { transition-timing-function: ease-in-out; animation-timing-function: linear; }
+      `);
+      return;
+    }
+
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`
+      <!doctype html>
+      <html>
+        <head>
+          <link rel="stylesheet" href="/styles.css" />
+        </head>
+        <body>
+          <main>
+            <section data-contract-section="landing.hero">
+              <h1>Launch surfaces faster.</h1>
+              <a class="cta" href="/start">Get started</a>
+            </section>
+            <section data-contract-section="landing.cta">
+              <a class="cta" href="/docs">Learn more</a>
+            </section>
+          </main>
+        </body>
+      </html>
+    `);
+  });
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    await mkdir(path.join(cwd, "contracts"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "contracts", "surfaces.web.contract.json"),
+      JSON.stringify({
+        contractId: "test-contract",
+        version: "1.0.0",
+        surfaces: [],
+        sections: [],
+        constraints: {
+          motion: { allowedDurationsMs: [120], allowedTimingFunctions: ["linear"] },
+        },
+      }, null, 2),
+      "utf-8",
+    );
+
+    const result = await run(
+      [
+        "init",
+        "--non-interactive",
+        "--url",
+        `${baseUrl}/`,
+        "--surface",
+        "timing-only-site",
+        "--surface-kind",
+        "marketing",
+      ],
+      { cwd, env: { ...forceFileStorageEnv, INTERFACECTL_AUTH_PROFILES_PATH: profilePath } },
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /Motion duration 0ms is not allowed/);
+
+    const contract = JSON.parse(
+      await readFile(
+        path.join(cwd, "contracts", "generated", "timing-only-site.contract.json"),
+        "utf-8",
+      ),
+    );
+
+    assert.deepEqual(contract.constraints.motion.allowedDurationsMs, [120]);
+    assert.deepEqual(contract.constraints.motion.allowedTimingFunctions, ["ease-in-out", "linear"]);
   } finally {
     server.closeAllConnections?.();
     server.close();
@@ -384,6 +530,8 @@ test("analyze: protected remote surface warns anonymously and succeeds with repl
       anonymousAnalysis.warnings.some((warning) => warning.code === "remote.auth.login-detected"),
       true,
     );
+    assert.equal(anonymousAnalysis.sourceHealth.status, "login");
+    assert.match(anonymous.stdout, /Source access: login/);
 
     const capture = await run(
       ["auth", "capture", "--profile", "demo", "--url", `${baseUrl}/session/start`, "--format", "json"],
@@ -409,6 +557,156 @@ test("analyze: protected remote surface warns anonymously and succeeds with repl
     );
     assert.equal(authenticatedAnalysis.classification.inferredKind, "application");
     assert.equal(authenticatedAnalysis.extracted.hasShell, true);
+    assert.equal(authenticatedAnalysis.sourceHealth.status, "ok");
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("analyze: public Next-like page with framework auth strings remains sourceHealth ok", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "interfacectl-auth-public-next-like-"));
+  const server = createPublicNextLikeServer();
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const result = await run(
+      ["analyze", "--url", `${baseUrl}/`, "--surface", "public-site"],
+      { cwd, env: { ...forceFileStorageEnv } },
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /Source access:/);
+
+    const analysis = JSON.parse(
+      await readFile(path.join(cwd, "contracts", "generated", "public-site.analysis.json"), "utf-8"),
+    );
+    assert.equal(analysis.sourceHealth.status, "ok");
+    assert.equal(analysis.sourceHealth.confidence, "full");
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("analyze: visible access-denied page still classifies as access-denied", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "interfacectl-auth-access-denied-"));
+  const server = createAccessDeniedServer();
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const result = await run(
+      ["analyze", "--url", `${baseUrl}/`, "--surface", "denied-site"],
+      { cwd, env: { ...forceFileStorageEnv } },
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.match(result.stdout, /Source access: access-denied/);
+
+    const analysis = JSON.parse(
+      await readFile(path.join(cwd, "contracts", "generated", "denied-site.analysis.json"), "utf-8"),
+    );
+    assert.equal(analysis.sourceHealth.status, "access-denied");
+    assert.equal(analysis.sourceHealth.confidence, "limited");
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("init: non-interactive gated remote-url fails without continue-on-gate and writes nothing", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-gated-fail-"));
+  const profilePath = path.join(cwd, "auth-profiles.json");
+  const server = createProtectedServer();
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const result = await run(
+      [
+        "init",
+        "--non-interactive",
+        "--url",
+        `${baseUrl}/app`,
+        "--surface",
+        "private-app",
+        "--surface-kind",
+        "application",
+      ],
+      { cwd, env: { ...forceFileStorageEnv, INTERFACECTL_AUTH_PROFILES_PATH: profilePath } },
+    );
+    assert.equal(result.exitCode, 1);
+    assert.match(`${result.stdout}\n${result.stderr}`, /--continue-on-gate|--auth-profile|login page/i);
+
+    await assert.rejects(
+      access(
+        path.join(cwd, "contracts", "generated", "private-app.contract.json"),
+        fsConstants.F_OK,
+      ),
+      /ENOENT/,
+    );
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("init: non-interactive gated remote-url writes provisional artifacts with continue-on-gate", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-gated-continue-"));
+  const profilePath = path.join(cwd, "auth-profiles.json");
+  const server = createProtectedServer();
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const result = await run(
+      [
+        "init",
+        "--non-interactive",
+        "--continue-on-gate",
+        "--url",
+        `${baseUrl}/app`,
+        "--surface",
+        "private-app",
+        "--surface-kind",
+        "application",
+      ],
+      { cwd, env: { ...forceFileStorageEnv, INTERFACECTL_AUTH_PROFILES_PATH: profilePath } },
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+
+    const generatedDir = path.join(cwd, "contracts", "generated");
+    const analysis = JSON.parse(
+      await readFile(path.join(generatedDir, "private-app.analysis.json"), "utf-8"),
+    );
+    const extraction = JSON.parse(
+      await readFile(path.join(generatedDir, "private-app.extraction.json"), "utf-8"),
+    );
+
+    assert.equal(analysis.sourceHealth.status, "login");
+    assert.equal(analysis.sourceHealth.confidence, "limited");
+    assert.equal(
+      analysis.warnings.some((warning) => warning.code === "remote.source.provisional"),
+      true,
+    );
+    assert.equal(extraction.sourceHealth.status, "login");
+    assert.equal(extraction.sourceHealth.confidence, "limited");
   } finally {
     server.closeAllConnections?.();
     server.close();

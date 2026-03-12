@@ -34,9 +34,17 @@ Install the CLI package as a development dependency:
 pnpm add -D @surfaces/interfacectl-cli
 ```
 
+In an interactive terminal, the first step is simply:
+
+```bash
+interfacectl
+```
+
 ## Quick Start
 
-For a first-time web surface experience, start with `init`:
+In an interactive shell, `interfacectl` opens the terminal onboarding screen and immediately asks whether you want to inspect a local app root or a live URL.
+
+For explicit command-driven onboarding, start with `init`:
 
 ```bash
 interfacectl init --app-root apps/my-app --surface my-app
@@ -59,7 +67,7 @@ The CLI provides two first-run commands, browser-session auth helpers, and the v
 
 ### `init`
 
-First-run onboarding for web surfaces. `init` analyzes either a local app root or a URL, drafts a first contract, writes a draft design-system artifact, runs validation, and prints a short onboarding summary grouped as adopted, normalized, flagged, and next steps.
+First-run onboarding for web surfaces. `init` analyzes either a local app root or a URL, validates a draft contract and design-system artifact in preview first, and in interactive mode only writes artifacts after confirmation. If a remote URL resolves to a login or access-denied page, interactive mode stops and offers capture-auth / continue-anyway / switch-to-local-root choices before anything is written.
 
 ```bash
 interfacectl init [options]
@@ -73,6 +81,7 @@ Outputs:
 - `contracts/generated/<surface>.extraction.json`
 
 Default behavior is warn-first. If surface-kind inference is low confidence, interactive mode asks for confirmation and non-interactive mode requires `--surface-kind marketing|application|unknown`.
+Non-interactive URL onboarding fails fast on login/access-denied pages unless `--continue-on-gate` is supplied for provisional output.
 
 ### `analyze`
 
@@ -96,6 +105,7 @@ Notes:
 
 - Profiles are exact-host scoped in v1.
 - Remote analysis never silently falls back to anonymous access when `--auth-profile` is explicitly supplied.
+- Interactive onboarding writes artifacts only after a preview confirmation step.
 - If Chromium is missing locally, install it with `pnpm --filter @surfaces/interfacectl-cli exec playwright install chromium`.
 
 ### `validate`

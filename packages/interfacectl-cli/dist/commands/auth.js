@@ -163,8 +163,7 @@ export async function runAuthTestCommand(options) {
             storageState: inspection.storageState,
         });
         const ok = new URL(observation.finalUrl).hostname === inspection.profile.domain &&
-            !observation.loginDetected &&
-            !observation.accessDeniedDetected;
+            observation.sourceHealth.status === "ok";
         if (options.format === "json") {
             console.log(JSON.stringify({
                 ok,
@@ -177,16 +176,17 @@ export async function runAuthTestCommand(options) {
                 finalUrl: observation.finalUrl,
                 loginDetected: observation.loginDetected,
                 accessDeniedDetected: observation.accessDeniedDetected,
+                sourceHealth: observation.sourceHealth,
             }, null, 2));
             return ok ? 0 : 1;
         }
         if (!ok) {
             console.error(`Auth replay failed for ${inspection.profile.name} (${inspection.profile.domain}).`);
             console.error(`Final URL: ${observation.finalUrl}`);
-            if (observation.loginDetected) {
+            if (observation.sourceHealth.status === "login") {
                 console.error("The replayed session still resolved to a login page.");
             }
-            if (observation.accessDeniedDetected) {
+            if (observation.sourceHealth.status === "access-denied") {
                 console.error("The replayed session resolved to an access-denied page.");
             }
             return 1;

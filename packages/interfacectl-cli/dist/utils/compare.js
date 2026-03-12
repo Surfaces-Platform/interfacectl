@@ -273,7 +273,7 @@ export function compareContractToDescriptor(contract, descriptor, surfaceId) {
     const allowedDurations = new Set(contract.contract.constraints.motion.allowedDurationsMs);
     const allowedTimingFunctions = new Set(contract.contract.constraints.motion.allowedTimingFunctions);
     for (const motion of desc.motion) {
-        if (!allowedDurations.has(motion.durationMs)) {
+        if (motion.durationMs >= 1 && !allowedDurations.has(motion.durationMs)) {
             entries.push({
                 surfaceId,
                 type: "added",

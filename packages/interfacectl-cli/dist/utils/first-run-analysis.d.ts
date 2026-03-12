@@ -1,4 +1,5 @@
 import { type InterfaceContract, type SurfaceDescriptor, type SurfacePrimitiveDescriptor, type TokenMetadata } from "@surfaces/interfacectl-validator";
+import { type RemoteBrowserObservation, type SourceHealthConfidence, type SourceHealthStatus } from "./browser-session.js";
 export type WebSurfaceKind = "marketing" | "application" | "unknown";
 export type FirstRunMode = "adopt" | "synthesize";
 export type AnalysisSourceMode = "local-root" | "remote-url";
@@ -81,6 +82,12 @@ export interface SurfaceAnalysisArtifact {
             layout: TokenMetadata[];
             motion: TokenMetadata[];
         };
+    };
+    sourceHealth: {
+        status: SourceHealthStatus;
+        finalUrl?: string;
+        authMode: "none" | "browser-session";
+        confidence: SourceHealthConfidence;
     };
     classification: {
         inferredKind: WebSurfaceKind;
@@ -194,6 +201,7 @@ export interface AnalyzeSurfaceOptions {
     authMode?: "none" | "browser-session";
     authProfileName?: string;
     authStorageState?: string;
+    remoteObservation?: RemoteBrowserObservation;
 }
 export interface AnalyzeSurfaceResult {
     analysis: SurfaceAnalysisArtifact;
