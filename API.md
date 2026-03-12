@@ -10,6 +10,16 @@ In an interactive terminal, running bare `interfacectl` with no arguments opens 
 
 `interfacectl validate` is the canonical command for contract compliance. Use it to gate changes before merge or deployment. For deterministic, category-based exit codes, use `--exit-codes v2` or set `INTERFACECTL_EXIT_CODES=v2`. The command `enforce --mode fail` runs a structural diff and applies a policy threshold. It is optional and useful when you want to block on diff severity separately from compliance. For the minimal contract format and where contract semantics live in the repo, see [docs/contract-baseline.md](docs/contract-baseline.md). For optional generator-facing authoring metadata, see [docs/authoring-contracts.md](docs/authoring-contracts.md).
 
+Canonical docs for adjacent validation and generation workflows:
+
+- [docs/contract-validation.md](docs/contract-validation.md)
+- [docs/runtime-edge.md](docs/runtime-edge.md)
+- [docs/ai-generator-adapter-quickstart.md](docs/ai-generator-adapter-quickstart.md)
+- [docs/ai-generator-adapter-api.md](docs/ai-generator-adapter-api.md)
+- [docs/ai-tool-playbooks.md](docs/ai-tool-playbooks.md)
+- [docs/generator-consumption.md](docs/generator-consumption.md)
+- [docs/shell-boundary.md](docs/shell-boundary.md)
+
 ## Commands
 
 ### `init`
