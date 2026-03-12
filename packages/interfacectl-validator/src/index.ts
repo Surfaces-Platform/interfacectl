@@ -996,7 +996,7 @@ export function evaluateSurfaceCompliance(
   );
 
   for (const motion of descriptor.motion) {
-    if (!allowedDurations.has(motion.durationMs)) {
+    if (motion.durationMs >= 1 && !allowedDurations.has(motion.durationMs)) {
       violations.push({
         surfaceId: descriptor.surfaceId,
         type: "motion-duration-not-allowed",

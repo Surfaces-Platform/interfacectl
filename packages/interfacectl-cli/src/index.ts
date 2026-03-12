@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { runBareWelcomeFlow, shouldLaunchBareWelcomeFlow } from "./utils/bare-onboarding.js";
 import { runValidateCommand } from "./commands/validate.js";
 import { runDiffCommand } from "./commands/diff.js";
 import { runEnforceCommand } from "./commands/enforce.js";
@@ -376,6 +377,8 @@ program
   .option("--app-root <path>", "Local app root (required for local-root)")
   .option("--auth-profile <name>", "Replay or capture an auth profile for browser-session onboarding")
   .option("--non-interactive", "Run without prompts")
+  .option("--verbose", "Show technical onboarding detail")
+  .option("--continue-on-gate", "Allow provisional output when remote onboarding resolves to a login or access-denied page")
   .option("--out-dir <path>", "Output directory for generated onboarding artifacts")
   .option("--analysis-out <path>", "Explicit output path for the analysis artifact")
   .option("--draft-out <path>", "Explicit output path for the design-system draft artifact")
@@ -397,6 +400,8 @@ program
       appRoot: options.appRoot,
       authProfile: options.authProfile,
       nonInteractive: options.nonInteractive === true,
+      verbose: options.verbose === true,
+      continueOnGate: options.continueOnGate === true,
       outDir: options.outDir,
       analysisOut: options.analysisOut,
       draftOut: options.draftOut,
@@ -526,7 +531,16 @@ program
     process.exitCode = exitCode;
   });
 
-program.parseAsync(process.argv).catch((error) => {
+async function main(): Promise<void> {
+  if (shouldLaunchBareWelcomeFlow(process.argv.slice(2))) {
+    process.exitCode = await runBareWelcomeFlow();
+    return;
+  }
+
+  await program.parseAsync(process.argv);
+}
+
+main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

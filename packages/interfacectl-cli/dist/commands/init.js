@@ -2,38 +2,16 @@ import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import readline from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
 import { getBundledContractSchema, validateContractStructure, } from "@surfaces/interfacectl-validator";
 import { runValidateCommand } from "./validate.js";
 import { runValidateExtractedCommand } from "./validate-extracted.js";
 import { getAuthStorageMode, inspectAuthProfile, saveReplayAuthProfile, } from "../utils/auth-profiles.js";
-import { captureBrowserStorageState } from "../utils/browser-session.js";
+import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-session.js";
 import { analyzeSurface, stringifyStableArtifact, } from "../utils/first-run-analysis.js";
-import { emitOnboardingRunArtifact, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName } from "../utils/onboarding.js";
+import { emitOnboardingRunArtifact, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "../utils/onboarding.js";
+import { inferSourceMode, normalizeSurfaceId, promptGateResolution, promptInteractiveInitInputs, promptSurfaceKindConfirmation, promptWriteConfirmation, } from "../utils/init-interactive.js";
 import { redactSensitiveText } from "../utils/redaction.js";
 const DEFAULT_OUT_DIR = "contracts/generated";
-const VALID_SURFACE_KINDS = new Set(["marketing", "application", "unknown"]);
-function normalizeSurfaceId(raw) {
-    return raw
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "");
-}
-function inferSourceMode(options) {
-    if (options.extractMode === "local-root" || options.extractMode === "remote-url") {
-        return options.extractMode;
-    }
-    if (options.appRoot && !options.url) {
-        return "local-root";
-    }
-    if (options.appRoot) {
-        return "local-root";
-    }
-    return "remote-url";
-}
 async function maybeCaptureAuthProfile(inputValue) {
     if (!inputValue.requiresAuth) {
         return { authMode: "none" };
@@ -77,52 +55,9 @@ async function maybeCaptureAuthProfile(inputValue) {
         storageState: captured.storageState,
     };
 }
-async function promptInteractive(options) {
-    const rl = readline.createInterface({ input, output });
-    try {
-        const inferredMode = inferSourceMode(options);
-        const rawMode = ((options.extractMode ??
-            (await rl.question(`Source mode (local-root/remote-url) [${inferredMode}]: `)).trim()) ||
-            inferredMode).toLowerCase();
-        const sourceMode = rawMode === "remote-url" ? "remote-url" : "local-root";
-        const url = sourceMode === "remote-url"
-            ? new URL(options.url ?? (await rl.question("Surface URL: ")).trim()).toString()
-            : options.url?.trim() || undefined;
-        const appRoot = sourceMode === "local-root"
-            ? (options.appRoot ?? (await rl.question("Local app root: "))).trim()
-            : undefined;
-        const suggestedSurfaceId = options.surface ?? (sourceMode === "remote-url" && url
-            ? suggestSurfaceIdFromUrl(url)
-            : suggestSurfaceIdFromPath(appRoot ?? "surface"));
-        const rawSurfaceId = (await rl.question(`Surface id [${suggestedSurfaceId}]: `)).trim();
-        const surfaceId = normalizeSurfaceId(rawSurfaceId || suggestedSurfaceId);
-        const suggestedSurfaceName = options.surfaceName ?? suggestSurfaceName(surfaceId);
-        const rawSurfaceName = (await rl.question(`Surface name [${suggestedSurfaceName}]: `)).trim();
-        const surfaceName = rawSurfaceName || suggestedSurfaceName;
-        const requiresAuth = sourceMode === "remote-url"
-            ? ["y", "yes"].includes((await rl.question(`Does ${new URL(url ?? "https://example.com").hostname} require login? (y/N) `)).trim().toLowerCase())
-            : false;
-        const authProfileName = requiresAuth
-            ? (await rl.question(`Auth profile name [${options.authProfile ?? `${new URL(url).hostname}-default`}]: `)).trim() || options.authProfile || `${new URL(url).hostname}-default`
-            : null;
-        return {
-            sourceMode,
-            url,
-            appRoot: appRoot && appRoot.length > 0 ? appRoot : undefined,
-            surfaceId,
-            surfaceName,
-            surfaceKind: options.surfaceKind,
-            requiresAuth,
-            authProfileName,
-        };
-    }
-    finally {
-        rl.close();
-    }
-}
 async function resolveInputs(options) {
     if (!options.nonInteractive) {
-        return promptInteractive(options);
+        return promptInteractiveInitInputs(options);
     }
     const sourceMode = inferSourceMode(options);
     if (sourceMode === "remote-url" && !options.url) {
@@ -147,29 +82,6 @@ async function resolveInputs(options) {
         requiresAuth: sourceMode === "remote-url" && Boolean(options.authProfile),
         authProfileName: sourceMode === "remote-url" ? options.authProfile ?? null : null,
     };
-}
-async function promptSurfaceKind(analysis) {
-    const rl = readline.createInterface({ input, output });
-    try {
-        console.log(`Surface kind needs confirmation. interfacectl inferred "${analysis.classification.inferredKind}" (${analysis.classification.confidence.toFixed(2)} confidence).`);
-        for (const evidence of analysis.classification.supporting.slice(0, 3)) {
-            console.log(`  support: ${evidence.message}`);
-        }
-        for (const evidence of analysis.classification.opposing.slice(0, 2)) {
-            console.log(`  counter: ${evidence.message}`);
-        }
-        while (true) {
-            const answer = (await rl.question(`Confirm surface kind [${analysis.classification.inferredKind}]: `)).trim().toLowerCase();
-            const value = (answer || analysis.classification.inferredKind);
-            if (VALID_SURFACE_KINDS.has(value)) {
-                return value;
-            }
-            console.log("Expected one of: marketing, application, unknown.");
-        }
-    }
-    finally {
-        rl.close();
-    }
 }
 function resolveArtifactPaths(rootDir, surfaceId, options) {
     const outDir = options.outDir
@@ -203,6 +115,9 @@ function collectFlagMessages(analysis, validateResult, validateExtractedResult) 
     ];
     return [...new Set(flagged)].slice(0, 8);
 }
+function uniqueMessages(items) {
+    return [...new Set(items)];
+}
 function collectFindingCodes(analysis, validateResult, validateExtractedResult) {
     return [
         ...analysis.warnings.map((warning) => `analysis.${warning.code}`),
@@ -211,19 +126,8 @@ function collectFindingCodes(analysis, validateResult, validateExtractedResult) 
         ...validateExtractedResult.findings.map((finding) => `validate-extracted.${finding.code}`),
     ].sort((a, b) => a.localeCompare(b));
 }
-function summarizeAdopted(analysis) {
-    const reasons = analysis.existingSystem.reasons.slice(0, 3);
-    if (analysis.existingSystem.mode === "adopt") {
-        return reasons.length > 0
-            ? reasons
-            : ["Observed enough repeated system structure to formalize an existing design system."];
-    }
-    return [
-        `No stable existing system was detected; interfacectl drafted a first system from repeated norms (${analysis.existingSystem.score.toFixed(2)} score).`,
-    ];
-}
-function summarizeNormalized(analysis) {
-    const seedCounts = analysis.proposedContract.seedCounts;
+function summarizeTechnicalDraft(analysis) {
+    const { seedCounts } = analysis.proposedContract;
     const items = [
         `${seedCounts.typographyTokens} typography token seed(s)`,
         `${seedCounts.layoutTokens} layout token seed(s)`,
@@ -236,6 +140,81 @@ function summarizeNormalized(analysis) {
     }
     return items;
 }
+function summarizeSurfaceKind(analysis) {
+    if (analysis.classification.confirmedKind === "marketing") {
+        return "We detected a marketing site.";
+    }
+    if (analysis.classification.confirmedKind === "application") {
+        return "We detected an application surface.";
+    }
+    return "We could not confidently classify the surface, so the draft stays generic.";
+}
+function summarizeExistingSystem(analysis) {
+    if (analysis.existingSystem.mode === "adopt") {
+        return "We found reusable patterns that look like an existing system.";
+    }
+    return "We did not find a complete existing system, so we will draft one from repeated patterns.";
+}
+function summarizeSourceAccess(analysis) {
+    if (analysis.sourceHealth.confidence === "full" && analysis.sourceHealth.status === "ok") {
+        return "We successfully analyzed the source.";
+    }
+    return "We analyzed a limited view of the source, so results are provisional.";
+}
+function summarizeDraft(analysis) {
+    const { seedCounts } = analysis.proposedContract;
+    const createItems = [];
+    const reviewItems = [];
+    if (seedCounts.typographyTokens > 0) {
+        createItems.push(`Typography foundations from ${seedCounts.typographyTokens} repeated styles.`);
+    }
+    if (seedCounts.layoutTokens > 0) {
+        createItems.push(`Layout foundations from ${seedCounts.layoutTokens} repeated patterns.`);
+    }
+    else {
+        reviewItems.push("We could not confidently infer layout foundations yet.");
+    }
+    if (seedCounts.motionTokens > 0) {
+        createItems.push(`Motion foundations from ${seedCounts.motionTokens} repeated timings.`);
+    }
+    if (seedCounts.colors > 0) {
+        createItems.push(`Color foundation with ${seedCounts.colors} reusable values.`);
+    }
+    if (seedCounts.sections > 0) {
+        createItems.push(`Detected ${seedCounts.sections} reusable page sections.`);
+    }
+    if (analysis.proposedContract.suggestedMarketingProfile) {
+        createItems.push("Landing-page guidance will be drafted from the detected structure.");
+    }
+    return {
+        createItems,
+        reviewItems,
+    };
+}
+function rewritePreviewMessage(message, verbose = false) {
+    if (verbose) {
+        return message;
+    }
+    const layoutProfileMatch = message.match(/^Surface "([^"]+)" must declare marketing layout profile "([^"]+)"\.$/);
+    if (layoutProfileMatch) {
+        return "Landing-page structure was detected, so the draft will include landing layout guidance.";
+    }
+    const typographyProfileMatch = message.match(/^Surface "([^"]+)" must declare marketing typography profile "([^"]+)"\.$/);
+    if (typographyProfileMatch) {
+        return "Marketing typography signals were detected, so the draft will include typography guidance.";
+    }
+    const rawColorMatch = message.match(/^Detected (\d+) raw color literals; consider canonicalizing them into stable tokens or approved values\.$/);
+    if (rawColorMatch) {
+        return `We found ${rawColorMatch[1]} one-off color values that should probably be normalized.`;
+    }
+    if (message.includes("access-denied page")) {
+        return "We reached an access-denied page instead of the target surface, so the results are provisional.";
+    }
+    if (message.includes("login page")) {
+        return "We reached a login page instead of the target surface, so the results are provisional.";
+    }
+    return message;
+}
 function logStage(step, total, message) {
     console.log(`[${step}/${total}] ${message}`);
 }
@@ -243,165 +222,380 @@ function hasBlockingValidationError(validateResult, validateExtractedResult) {
     return ((validateResult.findings ?? []).some((finding) => finding.category === "E0") ||
         validateExtractedResult.findings.some((finding) => finding.category === "E0"));
 }
+function isLimitedRemoteSource(analysis) {
+    return analysis.source.mode === "remote-url" && analysis.sourceHealth.status !== "ok";
+}
+function buildProvisionalWarning(analysis) {
+    const detail = analysis.sourceHealth.status === "access-denied"
+        ? "the remote URL resolved to an access-denied page"
+        : analysis.sourceHealth.status === "login"
+            ? "the remote URL resolved to a login page"
+            : "remote source access is limited";
+    return {
+        code: "remote.source.provisional",
+        message: `Writing provisional onboarding artifacts because ${detail}.`,
+    };
+}
+function applyProvisionalWarning(analysisResult) {
+    const warning = buildProvisionalWarning(analysisResult.analysis);
+    const dedupeWarnings = (items) => [...new Map(items.map((item) => [`${item.code}:${item.message}`, item])).values()]
+        .sort((a, b) => a.code.localeCompare(b.code) || a.message.localeCompare(b.message));
+    return {
+        ...analysisResult,
+        analysis: {
+            ...analysisResult.analysis,
+            warnings: dedupeWarnings([...analysisResult.analysis.warnings, warning]),
+        },
+        draft: {
+            ...analysisResult.draft,
+            warnings: dedupeWarnings([...analysisResult.draft.warnings, warning]),
+        },
+    };
+}
+async function validateTempArtifacts(input) {
+    const analysisPath = path.join(input.tempDir, `${input.surfaceId}.analysis.json`);
+    const draftPath = path.join(input.tempDir, `${input.surfaceId}.design-system.draft.json`);
+    const contractPath = path.join(input.tempDir, `${input.surfaceId}.contract.json`);
+    const reportPath = path.join(input.tempDir, `${input.surfaceId}.extraction.json`);
+    const validatePath = path.join(input.tempDir, "validate.json");
+    const validateExtractedPath = path.join(input.tempDir, "validate-extracted.json");
+    await writeArtifact(analysisPath, input.analysisResult.analysis);
+    await writeArtifact(draftPath, input.analysisResult.draft);
+    await writeArtifact(contractPath, input.analysisResult.contract);
+    await writeArtifact(reportPath, input.analysisResult.extractionReport);
+    const validateExitCode = await runValidateCommand({
+        contractPath,
+        workspaceRoot: input.rootDir,
+        surfaceFilters: [input.surfaceId],
+        descriptorOverrides: [input.analysisResult.descriptor],
+        outputFormat: "json",
+        outputPath: validatePath,
+        exitCodes: "v2",
+    });
+    const validateExtractedExitCode = await runValidateExtractedCommand({
+        contractPath,
+        extractedPath: reportPath,
+        surfaceId: input.surfaceId,
+        format: "json",
+        outputPath: validateExtractedPath,
+        exitCodes: "v2",
+    });
+    return {
+        analysisPath,
+        draftPath,
+        contractPath,
+        reportPath,
+        validateExitCode,
+        validateExtractedExitCode,
+        validateResult: await readJsonFile(validatePath),
+        validateExtractedResult: await readJsonFile(validateExtractedPath),
+    };
+}
+function collectAttentionMessages(analysis, validateResult, validateExtractedResult, verbose = false) {
+    const gateWarnings = analysis.warnings
+        .filter((warning) => warning.code.startsWith("remote.auth.") || warning.code === "remote.source.provisional")
+        .map((warning) => rewritePreviewMessage(warning.message, verbose));
+    const otherMessages = collectFlagMessages(analysis, validateResult, validateExtractedResult)
+        .map((message) => rewritePreviewMessage(message, verbose))
+        .filter((message) => !gateWarnings.includes(message));
+    const items = uniqueMessages([...gateWarnings, ...otherMessages]);
+    return verbose ? items.slice(0, 8) : items.slice(0, 3);
+}
+function printPreviewSummary(input) {
+    const { analysis, validateResult, validateExtractedResult, provisional, verbose } = input;
+    const draftSummary = summarizeDraft(analysis);
+    const technicalDraftItems = summarizeTechnicalDraft(analysis);
+    const attention = uniqueMessages([
+        ...draftSummary.reviewItems,
+        ...collectAttentionMessages(analysis, validateResult, validateExtractedResult, verbose),
+    ]).slice(0, verbose ? 8 : 3);
+    console.log("");
+    console.log("What we found");
+    console.log(`  - ${summarizeSurfaceKind(analysis)}`);
+    console.log(`  - ${summarizeExistingSystem(analysis)}`);
+    console.log(`  - ${summarizeSourceAccess(analysis)}`);
+    if (verbose) {
+        console.log(`  - Technical detail: surface kind confidence ${analysis.classification.confidence.toFixed(2)}.`);
+        console.log(`  - Technical detail: existing-system mode ${analysis.existingSystem.mode} (${analysis.existingSystem.score.toFixed(2)} score).`);
+        console.log(`  - Technical detail: source access ${analysis.sourceHealth.status} (${analysis.sourceHealth.confidence}).`);
+    }
+    console.log("What we'll create");
+    for (const item of draftSummary.createItems) {
+        console.log(`  - ${item}`);
+    }
+    if (draftSummary.createItems.length === 0) {
+        console.log("  - We will draft a minimal system from the strongest repeated patterns we found.");
+    }
+    if (verbose) {
+        for (const item of technicalDraftItems) {
+            console.log(`  - Technical detail: ${item}`);
+        }
+    }
+    else if (provisional && !draftSummary.createItems.some((item) => item.includes("Landing-page guidance"))) {
+        console.log("  - Results will be marked provisional.");
+    }
+    console.log("What needs review");
+    if (attention.length === 0) {
+        console.log("  - No immediate issues need review before writing.");
+    }
+    else {
+        for (const item of attention) {
+            console.log(`  - ${item}`);
+        }
+    }
+    console.log("Continue");
+    console.log("  - Review this summary, then create the draft artifacts.");
+    console.log("  - Press Enter to create them now, or q to cancel.");
+}
+function printWriteSummary(input) {
+    const { rootDir, resolved, artifacts, provisional, verbose, runId, storageMode, authProfileName, } = input;
+    console.log("");
+    console.log("Created");
+    console.log(`  - Created a first contract and draft design system for ${resolved.surfaceName}.`);
+    if (provisional) {
+        console.log("  - Results are marked provisional because the source view was limited.");
+    }
+    console.log("Next");
+    console.log("  - Review the generated draft design system and contract.");
+    if (resolved.sourceMode === "local-root") {
+        console.log("  - Connect the local app root in interfacectl.config.json for stronger repeatable validation.");
+    }
+    else {
+        console.log("  - Re-run with --app-root once the local checkout is available for stronger validation.");
+    }
+    if (verbose) {
+        console.log(`  - interfacectl validate-extracted --contract ${relativeDisplay(rootDir, artifacts.contractPath)} --extracted ${relativeDisplay(rootDir, artifacts.reportPath)} --surface ${resolved.surfaceId}`);
+        if (resolved.sourceMode === "local-root") {
+            console.log(`  - interfacectl validate --contract ${relativeDisplay(rootDir, artifacts.contractPath)} --surface ${resolved.surfaceId}`);
+        }
+    }
+    console.log("Artifacts");
+    const displayPath = (filePath) => verbose ? filePath : relativeDisplay(rootDir, filePath);
+    console.log(`  - analysis: ${displayPath(artifacts.analysisPath)}`);
+    console.log(`  - draft: ${displayPath(artifacts.draftPath)}`);
+    console.log(`  - contract: ${displayPath(artifacts.contractPath)}`);
+    console.log(`  - report: ${displayPath(artifacts.reportPath)}`);
+    if (verbose) {
+        console.log("Technical details");
+        console.log(`  - Run id: ${runId}`);
+        console.log(`  - Auth storage: ${storageMode}`);
+        if (storageMode === "file") {
+            console.log("  - Keychain unavailable; using encrypted local file storage for replay state.");
+        }
+        if (authProfileName) {
+            console.log(`  - Auth profile: ${authProfileName}`);
+        }
+    }
+}
+function gateFailureMessage(analysis) {
+    if (analysis.sourceHealth.status === "access-denied") {
+        return "Remote onboarding stopped because we reached an access-denied page instead of the target surface. Capture auth, switch to --app-root, or pass --continue-on-gate for provisional output.";
+    }
+    return "Remote onboarding stopped because we reached a login page instead of the target surface. Provide --auth-profile, capture auth interactively, switch to --app-root, or pass --continue-on-gate for provisional output.";
+}
+function validateLocalAppRoot(rootDir, resolved) {
+    if (resolved.sourceMode !== "local-root") {
+        return null;
+    }
+    const appRoot = path.resolve(rootDir, resolved.appRoot ?? ".");
+    if (!existsSync(path.join(appRoot, "app"))) {
+        console.error(`Local app root is missing app/: ${appRoot}`);
+        return 1;
+    }
+    return null;
+}
 export async function runInitCommand(options) {
     const rootDir = process.cwd();
     const storageMode = getAuthStorageMode();
     try {
-        const resolved = await resolveInputs(options);
-        if (resolved.sourceMode === "local-root") {
-            const appRoot = path.resolve(rootDir, resolved.appRoot ?? ".");
-            if (!existsSync(path.join(appRoot, "app"))) {
-                console.error(`Local app root is missing app/: ${appRoot}`);
-                return 1;
+        let resolved = await resolveInputs(options);
+        let pendingAuthCapture;
+        while (true) {
+            const localRootValidation = validateLocalAppRoot(rootDir, resolved);
+            if (localRootValidation !== null) {
+                return localRootValidation;
             }
-        }
-        logStage(1, 5, "Discovering source");
-        const authCapture = resolved.sourceMode === "remote-url" && resolved.url
-            ? await maybeCaptureAuthProfile({
-                requiresAuth: resolved.requiresAuth,
-                profileName: resolved.authProfileName,
-                url: resolved.url,
-                nonInteractive: Boolean(options.nonInteractive),
-            })
-            : { authMode: "none", storageState: undefined };
-        logStage(2, 5, "Analyzing surface kind and UI system");
-        let analysisResult = await analyzeSurface({
-            workspaceRoot: rootDir,
-            surfaceId: resolved.surfaceId,
-            surfaceName: resolved.surfaceName,
-            sourceMode: resolved.sourceMode,
-            appRoot: resolved.appRoot,
-            url: resolved.url,
-            surfaceKindOverride: resolved.surfaceKind,
-            authMode: authCapture.authMode,
-            authProfileName: authCapture.profileName,
-            authStorageState: authCapture.storageState,
-        });
-        if (!resolved.surfaceKind && analysisResult.analysis.classification.requiresConfirmation) {
-            if (options.nonInteractive) {
-                console.error(`Surface kind inference was low confidence (${analysisResult.analysis.classification.inferredKind}, ${analysisResult.analysis.classification.confidence.toFixed(2)}). Re-run with --surface-kind marketing|application|unknown.`);
-                return 1;
-            }
-            const confirmedKind = await promptSurfaceKind(analysisResult.analysis);
-            if (confirmedKind !== analysisResult.analysis.classification.confirmedKind) {
-                analysisResult = await analyzeSurface({
-                    workspaceRoot: rootDir,
-                    surfaceId: resolved.surfaceId,
-                    surfaceName: resolved.surfaceName,
-                    sourceMode: resolved.sourceMode,
-                    appRoot: resolved.appRoot,
+            logStage(1, 6, "Discovering source");
+            const authCapture = pendingAuthCapture ??
+                (resolved.sourceMode === "remote-url" && resolved.url
+                    ? await maybeCaptureAuthProfile({
+                        requiresAuth: resolved.requiresAuth,
+                        profileName: resolved.authProfileName,
+                        url: resolved.url,
+                        nonInteractive: Boolean(options.nonInteractive),
+                    })
+                    : { authMode: "none", storageState: undefined });
+            pendingAuthCapture = undefined;
+            logStage(2, 6, "Checking access");
+            const remoteObservation = resolved.sourceMode === "remote-url" && resolved.url
+                ? await observeRemotePage({
                     url: resolved.url,
-                    surfaceKindOverride: confirmedKind,
-                    authMode: authCapture.authMode,
-                    authProfileName: authCapture.profileName,
-                    authStorageState: authCapture.storageState,
-                });
+                    storageState: authCapture.storageState,
+                })
+                : undefined;
+            const remoteSourceBlocked = resolved.sourceMode === "remote-url" &&
+                remoteObservation &&
+                remoteObservation.sourceHealth.status !== "ok";
+            if (remoteSourceBlocked && authCapture.authMode === "browser-session") {
+                console.error(remoteObservation.sourceHealth.status === "access-denied"
+                    ? `Authenticated replay reached an access-denied page at ${remoteObservation.sourceHealth.finalUrl}.`
+                    : `Authenticated replay still resolved to a login page at ${remoteObservation.sourceHealth.finalUrl}. Re-capture the auth profile and retry.`);
+                return 1;
             }
-        }
-        logStage(3, 5, "Seeding contract and draft design system");
-        const structure = validateContractStructure(analysisResult.contract, getBundledContractSchema());
-        if (!structure.ok) {
-            console.error("Generated contract failed schema validation:");
-            for (const issue of structure.errors) {
-                console.error(`  ${issue}`);
-            }
-            return 1;
-        }
-        const artifacts = resolveArtifactPaths(rootDir, resolved.surfaceId, options);
-        await writeArtifact(artifacts.analysisPath, analysisResult.analysis);
-        await writeArtifact(artifacts.draftPath, analysisResult.draft);
-        await writeArtifact(artifacts.contractPath, analysisResult.contract);
-        await writeArtifact(artifacts.reportPath, analysisResult.extractionReport);
-        logStage(4, 5, "Validating generated outputs");
-        const tempDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-validate-"));
-        try {
-            const validatePath = path.join(tempDir, "validate.json");
-            const validateExtractedPath = path.join(tempDir, "validate-extracted.json");
-            const validateExitCode = await runValidateCommand({
-                contractPath: artifacts.contractPath,
+            logStage(3, 6, "Analyzing surface kind and UI system");
+            let analysisResult = await analyzeSurface({
                 workspaceRoot: rootDir,
-                surfaceFilters: [resolved.surfaceId],
-                descriptorOverrides: [analysisResult.descriptor],
-                outputFormat: "json",
-                outputPath: validatePath,
-                exitCodes: "v2",
-            });
-            const validateExtractedExitCode = await runValidateExtractedCommand({
-                contractPath: artifacts.contractPath,
-                extractedPath: artifacts.reportPath,
                 surfaceId: resolved.surfaceId,
-                format: "json",
-                outputPath: validateExtractedPath,
-                exitCodes: "v2",
+                surfaceName: resolved.surfaceName,
+                sourceMode: resolved.sourceMode,
+                appRoot: resolved.appRoot,
+                url: resolved.url,
+                surfaceKindOverride: resolved.surfaceKind,
+                authMode: authCapture.authMode,
+                authProfileName: authCapture.profileName,
+                authStorageState: authCapture.storageState,
+                remoteObservation,
             });
-            const validateResult = await readJsonFile(validatePath);
-            const validateExtractedResult = await readJsonFile(validateExtractedPath);
-            logStage(5, 5, "Writing onboarding lineage");
-            const findingCodes = collectFindingCodes(analysisResult.analysis, validateResult, validateExtractedResult);
-            const blockingValidationError = hasBlockingValidationError(validateResult, validateExtractedResult);
-            const status = blockingValidationError
-                ? "fail"
-                : findingCodes.length > 0
-                    ? "warn"
-                    : "pass";
-            const run = await emitOnboardingRunArtifact({
-                rootDir,
-                surfaceId: resolved.surfaceId,
-                source: "generation",
-                status,
-                findingCodes,
-                extractionPath: artifacts.contractPath,
-                reportPath: artifacts.reportPath,
-            });
-            const adopted = summarizeAdopted(analysisResult.analysis);
-            const normalized = summarizeNormalized(analysisResult.analysis);
-            const flagged = collectFlagMessages(analysisResult.analysis, validateResult, validateExtractedResult);
-            console.log(`Onboarding completed for ${resolved.surfaceId}.`);
-            console.log(`Wrote analysis: ${artifacts.analysisPath}`);
-            console.log(`Wrote draft:    ${artifacts.draftPath}`);
-            console.log(`Wrote contract: ${artifacts.contractPath}`);
-            console.log(`Wrote report:   ${artifacts.reportPath}`);
-            console.log(`Run id: ${run.runId}`);
-            console.log(`Auth storage: ${storageMode}`);
-            if (storageMode === "file") {
-                console.log("Warning: keychain unavailable; using local file storage for opaque session references.");
+            if (remoteSourceBlocked && authCapture.authMode === "none") {
+                if (options.nonInteractive && options.continueOnGate !== true) {
+                    console.error(gateFailureMessage(analysisResult.analysis));
+                    return 1;
+                }
+                if (!options.nonInteractive) {
+                    const gateResolution = await promptGateResolution(analysisResult.analysis);
+                    if (gateResolution === "quit") {
+                        console.log("Exited onboarding before artifacts were written.");
+                        return 0;
+                    }
+                    if (gateResolution === "switch-local-root") {
+                        resolved = await promptInteractiveInitInputs({
+                            extractMode: "local-root",
+                            surface: resolved.surfaceId,
+                            surfaceName: resolved.surfaceName,
+                            surfaceKind: resolved.surfaceKind,
+                            appRoot: resolved.appRoot,
+                        });
+                        pendingAuthCapture = undefined;
+                        continue;
+                    }
+                    if (gateResolution === "capture-auth") {
+                        pendingAuthCapture = await maybeCaptureAuthProfile({
+                            requiresAuth: true,
+                            profileName: resolved.authProfileName,
+                            url: resolved.url,
+                            nonInteractive: false,
+                        });
+                        resolved = {
+                            ...resolved,
+                            requiresAuth: true,
+                            authProfileName: pendingAuthCapture.profileName ?? resolved.authProfileName,
+                        };
+                        continue;
+                    }
+                }
+                analysisResult = applyProvisionalWarning(analysisResult);
             }
-            if (authCapture.profileName) {
-                console.log(`Auth profile: ${authCapture.profileName}`);
-            }
-            console.log("");
-            console.log("adopted");
-            for (const line of adopted) {
-                console.log(`  - ${line}`);
-            }
-            console.log("normalized");
-            for (const line of normalized) {
-                console.log(`  - ${line}`);
-            }
-            console.log("flagged");
-            if (flagged.length === 0) {
-                console.log("  - No onboarding findings.");
-            }
-            else {
-                for (const line of flagged) {
-                    console.log(`  - ${line}`);
+            if (!resolved.surfaceKind && analysisResult.analysis.classification.requiresConfirmation) {
+                if (options.nonInteractive) {
+                    console.error(`Surface kind inference was low confidence (${analysisResult.analysis.classification.inferredKind}, ${analysisResult.analysis.classification.confidence.toFixed(2)}). Re-run with --surface-kind marketing|application|unknown.`);
+                    return 1;
+                }
+                const confirmedKind = await promptSurfaceKindConfirmation(analysisResult.analysis);
+                if (confirmedKind !== analysisResult.analysis.classification.confirmedKind) {
+                    analysisResult = await analyzeSurface({
+                        workspaceRoot: rootDir,
+                        surfaceId: resolved.surfaceId,
+                        surfaceName: resolved.surfaceName,
+                        sourceMode: resolved.sourceMode,
+                        appRoot: resolved.appRoot,
+                        url: resolved.url,
+                        surfaceKindOverride: confirmedKind,
+                        authMode: authCapture.authMode,
+                        authProfileName: authCapture.profileName,
+                        authStorageState: authCapture.storageState,
+                        remoteObservation,
+                    });
+                    if (remoteSourceBlocked && authCapture.authMode === "none" && (options.continueOnGate === true || !options.nonInteractive)) {
+                        analysisResult = applyProvisionalWarning(analysisResult);
+                    }
                 }
             }
-            console.log("next steps");
-            console.log(`  - interfacectl validate-extracted --contract ${relativeDisplay(rootDir, artifacts.contractPath)} --extracted ${relativeDisplay(rootDir, artifacts.reportPath)} --surface ${resolved.surfaceId}`);
-            if (resolved.sourceMode === "local-root") {
-                console.log(`  - Add surfaceRoots.${resolved.surfaceId} = "${relativeDisplay(rootDir, path.resolve(rootDir, resolved.appRoot ?? "."))}" in interfacectl.config.json for repeatable source-backed validation.`);
-                console.log(`  - interfacectl validate --contract ${relativeDisplay(rootDir, artifacts.contractPath)} --surface ${resolved.surfaceId}`);
+            const structure = validateContractStructure(analysisResult.contract, getBundledContractSchema());
+            if (!structure.ok) {
+                console.error("Generated contract failed schema validation:");
+                for (const issue of structure.errors) {
+                    console.error(`  ${issue}`);
+                }
+                return 1;
             }
-            else {
-                console.log(`  - Re-run with --app-root to enable source-backed validate once the local web app checkout is available.`);
+            logStage(4, 6, "Validating generated outputs");
+            const tempDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-preview-"));
+            try {
+                const validation = await validateTempArtifacts({
+                    tempDir,
+                    rootDir,
+                    surfaceId: resolved.surfaceId,
+                    analysisResult,
+                });
+                const blockingValidationError = hasBlockingValidationError(validation.validateResult, validation.validateExtractedResult);
+                if (blockingValidationError) {
+                    console.error("Generated outputs failed blocking validation:");
+                    for (const message of collectAttentionMessages(analysisResult.analysis, validation.validateResult, validation.validateExtractedResult)) {
+                        console.error(`  - ${message}`);
+                    }
+                    return 1;
+                }
+                logStage(5, 6, "Previewing generated draft");
+                if (!options.nonInteractive) {
+                    printPreviewSummary({
+                        analysis: analysisResult.analysis,
+                        validateResult: validation.validateResult,
+                        validateExtractedResult: validation.validateExtractedResult,
+                        provisional: isLimitedRemoteSource(analysisResult.analysis),
+                        verbose: options.verbose === true,
+                    });
+                    const confirmedWrite = await promptWriteConfirmation();
+                    if (!confirmedWrite) {
+                        console.log("Exited onboarding before artifacts were written.");
+                        return 0;
+                    }
+                }
+                logStage(6, 6, "Writing onboarding artifacts");
+                const artifacts = resolveArtifactPaths(rootDir, resolved.surfaceId, options);
+                await writeArtifact(artifacts.analysisPath, analysisResult.analysis);
+                await writeArtifact(artifacts.draftPath, analysisResult.draft);
+                await writeArtifact(artifacts.contractPath, analysisResult.contract);
+                await writeArtifact(artifacts.reportPath, analysisResult.extractionReport);
+                const findingCodes = collectFindingCodes(analysisResult.analysis, validation.validateResult, validation.validateExtractedResult);
+                const status = findingCodes.length > 0
+                    ? "warn"
+                    : "pass";
+                const run = await emitOnboardingRunArtifact({
+                    rootDir,
+                    surfaceId: resolved.surfaceId,
+                    source: "generation",
+                    status,
+                    findingCodes,
+                    extractionPath: artifacts.contractPath,
+                    reportPath: artifacts.reportPath,
+                });
+                printWriteSummary({
+                    rootDir,
+                    resolved,
+                    artifacts,
+                    provisional: isLimitedRemoteSource(analysisResult.analysis),
+                    verbose: options.verbose === true,
+                    runId: run.runId,
+                    storageMode,
+                    authProfileName: authCapture.profileName,
+                });
+                return validation.validateExitCode === 10 || validation.validateExtractedExitCode === 10
+                    ? 1
+                    : 0;
             }
-            return blockingValidationError || validateExitCode === 10 || validateExtractedExitCode === 10
-                ? 1
-                : 0;
-        }
-        finally {
-            await rm(tempDir, { recursive: true, force: true });
+            finally {
+                await rm(tempDir, { recursive: true, force: true });
+            }
         }
     }
     catch (error) {

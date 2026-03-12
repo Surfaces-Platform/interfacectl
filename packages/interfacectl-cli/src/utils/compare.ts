@@ -352,7 +352,7 @@ export function compareContractToDescriptor(
   );
 
   for (const motion of desc.motion) {
-    if (!allowedDurations.has(motion.durationMs)) {
+    if (motion.durationMs >= 1 && !allowedDurations.has(motion.durationMs)) {
       entries.push({
         surfaceId,
         type: "added",

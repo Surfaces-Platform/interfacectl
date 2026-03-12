@@ -30,7 +30,13 @@ import {
   seedObservedUiContract,
   type ObservedUiSeedingResult,
 } from "./observed-ui-seeding.js";
-import { observeRemotePage } from "./browser-session.js";
+import {
+  observeRemotePage,
+  type RemoteBrowserObservation,
+  type RemoteRenderedStyleObservation,
+  type SourceHealthConfidence,
+  type SourceHealthStatus,
+} from "./browser-session.js";
 
 export type WebSurfaceKind = "marketing" | "application" | "unknown";
 export type FirstRunMode = "adopt" | "synthesize";
@@ -121,6 +127,12 @@ export interface SurfaceAnalysisArtifact {
       layout: TokenMetadata[];
       motion: TokenMetadata[];
     };
+  };
+  sourceHealth: {
+    status: SourceHealthStatus;
+    finalUrl?: string;
+    authMode: "none" | "browser-session";
+    confidence: SourceHealthConfidence;
   };
   classification: {
     inferredKind: WebSurfaceKind;
@@ -230,6 +242,7 @@ export interface AnalyzeSurfaceOptions {
   authMode?: "none" | "browser-session";
   authProfileName?: string;
   authStorageState?: string;
+  remoteObservation?: RemoteBrowserObservation;
 }
 
 export interface AnalyzeSurfaceResult {
@@ -258,6 +271,12 @@ interface NormalizedObservation {
   colorAllowedValues: string[];
   surfaceIcons?: ContractSurface["icons"];
   sourceAppRoot?: string;
+  sourceHealth: {
+    status: SourceHealthStatus;
+    finalUrl?: string;
+    authMode: "none" | "browser-session";
+    confidence: SourceHealthConfidence;
+  };
 }
 
 interface RemoteObservation {
@@ -327,6 +346,12 @@ function uniqueSorted(values: string[]): string[] {
 
 function uniqueSortedNumbers(values: number[]): number[] {
   return [...new Set(values.filter((value) => Number.isFinite(value)))].sort((a, b) => a - b);
+}
+
+function uniquePositiveSortedNumbers(values: number[]): number[] {
+  return [...new Set(values.filter((value) => Number.isFinite(value) && value >= 1))].sort(
+    (a, b) => a - b,
+  );
 }
 
 function toStableSourcePath(root: string | undefined, candidate: string): string {
@@ -508,6 +533,150 @@ function summarizeIcons(descriptor: SurfaceDescriptor): IconSourceSummary[] {
       sources: icon.source ? [icon.source] : [],
     }))
     .sort((a, b) => a.value.localeCompare(b.value));
+}
+
+function summarizeRemoteFontsFromRenderedStyles(
+  source: string,
+  renderedStyles: RemoteRenderedStyleObservation,
+): FontValueSummary[] {
+  return countByValue(renderedStyles.fonts.map((value) => ({ value, source })))
+    .map((entry) => ({
+      value: entry.value,
+      count: entry.count,
+      sources: entry.sources,
+    }));
+}
+
+function summarizeRemoteColorsFromRenderedStyles(
+  source: string,
+  renderedStyles: RemoteRenderedStyleObservation,
+): ColorValueSummary[] {
+  return countByValue(
+    renderedStyles.colors.flatMap((value) =>
+      normalizeColorValues([value]).map((canonical) => ({ value: canonical, source })),
+    ),
+  ).map((entry) => ({
+    canonical: entry.value,
+    count: entry.count,
+    sources: entry.sources,
+  }));
+}
+
+function summarizeRemoteMotionFromRenderedStyles(
+  source: string,
+  renderedStyles: RemoteRenderedStyleObservation,
+): MotionValueSummary[] {
+  return countByValue(
+    renderedStyles.motions.map((entry) => ({
+      value: `${entry.durationMs}::${entry.timingFunction}`,
+      source,
+    })),
+  )
+    .map((entry) => {
+      const [durationPart, timingFunction] = entry.value.split("::");
+      return {
+        durationMs: Number.parseFloat(durationPart),
+        timingFunction,
+        count: entry.count,
+        sources: entry.sources,
+      };
+    })
+    .filter((entry) => entry.durationMs > 0 || entry.timingFunction.length > 0);
+}
+
+function collectRemoteFontsFromCss(
+  cssContents: Array<{ source: string; content: string }>,
+): FontValueSummary[] {
+  return countByValue(
+    cssContents.flatMap(({ source, content }) => {
+      const families: Array<{ value: string; source: string }> = [];
+      FONT_FAMILY_REGEX.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = FONT_FAMILY_REGEX.exec(content)) !== null) {
+        for (const token of match[1].split(",")) {
+          const value = token.trim().replace(/^["']|["']$/g, "");
+          if (value) {
+            families.push({ value, source });
+          }
+        }
+      }
+      return families;
+    }),
+  ).map((entry) => ({
+    value: entry.value,
+    count: entry.count,
+    sources: entry.sources,
+  }));
+}
+
+function collectRemoteColorsFromCss(
+  cssContents: Array<{ source: string; content: string }>,
+): ColorValueSummary[] {
+  return countByValue(
+    cssContents.flatMap(({ source, content }) => {
+      const values: Array<{ value: string; source: string }> = [];
+      COLOR_DECL_REGEX.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = COLOR_DECL_REGEX.exec(content)) !== null) {
+        const rawValue = match[1]?.trim();
+        if (!rawValue) continue;
+        for (const color of normalizeColorValues([rawValue])) {
+          values.push({ value: color, source });
+        }
+      }
+      return values;
+    }),
+  ).map((entry) => ({
+    canonical: entry.value,
+    count: entry.count,
+    sources: entry.sources,
+  }));
+}
+
+function collectRemoteMotionFromCss(
+  cssContents: Array<{ source: string; content: string }>,
+): MotionValueSummary[] {
+  return countByValue(
+    cssContents.flatMap(({ source, content }) => {
+      const values: Array<{ value: string; source: string }> = [];
+      DURATION_DECL_REGEX.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = DURATION_DECL_REGEX.exec(content)) !== null) {
+        const duration = parseDurationToMs(match[2]);
+        if (duration !== null) {
+          values.push({ value: `${duration}::linear`, source });
+        }
+      }
+      TRANSITION_DECL_REGEX.lastIndex = 0;
+      while ((match = TRANSITION_DECL_REGEX.exec(content)) !== null) {
+        const text = match[1];
+        const durationMatch = text.match(/([0-9.]+\s*(?:ms|s))/i);
+        const timingMatch = text.match(/\b(linear|ease|ease-in|ease-out|ease-in-out|cubic-bezier\([^)]*\))\b/i);
+        const duration = parseDurationToMs(durationMatch?.[1]);
+        if (duration !== null) {
+          values.push({ value: `${duration}::${(timingMatch?.[1] ?? "linear").trim()}`, source });
+        }
+      }
+      TIMING_DECL_REGEX.lastIndex = 0;
+      while ((match = TIMING_DECL_REGEX.exec(content)) !== null) {
+        const timing = match[2]?.trim();
+        if (timing) {
+          values.push({ value: `0::${timing}`, source });
+        }
+      }
+      return values;
+    }),
+  )
+    .map((entry) => {
+      const [durationPart, timingFunction] = entry.value.split("::");
+      return {
+        durationMs: Number.parseFloat(durationPart),
+        timingFunction,
+        count: entry.count,
+        sources: entry.sources,
+      };
+    })
+    .filter((entry) => entry.durationMs > 0 || entry.timingFunction.length > 0);
 }
 
 function buildPhase0Seed(observation: NormalizedObservation): {
@@ -984,6 +1153,13 @@ function buildDraftArtifact(
     structurePatterns.push("shell");
   }
   const manualFollowUp = analysis.inconsistencies.findings.map((finding) => finding.message);
+  if (analysis.sourceHealth.status !== "ok") {
+    manualFollowUp.push(
+      analysis.sourceHealth.status === "access-denied"
+        ? "Capture auth or switch to a local app root to analyze the target surface instead of the gate."
+        : "Provide authenticated replay or switch to a local app root to analyze the target surface instead of the login view.",
+    );
+  }
   if (analysis.classification.requiresConfirmation) {
     manualFollowUp.push("Review the inferred surface kind before tightening policy levels.");
   }
@@ -1138,6 +1314,11 @@ async function analyzeLocalSource(options: AnalyzeSurfaceOptions): Promise<Norma
     colorAllowedValues: chromeSeeded.contract.color.allowedValues,
     surfaceIcons: chromeSeeded.contract.surfaces[0]?.icons,
     sourceAppRoot: appRoot,
+    sourceHealth: {
+      status: "ok",
+      authMode: "none",
+      confidence: "full",
+    },
   };
 }
 
@@ -1319,11 +1500,12 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
     throw new Error("Missing url for remote-url analysis.");
   }
   const sourceUrl = new URL(options.url);
-  const observation = await observeRemotePage({
+  const observation = options.remoteObservation ?? await observeRemotePage({
     url: sourceUrl.toString(),
     storageState: options.authStorageState,
   });
   const finalUrl = new URL(observation.finalUrl);
+  const redactedFinalUrl = redactSensitiveUrl(finalUrl.toString());
   const html = observation.html;
   const cssContents = [
     ...collectInlineCssContents(finalUrl, html),
@@ -1331,84 +1513,12 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
   ].sort((a, b) => a.source.localeCompare(b.source));
   const routeInfo = extractRemoteLinks(html, finalUrl);
   const primitives = parseRemotePrimitives(html, finalUrl.toString());
-  const fonts = countByValue(
-    cssContents.flatMap(({ source, content }) => {
-      const families: Array<{ value: string; source: string }> = [];
-      FONT_FAMILY_REGEX.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = FONT_FAMILY_REGEX.exec(content)) !== null) {
-        for (const token of match[1].split(",")) {
-          const value = token.trim().replace(/^["']|["']$/g, "");
-          if (value) {
-            families.push({ value, source });
-          }
-        }
-      }
-      return families;
-    }),
-  ).map((entry) => ({
-    value: entry.value,
-    count: entry.count,
-    sources: entry.sources,
-  }));
-  const colors = countByValue(
-    cssContents.flatMap(({ source, content }) => {
-      const values: Array<{ value: string; source: string }> = [];
-      COLOR_DECL_REGEX.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = COLOR_DECL_REGEX.exec(content)) !== null) {
-        const rawValue = match[1]?.trim();
-        if (!rawValue) continue;
-        for (const color of normalizeColorValues([rawValue])) {
-          values.push({ value: color, source });
-        }
-      }
-      return values;
-    }),
-  ).map((entry) => ({
-    canonical: entry.value,
-    count: entry.count,
-    sources: entry.sources,
-  }));
-  const motions = countByValue(
-    cssContents.flatMap(({ source, content }) => {
-      const values: Array<{ value: string; source: string }> = [];
-      DURATION_DECL_REGEX.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = DURATION_DECL_REGEX.exec(content)) !== null) {
-        const duration = parseDurationToMs(match[2]);
-        if (duration !== null) {
-          values.push({ value: `${duration}::linear`, source });
-        }
-      }
-      TRANSITION_DECL_REGEX.lastIndex = 0;
-      while ((match = TRANSITION_DECL_REGEX.exec(content)) !== null) {
-        const text = match[1];
-        const durationMatch = text.match(/([0-9.]+\s*(?:ms|s))/i);
-        const timingMatch = text.match(/\b(linear|ease|ease-in|ease-out|ease-in-out|cubic-bezier\([^)]*\))\b/i);
-        const duration = parseDurationToMs(durationMatch?.[1]);
-        if (duration !== null) {
-          values.push({ value: `${duration}::${(timingMatch?.[1] ?? "linear").trim()}`, source });
-        }
-      }
-      TIMING_DECL_REGEX.lastIndex = 0;
-      while ((match = TIMING_DECL_REGEX.exec(content)) !== null) {
-        const timing = match[2]?.trim();
-        if (timing) {
-          values.push({ value: `0::${timing}`, source });
-        }
-      }
-      return values;
-    }),
-  ).map((entry) => {
-    const [durationPart, timingFunction] = entry.value.split("::");
-    return {
-      durationMs: Number.parseFloat(durationPart),
-      timingFunction,
-      count: entry.count,
-      sources: entry.sources,
-    };
-  }).filter((entry) => entry.durationMs > 0 || entry.timingFunction.length > 0);
+  const renderedFonts = summarizeRemoteFontsFromRenderedStyles(redactedFinalUrl, observation.renderedStyles);
+  const renderedColors = summarizeRemoteColorsFromRenderedStyles(redactedFinalUrl, observation.renderedStyles);
+  const renderedMotions = summarizeRemoteMotionFromRenderedStyles(redactedFinalUrl, observation.renderedStyles);
+  const fonts = renderedFonts.length > 0 ? renderedFonts : collectRemoteFontsFromCss(cssContents);
+  const colors = renderedColors.length > 0 ? renderedColors : collectRemoteColorsFromCss(cssContents);
+  const motions = renderedMotions.length > 0 ? renderedMotions : collectRemoteMotionFromCss(cssContents);
 
   const maxWidths: number[] = [];
   const radii: number[] = [];
@@ -1437,6 +1547,14 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
       pageBackgroundMode = "custom";
     }
   }
+  const observedMaxWidths =
+    observation.renderedStyles.maxWidths.length > 0 ? observation.renderedStyles.maxWidths : maxWidths;
+  const observedRadii =
+    observation.renderedStyles.radii.length > 0 ? observation.renderedStyles.radii : radii;
+  const observedShadowKinds =
+    observation.renderedStyles.shadowKinds.length > 0
+      ? observation.renderedStyles.shadowKinds
+      : [...shadowKinds];
 
   const copyRoleCount = extractAttributeValuesFromTags(html, COPY_ROLE_REGEX).length;
   const sections = extractAttributeValuesFromTags(html, SECTION_ATTRIBUTE_REGEX);
@@ -1446,7 +1564,7 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
     .length;
   const tokenPolicies = collectRemoteTokenPolicies(cssContents);
 
-  const loginOrDeniedDetected = observation.loginDetected || observation.accessDeniedDetected;
+  const loginOrDeniedDetected = observation.sourceHealth.status !== "ok";
   if (options.authStorageState && finalUrl.hostname !== sourceUrl.hostname) {
     throw new Error(
       `Authenticated replay for ${sourceUrl.hostname} redirected to ${finalUrl.hostname}. Capture a profile for the final host and retry.`,
@@ -1454,16 +1572,16 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
   }
   if (options.authStorageState && loginOrDeniedDetected) {
     throw new Error(
-      observation.accessDeniedDetected
+      observation.sourceHealth.status === "access-denied"
         ? `Authenticated replay reached an access-denied page at ${redactSensitiveUrl(finalUrl.toString())}.`
         : `Authenticated replay still resolved to a login page at ${redactSensitiveUrl(finalUrl.toString())}. Re-capture the auth profile and retry.`,
     );
   }
   const descriptor: SurfaceDescriptor = {
     surfaceId: options.surfaceId,
-    sections: sections.map((section) => ({ id: section, source: redactSensitiveUrl(finalUrl.toString()) })),
-    fonts: fonts.map((entry) => ({ value: entry.value, source: entry.sources[0] })),
-    colors: colors.map((entry) => ({ value: entry.canonical, source: entry.sources[0] })),
+    sections: sections.map((section) => ({ id: section, source: redactedFinalUrl })),
+    fonts: fonts.map((entry) => ({ value: entry.value, source: entry.sources[0] ?? redactedFinalUrl })),
+    colors: colors.map((entry) => ({ value: entry.canonical, source: entry.sources[0] ?? redactedFinalUrl })),
     icons: [],
     tokenUsage: {
       typography: metadataToDescriptors(metadataFromPolicy(tokenPolicies.typography)),
@@ -1474,18 +1592,19 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
       copyRoleCount > 0
         ? {
             roles: [],
-            source: redactSensitiveUrl(finalUrl.toString()),
+            source: redactedFinalUrl,
           }
         : undefined,
     layout: {
-      maxContentWidth: maxWidths.length > 0 ? Math.max(...maxWidths) : null,
+      maxContentWidth: observedMaxWidths.length > 0 ? Math.max(...observedMaxWidths) : null,
       containers: uniqueSorted([
+        ...observation.renderedStyles.containers,
         ...(html.match(/\bclass=(?:"[^"]*\bcontainer\b[^"]*"|'[^']*\bcontainer\b[^']*')/gi) ?? []).map(() => "container"),
       ]),
       chrome: {
         targets: [],
-        maxBorderRadiusPx: radii.length > 0 ? Math.max(...radii) : null,
-        shadowKinds: [...shadowKinds].sort((a, b) => a.localeCompare(b)) as Array<"none" | "outer" | "inset" | "mixed">,
+        maxBorderRadiusPx: observedRadii.length > 0 ? Math.max(...observedRadii) : null,
+        shadowKinds: observedShadowKinds.sort((a, b) => a.localeCompare(b)) as Array<"none" | "outer" | "inset" | "mixed">,
       },
       landingPattern:
         sections.length > 0 || heroSignal
@@ -1494,14 +1613,14 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
               topLevelSections: sections,
               nestedSections: [],
               pageBackgroundMode,
-              source: redactSensitiveUrl(finalUrl.toString()),
+              source: redactedFinalUrl,
             }
           : undefined,
     },
     motion: motions.map((entry) => ({
       durationMs: entry.durationMs,
       timingFunction: entry.timingFunction,
-      source: entry.sources[0],
+      source: entry.sources[0] ?? redactedFinalUrl,
     })),
     primitives,
   };
@@ -1521,9 +1640,12 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
         : []),
       ...(loginOrDeniedDetected && !options.authStorageState
         ? [{
-            code: observation.accessDeniedDetected ? "remote.auth.access-denied-detected" : "remote.auth.login-detected",
+            code:
+              observation.sourceHealth.status === "access-denied"
+                ? "remote.auth.access-denied-detected"
+                : "remote.auth.login-detected",
             message:
-              observation.accessDeniedDetected
+              observation.sourceHealth.status === "access-denied"
                 ? "Remote analysis resolved to an access-denied page; results may reflect the gate instead of the target surface."
                 : "Remote analysis resolved to a login page; provide --auth-profile for authenticated replay if this surface is protected.",
           }]
@@ -1532,6 +1654,12 @@ async function analyzeRemoteSource(options: AnalyzeSurfaceOptions): Promise<Norm
     tokenPolicies,
     colorAllowedValues: colors.map((entry) => entry.canonical),
     surfaceIcons: undefined,
+    sourceHealth: {
+      status: observation.sourceHealth.status,
+      finalUrl: redactedFinalUrl,
+      authMode: observation.sourceHealth.authMode,
+      confidence: observation.sourceHealth.confidence,
+    },
   };
 }
 
@@ -1606,10 +1734,12 @@ function buildBaseContract(
     sections,
     constraints: {
       motion: {
-        allowedDurationsMs: uniqueSortedNumbers(
+        allowedDurationsMs: uniquePositiveSortedNumbers(
           observation.descriptor.motion.map((motion) => motion.durationMs),
         ).length > 0
-          ? uniqueSortedNumbers(observation.descriptor.motion.map((motion) => motion.durationMs))
+          ? uniquePositiveSortedNumbers(
+              observation.descriptor.motion.map((motion) => motion.durationMs),
+            )
           : [120],
         allowedTimingFunctions:
           uniqueSorted(observation.descriptor.motion.map((motion) => motion.timingFunction)).length > 0
@@ -1654,6 +1784,12 @@ function buildExtractionReport(
       options.sourceMode === "local-root" && options.appRoot
         ? path.resolve(options.workspaceRoot, options.appRoot)
         : options.url,
+    sourceHealth: {
+      status: observation.sourceHealth.status,
+      finalUrl: observation.sourceHealth.finalUrl,
+      authMode: observation.sourceHealth.authMode,
+      confidence: observation.sourceHealth.confidence,
+    },
     warnings,
     extracted: {
       routes: observation.routes,
@@ -1735,6 +1871,12 @@ export async function analyzeSurface(
         layout: metadataFromPolicy(observation.tokenPolicies.layout),
         motion: metadataFromPolicy(observation.tokenPolicies.motion),
       },
+    },
+    sourceHealth: {
+      status: observation.sourceHealth.status,
+      finalUrl: observation.sourceHealth.finalUrl,
+      authMode: observation.sourceHealth.authMode,
+      confidence: observation.sourceHealth.confidence,
     },
     classification: {
       ...classification,

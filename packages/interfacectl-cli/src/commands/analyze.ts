@@ -130,6 +130,11 @@ export async function runAnalyzeCommand(options: AnalyzeCommandOptions): Promise
     console.log(
       `Inferred surface kind: ${result.analysis.classification.inferredKind} (${result.analysis.classification.confidence.toFixed(2)})`,
     );
+    if (result.analysis.sourceHealth.status !== "ok") {
+      console.log(
+        `Source access: ${result.analysis.sourceHealth.status} (${result.analysis.sourceHealth.confidence}) at ${result.analysis.sourceHealth.finalUrl ?? options.url}`,
+      );
+    }
     if (result.analysis.classification.requiresConfirmation && !options.surfaceKind) {
       console.log("Note: classification is low confidence; pass --surface-kind to confirm seeding intent.");
     }
