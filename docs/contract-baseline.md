@@ -64,6 +64,19 @@ Each item in `sections` must include:
 - `intent` (string, non-empty)
 - `description` (string, non-empty)
 
+Optional authoring metadata for web surfaces:
+
+- `components[]`: reusable component library for agentic generation and adaptation.
+- `sections[*].anatomy`: generic section pattern, allowed/default components, and section-local slots.
+- `sections[*].editPolicy`: safe mutation boundary such as `locked`, `slot-bound`, or `freeform`.
+- `sections[*].responsive`: named viewport rules for layout intent and slot reflow.
+- `surfaces[*].viewports`: named breakpoint profiles with min/max widths.
+- `surfaces[*].authoring`: implementation preferences and source precedence across contract, Figma, code, stories, and live URLs.
+
+These fields are advisory-first in v1. `interfacectl validate` checks structure and referential integrity, but they do not add new compliance violations on their own beyond malformed metadata.
+
+For generator consumption order and end-to-end examples, see `docs/authoring-contracts.md`.
+
 ## Required color policy
 
 The top-level `color` object must include:

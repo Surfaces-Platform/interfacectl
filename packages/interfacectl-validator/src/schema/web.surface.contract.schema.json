@@ -43,6 +43,12 @@
         "$ref": "#/$defs/section"
       }
     },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
     "constraints": {
       "$ref": "#/$defs/constraints"
     },
@@ -237,8 +243,44 @@
             "minLength": 1
           },
           "uniqueItems": true
+        },
+        "viewports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/viewport"
+          }
+        },
+        "authoring": {
+          "$ref": "#/$defs/surfaceAuthoring"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "cli"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "viewports"
+                  ]
+                },
+                {
+                  "required": [
+                    "authoring"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     "section": {
       "type": "object",
@@ -260,8 +302,584 @@
         "description": {
           "type": "string",
           "minLength": 1
+        },
+        "anatomy": {
+          "$ref": "#/$defs/sectionAnatomy"
+        },
+        "editPolicy": {
+          "$ref": "#/$defs/sectionEditPolicy"
+        },
+        "responsive": {
+          "$ref": "#/$defs/sectionResponsive"
         }
       }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "intent",
+        "slots"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/componentVariant"
+          }
+        },
+        "slots": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/slot"
+          }
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/componentState"
+          }
+        },
+        "interactions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/componentInteraction"
+          }
+        },
+        "implementation": {
+          "$ref": "#/$defs/componentImplementation"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/externalReference"
+          }
+        }
+      }
+    },
+    "componentVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "required"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "text",
+            "richText",
+            "media",
+            "action",
+            "icon",
+            "container",
+            "item-list"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "repeatable": {
+          "type": "boolean"
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "textRole": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acceptsComponents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "contentRules": {
+          "$ref": "#/$defs/slotContentRules"
+        }
+      }
+    },
+    "slotContentRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allowHtml": {
+          "type": "boolean"
+        },
+        "allowedMimeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "componentState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "label": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        },
+        "requiredSlots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "hiddenSlots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "componentInteraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "trigger",
+        "effect"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "trigger": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effect": {
+          "type": "string",
+          "enum": [
+            "navigate",
+            "open",
+            "close",
+            "submit",
+            "filter",
+            "toggle",
+            "expand",
+            "collapse",
+            "select",
+            "set-state"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resultingState": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "navigationTarget": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "componentImplementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preferredSource": {
+          "$ref": "#/$defs/authoringSource"
+        },
+        "allowedSources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/authoringSource"
+          },
+          "uniqueItems": true
+        },
+        "htmlFallback": {
+          "type": "string"
+        },
+        "accessibilityNotes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "externalReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system",
+        "kind",
+        "ref"
+      ],
+      "properties": {
+        "system": {
+          "type": "string",
+          "enum": [
+            "figma",
+            "code",
+            "story",
+            "url",
+            "asset"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "sectionAnatomy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pattern"
+      ],
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "minLength": 1
+        },
+        "defaultComponent": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "allowedComponents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slot"
+          }
+        }
+      }
+    },
+    "sectionEditPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "locked",
+            "slot-bound",
+            "freeform"
+          ]
+        },
+        "allowedOperations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "update-copy",
+              "swap-variant",
+              "reorder-items",
+              "change-media",
+              "adjust-layout",
+              "bind-data",
+              "wire-interaction"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "sectionResponsive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rules"
+      ],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/responsiveRule"
+          }
+        }
+      }
+    },
+    "responsiveRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "viewport",
+        "layoutIntent"
+      ],
+      "properties": {
+        "viewport": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "layoutIntent": {
+          "type": "string",
+          "enum": [
+            "stack",
+            "columns",
+            "auto-fit-grid",
+            "sidebar-main",
+            "single-column-form"
+          ]
+        },
+        "slotBehaviors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/responsiveSlotBehavior"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "responsiveSlotBehavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slotId",
+        "behavior"
+      ],
+      "properties": {
+        "slotId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "behavior": {
+          "type": "string",
+          "enum": [
+            "stack",
+            "inline",
+            "grid",
+            "hide",
+            "collapse",
+            "pin"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "label": {
+          "type": "string"
+        },
+        "minWidthPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxWidthPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "density": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "comfortable",
+            "spacious"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "surfaceAuthoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePriority"
+      ],
+      "properties": {
+        "framework": {
+          "type": "string",
+          "minLength": 1
+        },
+        "routing": {
+          "type": "string",
+          "minLength": 1
+        },
+        "styling": {
+          "$ref": "#/$defs/surfaceAuthoringStyling"
+        },
+        "preferredLibraries": {
+          "$ref": "#/$defs/surfaceAuthoringLibraries"
+        },
+        "sourcePriority": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/authoringSource"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "surfaceAuthoringStyling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tokenPrefix": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "surfaceAuthoringLibraries": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "icons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "authoringSource": {
+      "type": "string",
+      "enum": [
+        "contract",
+        "figma",
+        "code",
+        "story",
+        "url",
+        "asset"
+      ]
     },
     "constraints": {
       "type": "object",
