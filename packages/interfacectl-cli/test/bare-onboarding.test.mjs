@@ -572,13 +572,14 @@ test("bare interfacectl remote onboarding does not stop on a public Next-like pa
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    const bareUrl = baseUrl.replace(/^https?:\/\//, "");
 
     const result = await runInteractive([], {
       cwd,
       env: forceWelcomeEnv,
       steps: [
         { when: /> $/, input: "2\n" },
-        { when: /Surface URL: $/, input: `${baseUrl}/\n` },
+        { when: /Surface URL: $/, input: `${bareUrl}/\n` },
         { when: /Surface id \[[^\]]+\]: $/, input: "\n" },
         { when: /Surface name \[[^\]]+\]: $/, input: "\n" },
         { when: /sign in to see the real page\? \(y\/N\) $/, input: "\n" },

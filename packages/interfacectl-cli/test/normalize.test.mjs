@@ -6,6 +6,7 @@ import {
   normalizeContract,
   normalizeDescriptor,
 } from "../dist/utils/normalize.js";
+import { normalizeRemoteUrlInput, suggestSurfaceIdFromUrl } from "../dist/utils/onboarding.js";
 
 test("normalizeSetField sorts arrays deterministically", () => {
   const input = ["c", "a", "b"];
@@ -105,4 +106,29 @@ test("normalizeDescriptor strips ephemeral fields", () => {
   assert.equal(normalized.descriptor.fonts[0].source, undefined);
   assert.equal(normalized.descriptor.icons[0].source, undefined);
   assert.equal(normalized.descriptor.layout.source, undefined);
+});
+
+test("normalizeRemoteUrlInput defaults bare domains to https", () => {
+  assert.equal(
+    normalizeRemoteUrlInput("surfaces.systems"),
+    "https://surfaces.systems/",
+  );
+});
+
+test("normalizeRemoteUrlInput defaults local hosts to http", () => {
+  assert.equal(
+    normalizeRemoteUrlInput("127.0.0.1:3000/app"),
+    "http://127.0.0.1:3000/app",
+  );
+  assert.equal(
+    normalizeRemoteUrlInput("localhost:3000/app"),
+    "http://localhost:3000/app",
+  );
+});
+
+test("suggestSurfaceIdFromUrl accepts bare domains", () => {
+  assert.equal(
+    suggestSurfaceIdFromUrl("surfaces.systems/start"),
+    "surfaces-systems-start",
+  );
 });

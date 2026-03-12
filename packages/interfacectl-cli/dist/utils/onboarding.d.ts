@@ -29,6 +29,7 @@ export interface BootstrapExtractionReport {
         };
     };
 }
+export declare function normalizeRemoteUrlInput(rawInput: string): string;
 export declare function suggestSurfaceIdFromUrl(rawUrl: string): string;
 export declare function suggestSurfaceName(surfaceId: string): string;
 export declare function suggestSurfaceIdFromPath(rawPath: string): string;

@@ -54,8 +54,60 @@ function sha256FromContent(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+function toRelative(root: string, candidate: string): string {
+  return path.relative(root, candidate);
+}
+
+const EXPLICIT_URL_SCHEME_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
+
+function stripPort(candidate: string): string {
+  if (candidate.startsWith("[")) {
+    const closingBracket = candidate.indexOf("]");
+    if (closingBracket >= 0) {
+      return candidate.slice(1, closingBracket);
+    }
+  }
+  return candidate.replace(/:\d+$/, "");
+}
+
+function hostnameFromUrlInput(rawInput: string): string {
+  const withoutProtocolRelativePrefix = rawInput.replace(/^\/\//, "");
+  const authority = withoutProtocolRelativePrefix.split(/[/?#]/, 1)[0] ?? "";
+  return stripPort(authority).toLowerCase();
+}
+
+function isLocalHostname(hostname: string): boolean {
+  if (!hostname) {
+    return false;
+  }
+  if (hostname === "localhost" || hostname === "::1" || hostname === "0.0.0.0") {
+    return true;
+  }
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
+    return hostname.startsWith("127.") ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+  }
+  return hostname.endsWith(".local");
+}
+
+export function normalizeRemoteUrlInput(rawInput: string): string {
+  const trimmed = rawInput.trim();
+  if (trimmed.length === 0) {
+    return new URL(trimmed).toString();
+  }
+  if (EXPLICIT_URL_SCHEME_PATTERN.test(trimmed)) {
+    return new URL(trimmed).toString();
+  }
+
+  const hostname = hostnameFromUrlInput(trimmed);
+  const scheme = isLocalHostname(hostname) ? "http://" : "https://";
+  const candidate = trimmed.replace(/^\/\//, "");
+  return new URL(`${scheme}${candidate}`).toString();
+}
 export function suggestSurfaceIdFromUrl(rawUrl: string): string {
-  const url = new URL(rawUrl);
+  const url = new URL(normalizeRemoteUrlInput(rawUrl));
   const host = url.hostname.replace(/^www\./, "");
   const pathToken = url.pathname
     .split("/")

@@ -21,6 +21,7 @@ import {
 } from "../utils/first-run-analysis.js";
 import {
   emitOnboardingRunArtifact,
+  normalizeRemoteUrlInput,
   suggestSurfaceIdFromPath,
   suggestSurfaceIdFromUrl,
   suggestSurfaceName,
@@ -169,7 +170,7 @@ async function resolveInputs(options: InitOptions): Promise<ResolvedInitInputs> 
 
   return {
     sourceMode,
-    url: options.url ? new URL(options.url).toString() : undefined,
+    url: options.url ? normalizeRemoteUrlInput(options.url) : undefined,
     appRoot: options.appRoot,
     surfaceId,
     surfaceName,

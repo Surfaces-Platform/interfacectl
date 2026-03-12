@@ -1,6 +1,6 @@
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "./onboarding.js";
+import { normalizeRemoteUrlInput, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "./onboarding.js";
 const VALID_SURFACE_KINDS = new Set(["marketing", "application", "unknown"]);
 export function normalizeSurfaceId(raw) {
     return raw
@@ -31,7 +31,7 @@ export async function promptInteractiveInitInputs(options) {
             inferredMode).toLowerCase();
         const sourceMode = rawMode === "remote-url" ? "remote-url" : "local-root";
         const url = sourceMode === "remote-url"
-            ? new URL(options.url ?? (await rl.question("Surface URL: ")).trim()).toString()
+            ? normalizeRemoteUrlInput(options.url ?? (await rl.question("Surface URL: ")).trim())
             : options.url?.trim() || undefined;
         const appRoot = sourceMode === "local-root"
             ? (options.appRoot ?? (await rl.question("Local app root: "))).trim()

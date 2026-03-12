@@ -222,6 +222,7 @@ test("init: non-interactive remote-url writes first-run artifacts and run metada
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    const bareUrl = baseUrl.replace(/^https?:\/\//, "");
 
     await mkdir(path.join(cwd, "contracts"), { recursive: true });
     await writeFile(
@@ -243,7 +244,7 @@ test("init: non-interactive remote-url writes first-run artifacts and run metada
         "init",
         "--non-interactive",
         "--url",
-        `${baseUrl}/`,
+        `${bareUrl}/`,
         "--surface",
         "customer-products",
         "--surface-kind",
@@ -394,9 +395,10 @@ test("auth: capture/list/test/clear operate on replayable local profile store", 
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    const bareUrl = baseUrl.replace(/^https?:\/\//, "");
 
     const capture = await run(
-      ["auth", "capture", "--profile", "demo", "--url", `${baseUrl}/session/start`, "--format", "json"],
+      ["auth", "capture", "--profile", "demo", "--url", `${bareUrl}/session/start`, "--format", "json"],
       {
         cwd,
         env: {
@@ -425,7 +427,7 @@ test("auth: capture/list/test/clear operate on replayable local profile store", 
     assert.equal(listPayload.profiles[0].replayReady, true);
 
     const testProfile = await run(
-      ["auth", "test", "--profile", "demo", "--url", `${baseUrl}/app`, "--format", "json"],
+      ["auth", "test", "--profile", "demo", "--url", `${bareUrl}/app`, "--format", "json"],
       {
         cwd,
         env: {
@@ -583,9 +585,10 @@ test("analyze: public Next-like page with framework auth strings remains sourceH
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    const bareUrl = baseUrl.replace(/^https?:\/\//, "");
 
     const result = await run(
-      ["analyze", "--url", `${baseUrl}/`, "--surface", "public-site"],
+      ["analyze", "--url", `${bareUrl}/`, "--surface", "public-site"],
       { cwd, env: { ...forceFileStorageEnv } },
     );
     assert.equal(result.exitCode, 0, result.stderr);
