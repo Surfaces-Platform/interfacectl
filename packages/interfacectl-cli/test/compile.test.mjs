@@ -11,6 +11,7 @@ import {
   readdir,
   rm,
   stat,
+  writeFile,
 } from "node:fs/promises";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -55,6 +56,10 @@ async function readJson(p) {
   return JSON.parse(raw);
 }
 
+async function assertNoPath(targetPath) {
+  await assert.rejects(stat(targetPath), /ENOENT/);
+}
+
 test("compile: structure - required files exist and no extra files", async () => {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-structure-"));
   try {
@@ -62,16 +67,20 @@ test("compile: structure - required files exist and no extra files", async () =>
     assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
 
     const manifest = await readJson(path.join(outDir, "manifest.json"));
-    assert.equal(manifest.bundleVersion, "1.0");
+    assert.equal(manifest.bundleVersion, "2.0");
     assert.equal(manifest.contractId, "demo-ui");
     assert.equal(manifest.contractVersion, "1.0.0");
     assert.ok(Array.isArray(manifest.files));
-    assert.ok(manifest.files.length >= 3);
+    assert.ok(manifest.files.length >= 6);
 
     const paths = manifest.files.map((f) => f.path);
-    assert.ok(paths.includes("contract.normalized.json"), "bundle must include contract.normalized.json");
-    assert.ok(paths.includes("surfaces/demo-surface.json"), "bundle must include surfaces/demo-surface.json");
-    assert.ok(paths.includes("constraints/motion.json"), "bundle must include constraints/motion.json");
+    assert.ok(paths.includes("contract/normalized.json"), "bundle must include contract/normalized.json");
+    assert.ok(paths.includes("surfaces/demo-surface/generation.json"), "bundle must include generation.json");
+    assert.ok(paths.includes("surfaces/demo-surface/sections.json"), "bundle must include sections.json");
+    assert.ok(paths.includes("surfaces/demo-surface/components.json"), "bundle must include components.json");
+    assert.ok(paths.includes("surfaces/demo-surface/constraints.json"), "bundle must include constraints.json");
+    assert.ok(paths.includes("surfaces/demo-surface/repair-map.json"), "bundle must include repair-map.json");
+    assert.ok(!paths.includes("surfaces/demo-surface/authoring.json"), "authoring.json should be omitted when authoring is absent");
 
     for (const entry of manifest.files) {
       assert.ok(!entry.path.includes("manifest.json"), "files must not include manifest.json");
@@ -81,22 +90,19 @@ test("compile: structure - required files exist and no extra files", async () =>
     const sortedPaths = [...paths].sort();
     assert.deepEqual(paths, sortedPaths, "manifest.files must be sorted by path");
 
-    const contractNorm = path.join(outDir, "contract.normalized.json");
+    const contractNorm = path.join(outDir, "contract", "normalized.json");
     const contractStat = await stat(contractNorm);
-    assert.ok(contractStat.isFile(), "contract.normalized.json must be a file");
+    assert.ok(contractStat.isFile(), "contract/normalized.json must be a file");
 
-    const surfacesDir = path.join(outDir, "surfaces");
-    const surfacesStat = await stat(surfacesDir);
-    assert.ok(surfacesStat.isDirectory(), "surfaces/ must exist");
-    const surfaceFiles = await readdir(surfacesDir);
-    assert.ok(surfaceFiles.includes("demo-surface.json"), "surfaces/ must contain demo-surface.json");
-
-    const constraintsDir = path.join(outDir, "constraints");
-    const constraintsStat = await stat(constraintsDir);
-    assert.ok(constraintsStat.isDirectory(), "constraints/ must exist");
-    const motionPath = path.join(constraintsDir, "motion.json");
-    const motionStat = await stat(motionPath);
-    assert.ok(motionStat.isFile(), "constraints/motion.json must exist");
+    const surfaceDir = path.join(outDir, "surfaces", "demo-surface");
+    const surfaceDirStat = await stat(surfaceDir);
+    assert.ok(surfaceDirStat.isDirectory(), "surface bundle directory must exist");
+    const surfaceFiles = await readdir(surfaceDir);
+    assert.deepEqual(
+      surfaceFiles.sort(),
+      ["components.json", "constraints.json", "generation.json", "repair-map.json", "sections.json"],
+      "surface bundle should only include the expected generation files for the base fixture",
+    );
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }
@@ -125,23 +131,190 @@ test("compile: determinism - two runs produce identical manifest.files", async (
   }
 });
 
-test("compile: golden - generated contract.normalized.json and surface/constraint files match expected", async () => {
+test("compile: golden - generated generation bundle files match expected", async () => {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-golden-"));
   try {
     const result = await runCompile(contractPath, outDir);
     assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
 
-    const expectedContract = await readJson(path.join(expectedDir, "contract.normalized.json"));
-    const generatedContract = await readJson(path.join(outDir, "contract.normalized.json"));
-    assert.deepEqual(generatedContract, expectedContract, "contract.normalized.json must match expected");
+    const expectedContract = await readJson(path.join(expectedDir, "contract", "normalized.json"));
+    const generatedContract = await readJson(path.join(outDir, "contract", "normalized.json"));
+    assert.deepEqual(generatedContract, expectedContract, "contract/normalized.json must match expected");
 
-    const expectedSurface = await readJson(path.join(expectedDir, "surfaces", "demo-surface.json"));
-    const generatedSurface = await readJson(path.join(outDir, "surfaces", "demo-surface.json"));
-    assert.deepEqual(generatedSurface, expectedSurface, "surfaces/demo-surface.json must match expected");
+    for (const filename of ["generation.json", "sections.json", "components.json", "constraints.json", "repair-map.json"]) {
+      const expected = await readJson(path.join(expectedDir, "surfaces", "demo-surface", filename));
+      const generated = await readJson(path.join(outDir, "surfaces", "demo-surface", filename));
+      assert.deepEqual(generated, expected, `${filename} must match expected`);
+    }
+  } finally {
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
 
-    const expectedMotion = await readJson(path.join(expectedDir, "constraints", "motion.json"));
-    const generatedMotion = await readJson(path.join(outDir, "constraints", "motion.json"));
-    assert.deepEqual(generatedMotion, expectedMotion, "constraints/motion.json must match expected");
+test("compile: includes component catalog refs, authoring hints, and observation refs without inline evidence", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-rich-"));
+  const richContractPath = path.join(outDir, "rich-contract.json");
+  try {
+    await writeFile(
+      richContractPath,
+      JSON.stringify(
+        {
+          contractId: "rich-demo",
+          version: "1.0.0",
+          shell: {
+            owns: ["header", "footer"],
+            contentSlot: "main-content",
+          },
+          surfaces: [
+            {
+              id: "demo-surface",
+              displayName: "Demo Surface",
+              type: "web",
+              requiredSections: ["main.hero"],
+              allowedFonts: ["Inter", "var(--font-body)"],
+              marketingTypographyProfile: "marketing-core",
+              marketingTypographyPolicy: "warn",
+              layout: {
+                maxContentWidth: 960,
+                requiredContainers: ["contract-container"],
+                landingPattern: {
+                  policy: "warn",
+                  requireTopLevelSections: ["main.hero"],
+                  sectionOrder: ["main.hero", "main.cta"],
+                  pageBackgroundMode: "solid",
+                  marketingLayoutProfile: "marketing-landing",
+                  marketingLayoutPolicy: "warn",
+                },
+              },
+              authoring: {
+                framework: "next",
+                routing: "app-router",
+                styling: {
+                  strategy: "css-modules",
+                  tokenPrefix: "--demo",
+                },
+                preferredLibraries: {
+                  components: ["@surfaces/ui"],
+                  icons: ["lucide-react"],
+                },
+                sourcePriority: ["contract", "code"],
+              },
+            },
+          ],
+          sections: [
+            {
+              id: "main.hero",
+              intent: "primary-intro",
+              description: "Hero section",
+              anatomy: {
+                pattern: "hero",
+                defaultComponent: "hero-banner",
+                allowedComponents: ["hero-banner", "cta-group"],
+                slots: [
+                  {
+                    id: "actions",
+                    kind: "container",
+                    required: true,
+                    acceptsComponents: ["cta-group"],
+                  },
+                ],
+              },
+            },
+            {
+              id: "main.cta",
+              intent: "conversion",
+              description: "CTA section",
+            },
+          ],
+          components: [
+            {
+              id: "hero-banner",
+              intent: "hero",
+              slots: [
+                { id: "title", kind: "text", required: true },
+              ],
+              implementation: {
+                preferredSource: "contract",
+              },
+            },
+            {
+              id: "cta-group",
+              intent: "actions",
+              slots: [
+                { id: "primary", kind: "action", required: true },
+              ],
+              references: [
+                { system: "code", kind: "component", ref: "app/components/cta-group.tsx" },
+              ],
+            },
+          ],
+          constraints: {
+            motion: {
+              allowedDurationsMs: [120],
+              allowedTimingFunctions: ["linear"],
+            },
+          },
+          color: {
+            policy: "warn",
+            allowedValues: ["#ffffff", "#111111"],
+          },
+          marketingProfiles: {
+            layout: [
+              {
+                id: "marketing-landing",
+                heroContainerMode: "framed",
+                heroVisualPlacement: "inline-end",
+                sectionDividerMode: "border-top",
+                sectionSpacingProfile: "roomy",
+              },
+            ],
+            typography: [
+              {
+                id: "marketing-core",
+                roles: [
+                  {
+                    role: "heroTitle",
+                    allowedTokens: ["var(--font-body)"],
+                  },
+                ],
+              },
+            ],
+          },
+          x_extracted: {
+            routes: ["/", "/pricing"],
+            hasShell: true,
+            designSystemComponents: ["HeroBanner", "CtaGroup"],
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runCompile(richContractPath, outDir);
+    assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
+
+    const authoring = await readJson(path.join(outDir, "surfaces", "demo-surface", "authoring.json"));
+    assert.equal(authoring.authoring.framework, "next");
+    assert.deepEqual(authoring.authoring.sourcePriority, ["contract", "code"]);
+
+    const components = await readJson(path.join(outDir, "surfaces", "demo-surface", "components.json"));
+    assert.deepEqual(
+      components.components.map((component) => component.id),
+      ["hero-banner", "cta-group"],
+    );
+
+    const sections = await readJson(path.join(outDir, "surfaces", "demo-surface", "sections.json"));
+    assert.equal(sections.sections[0].anatomy.defaultComponentId, "hero-banner");
+    assert.deepEqual(sections.sections[0].anatomy.allowedComponentIds, ["hero-banner", "cta-group"]);
+    assert.deepEqual(sections.sections[0].anatomy.slots[0].acceptsComponentIds, ["cta-group"]);
+
+    const generation = await readJson(path.join(outDir, "surfaces", "demo-surface", "generation.json"));
+    assert.equal(generation.refs.authoring, "./authoring.json");
+    assert.deepEqual(generation.refs.evidence, [{ kind: "contract-field", path: "/x_extracted" }]);
+    assert.equal("x_extracted" in generation, false, "generation payload must not inline x_extracted evidence");
+    assert.equal("observations" in generation, false, "generation payload must not inline observation evidence");
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }
@@ -151,7 +324,6 @@ test("compile: includes surface icons policy when present in contract", async ()
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-icons-"));
   const contractWithIconsPath = path.join(outDir, "contract-with-icons.json");
   try {
-    const { writeFile } = await import("node:fs/promises");
     await writeFile(
       contractWithIconsPath,
       JSON.stringify(
@@ -195,10 +367,10 @@ test("compile: includes surface icons policy when present in contract", async ()
     const result = await runCompile(contractWithIconsPath, outDir);
     assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
 
-    const generatedSurface = await readJson(
-      path.join(outDir, "surfaces", "demo-surface.json"),
+    const generatedConstraints = await readJson(
+      path.join(outDir, "surfaces", "demo-surface", "constraints.json"),
     );
-    assert.deepEqual(generatedSurface.icons, {
+    assert.deepEqual(generatedConstraints.constraints.icons, {
       policy: "warn",
       allowedSources: ["lucide-react"],
     });
@@ -211,7 +383,6 @@ test("compile: includes surface flow policy when present in contract", async () 
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-flows-"));
   const contractWithFlowsPath = path.join(outDir, "contract-with-flows.json");
   try {
-    const { writeFile } = await import("node:fs/promises");
     await writeFile(
       contractWithFlowsPath,
       JSON.stringify(
@@ -263,21 +434,25 @@ test("compile: includes surface flow policy when present in contract", async () 
     const result = await runCompile(contractWithFlowsPath, outDir);
     assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
 
-    const generatedSurface = await readJson(
-      path.join(outDir, "surfaces", "demo-surface.json"),
+    const generation = await readJson(
+      path.join(outDir, "surfaces", "demo-surface", "generation.json"),
     );
-    assert.deepEqual(generatedSurface.flows, {
+    assert.deepEqual(generation.structure.flowSummary, {
       policy: "warn",
-      requirements: [
-        {
-          flowId: "checkout",
-          minSteps: 2,
-          requiredSteps: ["start", "review"],
-          requiredTransitions: [{ from: "start", to: "review" }],
-          terminalSteps: ["review"],
-        },
-      ],
+      flowIds: ["checkout"],
+      requirementCount: 1,
     });
+  } finally {
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("compile: omits authoring.json when authoring metadata is absent", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-no-authoring-"));
+  try {
+    const result = await runCompile(contractPath, outDir);
+    assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
+    await assertNoPath(path.join(outDir, "surfaces", "demo-surface", "authoring.json"));
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }
@@ -287,7 +462,6 @@ test("compile: invalid contract fails with non-zero exit", async () => {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-fail-"));
   const invalidContract = path.join(outDir, "invalid.json");
   try {
-    const { writeFile } = await import("node:fs/promises");
     await writeFile(
       invalidContract,
       JSON.stringify({
@@ -310,7 +484,6 @@ test("compile: missing required field (constraints) fails", async () => {
   const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-fail2-"));
   const badContract = path.join(outDir, "bad.json");
   try {
-    const { writeFile } = await import("node:fs/promises");
     await writeFile(
       badContract,
       JSON.stringify({

@@ -1,68 +1,45 @@
 # Generator-Aware Contract Consumption
 
-This document defines how generators should consume interface contracts to improve generation accuracy before code lands and to correct output when it drifts.
+This document defines how generators should consume compiled generation bundles to improve first-pass accuracy and then correct drift after generation.
 
-## Use the contract twice
+## Use the bundle twice
 
-Generators should use the contract in two loops:
+Generators should use the bundle in two loops:
 
-1. **Before generation** to constrain structure, layout, tokens, and boundaries.
-2. **After generation** to evaluate the produced output and feed structured findings back into the next attempt.
+1. **Before generation** with `prepare-generation` to obtain one resolved, agent-ready payload.
+2. **After generation** with `validate-generation` to evaluate the produced output and feed findings back into the next attempt.
 
-Using only the second loop turns the contract into a post-hoc blocker. Using both loops makes it an authoring aid.
+Using only the second loop turns the contract into a blocker. Using both loops makes it an authoring aid.
 
-## Contract fields that matter at generation time
+## Local-agent flow
 
-### Boundary and ownership
+For workspace agents:
 
-- `shell.owns`
-- `shell.contentSlot`
-- `surface.mustNotEmit`
+1. Run `interfacectl compile --contract <path> --out <bundleDir>`.
+2. Run `interfacectl prepare-generation --bundle-root <bundleDir> --surface <id>`.
+3. Optionally run `interfacectl init-generation-session --bundle-root <bundleDir> --surface <id> --workspace-root <path>` when you want tracked iteration evidence.
+4. Feed the resulting prepared JSON into the agent.
+5. Generate only inside the surface-owned boundary.
+6. Either run `interfacectl validate-generation --mode workspace` directly, or run `interfacectl record-generation-attempt` for a tracked session.
+7. Feed structured findings back into the next attempt.
 
-These fields define what the generator must leave to the shell and where the surface-owned content is allowed to live.
+The prepared payload is the canonical handoff for local agents. Do not make each agent re-load and merge sibling bundle files independently.
 
-### Structure and composition
+## What the prepared payload must carry
 
-- `sections[*].id`
-- `sections[*].intent`
-- `surfaces[*].requiredSections`
-- `surfaces[*].layout.landingPattern`
-- `surfaces[*].flows`
+Local agents need these resolved inputs:
 
-These fields tell the generator which sections must exist, what order or grouping rules apply, and which flows or steps are required.
+- boundary and ownership rules
+- structure, required sections, and flow summary
+- layout constraints and viewport hints
+- visual policy and selected profiles
+- sections and referenced components
+- cross-cutting constraints
+- deterministic repair actions
+- optional authoring hints
+- bundle and contract provenance
 
-### Layout constraints
-
-- `surfaces[*].layout.maxContentWidth`
-- `surfaces[*].layout.requiredContainers`
-- `surfaces[*].layout.pageFrame`
-- `surfaces[*].layout.chromePolicy`
-- `marketingProfiles.layout`
-
-These fields constrain page width, container shape, frame rules, and shared marketing layout expectations.
-
-### Visual system constraints
-
-- `color.policy`
-- `color.allowedValues`
-- `surfaces[*].icons.policy`
-- `surfaces[*].icons.allowedSources`
-- `constraints.motion.allowedDurationsMs`
-- `constraints.motion.allowedTimingFunctions`
-- `marketingProfiles.typography`
-- `surfaces[*].marketingTypographyProfile`
-- `surfaces[*].marketingTypographyPolicy`
-
-These fields constrain the palette, icon sources, motion behavior, and shared typography/layout profiles.
-
-## Generator workflow
-
-1. Load the contract and narrow to the target surface.
-2. Convert contract fields into prompt instructions, generation config, or locked UI regions.
-3. Generate only inside the surface-owned boundary.
-4. Emit provenance such as `surfaceId`, `contractId`, and `contract version`.
-5. Convert the result into a descriptor or validate directly against the workspace.
-6. Feed structured findings back into the next generation attempt.
+The payload must include only evidence refs, never inline extracted observation payloads.
 
 ## Findings are generation input
 
@@ -71,7 +48,7 @@ Generators should not treat findings as human-only diagnostics.
 - `shell-owned-primitive-emitted` means the next attempt must stay inside the surface boundary.
 - `color.disallowed` means the next attempt must restrict itself to the allowlist.
 - `icon.source-disallowed` means the next attempt must pick an allowed icon library.
-- layout, landing-pattern, typography, and flow findings should be translated into concrete repair instructions for the next attempt.
+- layout, landing-pattern, typography, and flow findings should be translated into concrete repair instructions from the bundle repair map.
 
 ## Provenance expectations
 
@@ -80,12 +57,28 @@ Generated output should carry enough provenance for later inspection:
 - `surfaceId`
 - `contractId`
 - `contract version`
+- bundle version when a consumer stores it
 
-Embedding patterns vary by consumer, but the goal is consistent traceability from generated output back to the contract that shaped it.
+Embedding patterns vary by consumer, but the goal is consistent traceability from generated output back to the bundle that shaped it.
 
-## Limits of the current contract
+## Limits of the canonical payload
 
-The current contract is strongest at correctness constraints and boundary enforcement. Consumer repos may add richer authoring metadata for higher-fidelity first-pass generation, but generators should treat the canonical contract fields above as the minimum interoperable source of truth.
+The prepared payload is intentionally tool-neutral.
+
+- It is not a model-specific prompt pack.
+- It does not replace `validate-generation`.
+- It does not inline raw extraction evidence.
+- It does not try to cover hosted descriptor flows, which remain on the adapter path.
+
+## Tracked sessions
+
+When you need auditable iteration history, use the canonical session commands rather than a repo-local harness:
+
+1. `interfacectl init-generation-session`
+2. `interfacectl record-generation-attempt`
+3. `interfacectl summarize-generation-session`
+
+These commands write session artifacts under `artifacts/generation-sessions/...` and emit canonical `contract-runs.json` / `contract-lineage.json` updates into the workspace.
 
 ## Related docs
 

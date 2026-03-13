@@ -8,6 +8,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import { validateDiffOutput } from "@surfaces/interfacectl-validator";
+import contractRunsSchema from "../schemas/contract-runs.schema.json" with { type: "json" };
+import contractLineageSchema from "../schemas/contract-lineage.schema.json" with { type: "json" };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -276,8 +279,14 @@ test("init: non-interactive remote-url writes first-run artifacts and run metada
     assert.equal(extraction.onboarding.authMode, "none");
     assert.equal(analysis.sourceHealth.status, "ok");
     assert.equal(extraction.sourceHealth.confidence, "full");
-    assert.equal(runs.schemaVersion, 1);
+    const runsValidation = validateDiffOutput(runs, contractRunsSchema);
+    assert.equal(runsValidation.ok, true, JSON.stringify(runsValidation.errors));
+    const lineageValidation = validateDiffOutput(lineage, contractLineageSchema);
+    assert.equal(lineageValidation.ok, true, JSON.stringify(lineageValidation.errors));
+    assert.equal(runs.schemaVersion, 2);
     assert.equal(runs.runs[0].source, "generation");
+    assert.equal(runs.runs[0].workspaceId, "ws-local-default");
+    assert.match(runs.runs[0].ingestedAt, /T/);
     assert.equal(lineage.surfaces["customer-products"].lastSource, "generation");
   } finally {
     server.closeAllConnections?.();

@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-session.schema.json",
+  "title": "GenerationSession",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "surfaceId",
+    "sessionId",
+    "tool",
+    "workspaceRoot",
+    "sourceBundleRoot",
+    "sessionDir",
+    "bundleRoot",
+    "preparedInputPath",
+    "contractPath",
+    "repairMapPath",
+    "startedAt",
+    "successRule"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "surfaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "enum": ["codex", "cursor"]
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceBundleRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bundleRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "preparedInputPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contractPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repairMapPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "successRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finalStatus"],
+      "properties": {
+        "finalStatus": {
+          "type": "string",
+          "const": "pass"
+        }
+      }
+    }
+  }
+}

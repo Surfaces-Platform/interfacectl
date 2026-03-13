@@ -563,15 +563,19 @@ The output directory contains:
 | Path | Description |
 |------|-------------|
 | `manifest.json` | Bundle manifest with version, contract id/version, tool info, inputs, and file hashes |
-| `contract.normalized.json` | Normalized full contract (stable key order, same information as source) |
-| `surfaces/<surfaceId>.json` | One file per surface; surface data plus minimal metadata for runtime loading |
-| `constraints/motion.json` | Motion constraint category (other categories may be added later) |
+| `contract/normalized.json` | Normalized full contract kept for traceability and downstream validation |
+| `surfaces/<surfaceId>/generation.json` | Surface entrypoint for generators and adapter consumers |
+| `surfaces/<surfaceId>/sections.json` | Surface-local section slices and anatomy references |
+| `surfaces/<surfaceId>/components.json` | Shared component catalog referenced by sections |
+| `surfaces/<surfaceId>/constraints.json` | Cross-cutting contract-authoritative constraints for the surface |
+| `surfaces/<surfaceId>/repair-map.json` | Deterministic repair actions keyed by canonical finding codes |
+| `surfaces/<surfaceId>/authoring.json` | Optional authoring hints when the surface declares them |
 
 **Manifest fields**
 
 | Field | Description |
 |-------|-------------|
-| `bundleVersion` | Format version for this bundle (e.g. `"1.0"`) |
+| `bundleVersion` | Format version for this bundle (e.g. `"2.0"`) |
 | `contractId` | From the contract |
 | `contractVersion` | From the contract (`version` field) |
 | `schemaVersion` | Schema bundle identifier used by the CLI (e.g. `surfaces.web.contract@1`) |
@@ -580,6 +584,146 @@ The output directory contains:
 | `files` | Array of `{ path, sha256 }` for all bundle files except `manifest.json`, sorted lexicographically by `path`. Hashes are SHA-256 hex strings. |
 
 No timestamps are included in the manifest so that bundles remain deterministic.
+
+---
+
+### `prepare-generation`
+
+Resolves one compiled surface bundle into a single, agent-ready JSON payload for local workspace agents.
+
+**Synopsis:**
+```bash
+interfacectl prepare-generation --bundle-root <dir> --surface <id> [--out <path>]
+```
+
+**Description:**
+- Loads a compiled generation bundle and validates that the requested surface exists.
+- Resolves `generation.json`, `sections.json`, `components.json`, `constraints.json`, `repair-map.json`, optional `authoring.json`, and `contract/normalized.json`.
+- Emits one deterministic JSON document with summary text, checklist items, resolved generation guidance, sections, components, constraints, repairs, provenance, and source file paths.
+- Uses evidence refs only; it does not inline extracted observation payloads.
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--bundle-root <dir>` | Path to the compiled generation bundle directory (required) |
+| `--surface <id>` | Surface identifier to resolve from the bundle (required) |
+| `--out <path>` | Optional output file path. When provided, the command writes the JSON payload to disk and suppresses the full stdout payload |
+
+**Exit Codes:**
+- `0`: Prepared payload written successfully
+- `10`: Invalid input, missing bundle files, unsupported bundle version, or unreadable compiled contract
+- `1`: Unexpected internal error
+
+**Output shape**
+
+The generated JSON document includes:
+
+| Field | Description |
+|-------|-------------|
+| `surface` | `{ surfaceId, displayName, type }` |
+| `bundle` | `{ root, version, manifestPath, sourcePaths }` |
+| `contract` | `{ id, version, normalizedPath }` |
+| `summary` | Human-readable text plus checklist/focus items and top repair priorities |
+| `generation` | Resolved `boundary`, `structure`, `layout`, `visual`, and `guidance` objects |
+| `sections` | Resolved section list for the target surface |
+| `components` | Resolved component catalog for the target surface |
+| `constraints` | Cross-cutting contract-authoritative constraints |
+| `repairMap` | Deterministic repair actions keyed by canonical finding codes |
+| `authoring` | Optional authoring hints when present in the source bundle |
+| `evidenceRefs` | Evidence refs only; no inline extracted payloads |
+
+---
+
+### `init-generation-session`
+
+Creates a tracked local-agent session from an already compiled bundle. The command copies the bundle into a session-local directory, prepares the canonical agent payload once, and writes `session.json`.
+
+**Synopsis:**
+```bash
+interfacectl init-generation-session --bundle-root <dir> --surface <id> --workspace-root <path> [--tool <codex|cursor>] [--session <id>] [--artifacts-root <path>]
+```
+
+**Description:**
+- Requires a compiled bundle and does not call `compile` implicitly.
+- Defaults session artifacts to `<workspaceRoot>/artifacts/generation-sessions/<surfaceId>/<sessionId>/`.
+- Writes `bundle/`, `prepared-input.json`, and `session.json`.
+- Canonical session schema lives at `packages/interfacectl-cli/schemas/generation-session.schema.json`.
+
+**Exit Codes:**
+- `0`: Session created successfully
+- `10`: Invalid input, unreadable bundle, duplicate session, or unreadable workspace root
+- `1`: Unexpected internal error
+
+---
+
+### `record-generation-attempt`
+
+Records one operator-reviewed attempt for a tracked session.
+
+**Synopsis:**
+```bash
+interfacectl record-generation-attempt --session-dir <path> --assessment-file <path>
+```
+
+**Description:**
+- Loads `session.json` from the provided session directory.
+- Validates the workspace against the frozen session bundle.
+- Writes:
+  - `attempts/<nnn>.validate.json`
+  - `attempts/<nnn>.assessment.json`
+  - `attempts/<nnn>.metadata.json`
+- Emits a canonical `generation` run into `contracts/generated/contract-runs.json` and rebuilds `contract-lineage.json`.
+- Canonical assessment schema lives at `packages/interfacectl-cli/schemas/generation-assessment.schema.json`.
+
+**Exit Codes:**
+- `0`: Attempt recorded successfully
+- `10`: Invalid input, missing session, invalid assessment payload, or unreadable files
+- `1`: Unexpected internal error
+
+---
+
+### `summarize-generation-session`
+
+Summarizes recorded attempts for one session.
+
+**Synopsis:**
+```bash
+interfacectl summarize-generation-session --session-dir <path>
+```
+
+**Description:**
+- Aggregates attempt count, first pass attempt, latest status, recurring finding codes, recurring repair codes, and the latest assessment.
+- Writes `summary.json` and `summary.md`.
+- Canonical summary schema lives at `packages/interfacectl-cli/schemas/generation-session-summary.schema.json`.
+
+**Exit Codes:**
+- `0`: Latest attempt is `pass`
+- `30`: Latest attempt is `warn` or `block`
+- `10`: Missing session or attempts, or invalid artifacts
+- `1`: Unexpected internal error
+
+---
+
+### `emit-run-artifact`
+
+Writes one canonical run record into `contracts/generated/contract-runs.json` and rebuilds `contract-lineage.json`.
+
+**Synopsis:**
+```bash
+interfacectl emit-run-artifact --workspace-root <path> --surface <id> --source <bootstrap|generation|ci|runtime> --status <pass|warn|fail|unknown> [--contract <path>] [--extraction-path <path>] [--report-path <path>] [--finding-codes <csv>] [--workspace-id <id>] [--idempotency-key <key>] [--created-at <timestamp>] [--run-id <id>]
+```
+
+**Description:**
+- Creates `contract-runs.json` and `contract-lineage.json` if they do not yet exist.
+- Uses canonical schema files:
+  - `packages/interfacectl-cli/schemas/contract-runs.schema.json`
+  - `packages/interfacectl-cli/schemas/contract-lineage.schema.json`
+- Dedupes by `(workspaceId, runId)` and `(workspaceId, idempotencyKey)` when provided.
+
+**Exit Codes:**
+- `0`: Run artifact emitted successfully
+- `10`: Invalid input
 
 ---
 
