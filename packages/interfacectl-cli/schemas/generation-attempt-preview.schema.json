@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-attempt-preview.schema.json",
+  "title": "GenerationAttemptPreview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "surfaceId",
+    "sessionId",
+    "attemptNumber",
+    "url",
+    "finalUrl",
+    "imagePath",
+    "capturedAt",
+    "viewport"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "surfaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attemptNumber": {
+      "type": "number",
+      "minimum": 1
+    },
+    "url": {
+      "type": "string",
+      "minLength": 1
+    },
+    "finalUrl": {
+      "type": "string",
+      "minLength": 1
+    },
+    "imagePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": {
+          "type": "number",
+          "minimum": 1
+        },
+        "height": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "pageTitle": {
+      "type": "string",
+      "minLength": 1
+    },
+    "waitFor": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

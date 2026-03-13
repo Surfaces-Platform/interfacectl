@@ -17,11 +17,12 @@ For workspace agents:
 
 1. Run `interfacectl compile --contract <path> --out <bundleDir>`.
 2. Run `interfacectl prepare-generation --bundle-root <bundleDir> --surface <id>`.
-3. Optionally run `interfacectl init-generation-session --bundle-root <bundleDir> --surface <id> --workspace-root <path>` when you want tracked iteration evidence.
+3. Optionally run `interfacectl init-generation-session --bundle-root <bundleDir> --surface <id> --workspace-root <path> --guidance-mode prepared --brief-file <path>` when you want tracked iteration evidence or a benchmark-ready guided session.
 4. Feed the resulting prepared JSON into the agent.
 5. Generate only inside the surface-owned boundary.
 6. Either run `interfacectl validate-generation --mode workspace` directly, or run `interfacectl record-generation-attempt` for a tracked session.
-7. Feed structured findings back into the next attempt.
+7. If a `warn` result is acceptable, run `interfacectl review-generation-attempt` to record that decision explicitly.
+8. Feed structured findings back into the next attempt.
 
 The prepared payload is the canonical handoff for local agents. Do not make each agent re-load and merge sibling bundle files independently.
 
@@ -76,9 +77,17 @@ When you need auditable iteration history, use the canonical session commands ra
 
 1. `interfacectl init-generation-session`
 2. `interfacectl record-generation-attempt`
-3. `interfacectl summarize-generation-session`
+3. `interfacectl review-generation-attempt` when a warning is explicitly acceptable
+4. `interfacectl summarize-generation-session`
 
-These commands write session artifacts under `artifacts/generation-sessions/...` and emit canonical `contract-runs.json` / `contract-lineage.json` updates into the workspace.
+For the guided-vs-unguided proof loop, compare two sessions that froze the same `--brief-file`:
+
+1. `interfacectl compare-generation-sessions`
+2. `interfacectl suggest-contract-deltas`
+3. `interfacectl review-contract-delta-suggestions`
+4. `interfacectl summarize-generation-benchmark`
+
+These commands write session and benchmark artifacts under `artifacts/generation-sessions/...` and `artifacts/generation-benchmarks/...`, and they emit canonical `contract-runs.json` / `contract-lineage.json` updates into the workspace.
 
 ## Related docs
 

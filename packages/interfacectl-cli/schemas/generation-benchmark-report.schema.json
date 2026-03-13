@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-benchmark-report.schema.json",
+  "title": "GenerationBenchmarkReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "comparisons", "suggestions", "overall"],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "comparisons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surfaceId", "tool", "comparisonPath", "meetsGoal", "guidedFewerFirstAttemptBlockingFindings", "guidedReachedAcceptableNoLater", "guidedRubricBetterDimensions"],
+        "properties": {
+          "surfaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tool": {
+            "type": "string",
+            "enum": ["codex", "cursor"]
+          },
+          "comparisonPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "meetsGoal": {
+            "type": "boolean"
+          },
+          "guidedFewerFirstAttemptBlockingFindings": {
+            "type": "boolean"
+          },
+          "guidedReachedAcceptableNoLater": {
+            "type": "boolean"
+          },
+          "guidedRubricBetterDimensions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["structure", "components", "boundary", "visual", "responsiveness"]
+            }
+          }
+        }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surfaceId", "sessionId", "suggestionsPath", "proposedCount", "acceptedCount", "rejectedCount"],
+        "properties": {
+          "surfaceId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "suggestionsPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "proposedCount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "acceptedCount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "rejectedCount": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "overall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surfaceCount", "surfacesMeetingGoal", "guidedFewerFirstAttemptBlockingFindings", "guidedReachedAcceptableNoLater", "acceptedSuggestionCount", "rejectedSuggestionCount", "proposedSuggestionCount"],
+      "properties": {
+        "surfaceCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "surfacesMeetingGoal": {
+          "type": "number",
+          "minimum": 0
+        },
+        "guidedFewerFirstAttemptBlockingFindings": {
+          "type": "number",
+          "minimum": 0
+        },
+        "guidedReachedAcceptableNoLater": {
+          "type": "number",
+          "minimum": 0
+        },
+        "acceptedSuggestionCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rejectedSuggestionCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "proposedSuggestionCount": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -4,9 +4,17 @@
   "title": "GenerationAssessment",
   "type": "object",
   "additionalProperties": false,
-  "required": ["structure", "visual", "responsiveness", "notes"],
+  "required": ["structure", "components", "boundary", "visual", "responsiveness", "notes"],
   "properties": {
     "structure": {
+      "type": "string",
+      "enum": ["strong", "partial", "weak"]
+    },
+    "components": {
+      "type": "string",
+      "enum": ["strong", "partial", "weak"]
+    },
+    "boundary": {
       "type": "string",
       "enum": ["strong", "partial", "weak"]
     },

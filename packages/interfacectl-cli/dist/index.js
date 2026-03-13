@@ -13,7 +13,7 @@ import { runPrepareGenerationCommand } from "./commands/prepare-generation.js";
 import { runValidateGenerationCommand } from "./commands/validate-generation.js";
 import { runServeGenerationAdapterCommand } from "./commands/serve-generation-adapter.js";
 import { runEmitRunArtifactCommand } from "./commands/emit-run-artifact.js";
-import { runInitGenerationSessionCommand, runRecordGenerationAttemptCommand, runSummarizeGenerationSessionCommand, } from "./commands/generation-session.js";
+import { runCaptureGenerationPreviewCommand, runCompareGenerationSessionsCommand, runInitGenerationSessionCommand, runRecordGenerationAttemptCommand, runReviewContractDeltaSuggestionsCommand, runReviewGenerationAttemptCommand, runSuggestContractDeltasCommand, runSummarizeGenerationSessionCommand, runSummarizeGenerationBenchmarkCommand, } from "./commands/generation-session.js";
 import { runInitCommand } from "./commands/init.js";
 import { runAnalyzeCommand } from "./commands/analyze.js";
 import { runAuthCaptureCommand, runAuthClearCommand, runAuthListCommandWithOptions, runAuthTestCommand, } from "./commands/auth.js";
@@ -214,6 +214,8 @@ program
     .requiredOption("--surface <id>", "Surface identifier")
     .requiredOption("--workspace-root <path>", "Workspace root for emitted run artifacts")
     .option("--tool <tool>", "Generation tool identifier (codex|cursor)")
+    .option("--guidance-mode <mode>", "Session guidance mode (prepared|unguided)")
+    .option("--brief-file <path>", "Optional implementation brief file to freeze into the session")
     .option("--session <id>", "Optional session identifier")
     .option("--artifacts-root <path>", "Optional session artifacts root (defaults under workspaceRoot/artifacts/generation-sessions)")
     .action(async (options) => {
@@ -222,6 +224,8 @@ program
         surfaceId: options.surface,
         workspaceRoot: options.workspaceRoot,
         tool: options.tool,
+        guidanceMode: options.guidanceMode,
+        briefFile: options.briefFile,
         sessionId: options.session,
         artifactsRoot: options.artifactsRoot,
     });
@@ -238,12 +242,90 @@ program
     });
 });
 program
+    .command("capture-generation-preview")
+    .description("Capture a visual preview for one recorded generation attempt")
+    .requiredOption("--session-dir <path>", "Path to the generation session directory")
+    .requiredOption("--attempt <number>", "Attempt number to capture")
+    .requiredOption("--url <url>", "Absolute preview URL to capture")
+    .option("--wait-for <value>", "Optional text or selector to wait for before capturing")
+    .action(async (options) => {
+    process.exitCode = await runCaptureGenerationPreviewCommand({
+        sessionDir: options.sessionDir,
+        attemptNumber: options.attempt,
+        url: options.url,
+        waitFor: options.waitFor,
+    });
+});
+program
+    .command("review-generation-attempt")
+    .description("Review the remaining findings for one warn attempt in a tracked generation session")
+    .requiredOption("--session-dir <path>", "Path to the generation session directory")
+    .requiredOption("--attempt <number>", "Attempt number to review")
+    .requiredOption("--review-file <path>", "Path to the review JSON file")
+    .action(async (options) => {
+    process.exitCode = await runReviewGenerationAttemptCommand({
+        sessionDir: options.sessionDir,
+        attemptNumber: options.attempt,
+        reviewFile: options.reviewFile,
+    });
+});
+program
     .command("summarize-generation-session")
     .description("Aggregate recorded generation attempts for a tracked session")
     .requiredOption("--session-dir <path>", "Path to the generation session directory")
     .action(async (options) => {
     process.exitCode = await runSummarizeGenerationSessionCommand({
         sessionDir: options.sessionDir,
+    });
+});
+program
+    .command("compare-generation-sessions")
+    .description("Compare one unguided session against one prepared guided session")
+    .requiredOption("--baseline-session-dir <path>", "Path to the unguided baseline session directory")
+    .requiredOption("--guided-session-dir <path>", "Path to the prepared guided session directory")
+    .option("--out-dir <path>", "Output directory for comparison artifacts")
+    .action(async (options) => {
+    process.exitCode = await runCompareGenerationSessionsCommand({
+        baselineSessionDir: options.baselineSessionDir,
+        guidedSessionDir: options.guidedSessionDir,
+        outDir: options.outDir,
+    });
+});
+program
+    .command("suggest-contract-deltas")
+    .description("Generate evidence-backed contract refinement suggestions from one guided session")
+    .requiredOption("--session-dir <path>", "Path to the guided generation session directory")
+    .option("--out <path>", "Write suggestion JSON to the provided file")
+    .action(async (options) => {
+    process.exitCode = await runSuggestContractDeltasCommand({
+        sessionDir: options.sessionDir,
+        outPath: options.out,
+    });
+});
+program
+    .command("review-contract-delta-suggestions")
+    .description("Apply human accept/reject decisions to contract delta suggestions without mutating the contract")
+    .requiredOption("--suggestions <path>", "Path to the contract delta suggestions JSON file")
+    .requiredOption("--review-file <path>", "Path to the review decisions JSON file")
+    .option("--out <path>", "Write the updated suggestions JSON to the provided file")
+    .action(async (options) => {
+    process.exitCode = await runReviewContractDeltaSuggestionsCommand({
+        suggestionsPath: options.suggestions,
+        reviewFile: options.reviewFile,
+        outPath: options.out,
+    });
+});
+program
+    .command("summarize-generation-benchmark")
+    .description("Aggregate one or more comparison and suggestion artifacts into a benchmark report")
+    .requiredOption("--comparisons <paths>", "Comma-separated generation session comparison JSON paths")
+    .option("--suggestions <paths>", "Comma-separated contract delta suggestion JSON paths")
+    .option("--out-dir <path>", "Output directory for the benchmark report")
+    .action(async (options) => {
+    process.exitCode = await runSummarizeGenerationBenchmarkCommand({
+        comparisonPaths: options.comparisons,
+        suggestionPaths: options.suggestions,
+        outDir: options.outDir,
     });
 });
 program

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-attempt-review.schema.json",
+  "title": "GenerationAttemptReview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "surfaceId", "sessionId", "attemptNumber", "status", "findingCodes", "rationale", "reviewedAt"],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "surfaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attemptNumber": {
+      "type": "number",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["accepted", "rejected"]
+    },
+    "findingCodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reviewedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
