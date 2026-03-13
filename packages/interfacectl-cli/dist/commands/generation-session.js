@@ -7,7 +7,7 @@ import { runGenerationAdapter } from "../adapter/core.js";
 import { buildPreparedGenerationPayload } from "./prepare-generation.js";
 import { emitContractRunArtifact, } from "../utils/run-artifacts.js";
 import { writeDeterministicJsonSync } from "../utils/deterministic-json.js";
-const VALID_TOOLS = new Set(["codex", "cursor"]);
+const VALID_TOOLS = new Set(["codex", "cursor", "local-llm"]);
 const VALID_GRADES = new Set(["strong", "partial", "weak"]);
 const VALID_GUIDANCE_MODES = new Set(["prepared", "unguided"]);
 const VALID_REVIEW_STATUSES = new Set(["accepted", "rejected"]);
@@ -71,7 +71,7 @@ function countBySeverity(validatePayload) {
 function ensureSessionTool(tool) {
     const normalized = typeof tool === "string" ? tool.trim().toLowerCase() : "codex";
     if (!VALID_TOOLS.has(normalized)) {
-        throw new SessionInputError(`Invalid --tool value "${tool ?? ""}". Expected codex|cursor.`);
+        throw new SessionInputError(`Invalid --tool value "${tool ?? ""}". Expected codex|cursor|local-llm.`);
     }
     return normalized;
 }
