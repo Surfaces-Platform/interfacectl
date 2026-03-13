@@ -7,6 +7,8 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { validateDiffOutput } from "@surfaces/interfacectl-validator";
+import prepareGenerationOutputSchema from "../schemas/prepare-generation-output.schema.json" with { type: "json" };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,6 +41,10 @@ async function runCli(args, cwd = __dirname) {
 async function writeJson(filePath, value) {
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
   await fsp.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function validatePreparedGenerationOutput(payload) {
+  return validateDiffOutput(payload, prepareGenerationOutputSchema);
 }
 
 function buildContract(overrides = {}) {
@@ -172,6 +178,12 @@ test("prepare-generation: emits resolved payload with summary, provenance, autho
     assert.equal(payload.repairMap[0].code, "shell.primitive.disallowed");
     assert.equal(payload.authoring.framework, "next");
     assert.deepEqual(payload.evidenceRefs, [{ kind: "contract-field", path: "/x_extracted" }]);
+    const schemaValidation = validatePreparedGenerationOutput(payload);
+    assert.equal(
+      schemaValidation.ok,
+      true,
+      `prepare-generation output should satisfy schema: ${JSON.stringify(schemaValidation.errors)}`,
+    );
 
     const serialized = JSON.stringify(payload);
     assert.ok(!serialized.includes("EXTRACTED-SHOULD-STAY-BY-REF"));
@@ -209,6 +221,12 @@ test("prepare-generation: --out writes the payload file and suppresses stdout", 
     const written = JSON.parse(await fsp.readFile(outPath, "utf8"));
     assert.equal(written.surface.surfaceId, "demo-surface");
     assert.equal(written.bundle.sourcePaths.generation, path.join(bundleRoot, "surfaces", "demo-surface", "generation.json"));
+    const schemaValidation = validatePreparedGenerationOutput(written);
+    assert.equal(
+      schemaValidation.ok,
+      true,
+      `written prepare-generation output should satisfy schema: ${JSON.stringify(schemaValidation.errors)}`,
+    );
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true });
   }

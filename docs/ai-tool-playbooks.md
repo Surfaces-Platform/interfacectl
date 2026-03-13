@@ -29,6 +29,8 @@ Recommended flow:
 
 These tools should consume the prepared generation payload, not the raw contract or sibling bundle files directly.
 
+When you want tracked iteration evidence around a local-agent loop, pair `prepare-generation` and `validate-generation` with a repo-local session harness that freezes one bundle revision, records each assessment, and aggregates recurring repair codes.
+
 ## Hosted builders
 
 Examples: Lovable, Figma Make, or other tools that produce UI outside the repo.
@@ -74,4 +76,5 @@ Recommended flow:
 - [AI Generator Adapter Quick Start](./ai-generator-adapter-quickstart.md)
 - [AI Generator Adapter API](./ai-generator-adapter-api.md)
 - [Generator-Aware Contract Consumption](./generator-consumption.md)
+- `packages/interfacectl-cli/schemas/prepare-generation-output.schema.json`
 - [Shell Boundary Semantics](./shell-boundary.md)
