@@ -49,6 +49,7 @@ export interface CaptureGenerationPreviewCommandOptions {
   attemptNumber?: string | number;
   url?: string;
   waitFor?: string;
+  storageStatePath?: string;
 }
 
 export interface ReviewGenerationAttemptCommandOptions {
@@ -1824,6 +1825,10 @@ export async function runCaptureGenerationPreviewCommand(
     }
 
     const viewport = { width: 1440, height: 1024 };
+    const storageStatePath = asString(options.storageStatePath);
+    if (storageStatePath && !fs.existsSync(storageStatePath)) {
+      throw new SessionInputError(`Storage state file not found: ${storageStatePath}.`);
+    }
     const browser = await chromium.launch({
       headless:
         process.env.INTERFACECTL_PLAYWRIGHT_HEADLESS !== "0" &&
@@ -1831,7 +1836,10 @@ export async function runCaptureGenerationPreviewCommand(
     }).catch((error) => {
       throw toBrowserLaunchError(error);
     });
-    const context = await browser.newContext({ viewport });
+    const context = await browser.newContext({
+      viewport,
+      ...(storageStatePath ? { storageState: storageStatePath } : {}),
+    });
     const page = await context.newPage();
 
     try {

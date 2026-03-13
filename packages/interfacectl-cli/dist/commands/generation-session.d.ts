@@ -17,6 +17,7 @@ export interface CaptureGenerationPreviewCommandOptions {
     attemptNumber?: string | number;
     url?: string;
     waitFor?: string;
+    storageStatePath?: string;
 }
 export interface ReviewGenerationAttemptCommandOptions {
     sessionDir?: string;

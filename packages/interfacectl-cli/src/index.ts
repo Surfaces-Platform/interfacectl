@@ -357,12 +357,14 @@ program
   .requiredOption("--attempt <number>", "Attempt number to capture")
   .requiredOption("--url <url>", "Absolute preview URL to capture")
   .option("--wait-for <value>", "Optional text or selector to wait for before capturing")
+  .option("--storage-state <path>", "Optional Playwright storage state JSON file for authenticated previews")
   .action(async (options) => {
     process.exitCode = await runCaptureGenerationPreviewCommand({
       sessionDir: options.sessionDir,
       attemptNumber: options.attempt,
       url: options.url,
       waitFor: options.waitFor,
+      storageStatePath: options.storageState,
     });
   });
 
