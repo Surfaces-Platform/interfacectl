@@ -15,6 +15,7 @@ import { runValidateGenerationCommand } from "./commands/validate-generation.js"
 import { runServeGenerationAdapterCommand } from "./commands/serve-generation-adapter.js";
 import { runEmitRunArtifactCommand } from "./commands/emit-run-artifact.js";
 import {
+  runCaptureGenerationPreviewCommand,
   runCompareGenerationSessionsCommand,
   runInitGenerationSessionCommand,
   runRecordGenerationAttemptCommand,
@@ -346,6 +347,22 @@ program
     process.exitCode = await runRecordGenerationAttemptCommand({
       sessionDir: options.sessionDir,
       assessmentFile: options.assessmentFile,
+    });
+  });
+
+program
+  .command("capture-generation-preview")
+  .description("Capture a visual preview for one recorded generation attempt")
+  .requiredOption("--session-dir <path>", "Path to the generation session directory")
+  .requiredOption("--attempt <number>", "Attempt number to capture")
+  .requiredOption("--url <url>", "Absolute preview URL to capture")
+  .option("--wait-for <value>", "Optional text or selector to wait for before capturing")
+  .action(async (options) => {
+    process.exitCode = await runCaptureGenerationPreviewCommand({
+      sessionDir: options.sessionDir,
+      attemptNumber: options.attempt,
+      url: options.url,
+      waitFor: options.waitFor,
     });
   });
 

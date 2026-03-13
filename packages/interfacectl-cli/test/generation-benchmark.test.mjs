@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fsp from "node:fs/promises";
+import http from "node:http";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
@@ -164,7 +165,50 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-test("guided vs unguided benchmark artifacts compare sessions, emit deterministic suggestions, and track reviewed decisions without mutating the contract", async () => {
+let chromiumAvailability;
+
+async function ensureChromiumAvailable(t) {
+  if (chromiumAvailability === undefined) {
+    chromiumAvailability = await new Promise((resolve) => {
+      const child = spawn(
+        "node",
+        [
+          "-e",
+          "import('playwright').then(async ({ chromium }) => { const browser = await chromium.launch({ headless: true }); await browser.close(); }).then(() => process.exit(0)).catch(() => process.exit(1));",
+        ],
+        {
+          cwd: path.resolve(__dirname, ".."),
+          env: process.env,
+        },
+      );
+      child.on("exit", (code) => resolve(code === 0));
+    });
+  }
+  if (!chromiumAvailability) {
+    t.skip("Playwright Chromium is not installed.");
+  }
+}
+
+async function withServer(handler, callback) {
+  const server = http.createServer(handler);
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const origin = `http://127.0.0.1:${address.port}`;
+  try {
+    return await callback(origin);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+}
+
+test("guided vs unguided benchmark artifacts compare sessions, emit deterministic suggestions, track reviewed decisions, and carry explicit preview refs", async (t) => {
+  await ensureChromiumAvailable(t);
+
   const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-benchmark-"));
   const workspaceRoot = path.join(tempRoot, "workspace");
   const bundleRoot = path.join(tempRoot, "bundle");
@@ -239,6 +283,26 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
       tempRoot,
     );
     assert.equal(baselineAttemptOne.exitCode, 0, baselineAttemptOne.stderr);
+    await withServer((request, response) => {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end("<!doctype html><html><body><main><h1>Baseline First</h1><p>ready</p></main></body></html>");
+    }, async (origin) => {
+      const previewResult = await runCli(
+        [
+          "capture-generation-preview",
+          "--session-dir",
+          baselineSessionDir,
+          "--attempt",
+          "1",
+          "--url",
+          `${origin}/baseline-first`,
+          "--wait-for",
+          "ready",
+        ],
+        tempRoot,
+      );
+      assert.equal(previewResult.exitCode, 0, previewResult.stderr);
+    });
 
     await writeDemoWorkspace(workspaceRoot, { sectionValid: true, colorValid: false });
     const baselineAssessmentTwo = path.join(tempRoot, "baseline-2.json");
@@ -264,6 +328,26 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
       tempRoot,
     );
     assert.equal(baselineAttemptTwo.exitCode, 0, baselineAttemptTwo.stderr);
+    await withServer((request, response) => {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end("<!doctype html><html><body><main><h1>Baseline Latest</h1><p>ready</p></main></body></html>");
+    }, async (origin) => {
+      const previewResult = await runCli(
+        [
+          "capture-generation-preview",
+          "--session-dir",
+          baselineSessionDir,
+          "--attempt",
+          "2",
+          "--url",
+          `${origin}/baseline-latest`,
+          "--wait-for",
+          "ready",
+        ],
+        tempRoot,
+      );
+      assert.equal(previewResult.exitCode, 0, previewResult.stderr);
+    });
 
     const baselineWarnPayload = JSON.parse(
       await fsp.readFile(path.join(baselineSessionDir, "attempts", "002.validate.json"), "utf8"),
@@ -317,6 +401,26 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
       tempRoot,
     );
     assert.equal(guidedAttemptOne.exitCode, 0, guidedAttemptOne.stderr);
+    await withServer((request, response) => {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end("<!doctype html><html><body><main><h1>Guided First</h1><p>ready</p></main></body></html>");
+    }, async (origin) => {
+      const previewResult = await runCli(
+        [
+          "capture-generation-preview",
+          "--session-dir",
+          guidedSessionDir,
+          "--attempt",
+          "1",
+          "--url",
+          `${origin}/guided-first`,
+          "--wait-for",
+          "ready",
+        ],
+        tempRoot,
+      );
+      assert.equal(previewResult.exitCode, 0, previewResult.stderr);
+    });
 
     const guidedWarnPayload = JSON.parse(
       await fsp.readFile(path.join(guidedSessionDir, "attempts", "001.validate.json"), "utf8"),
@@ -362,6 +466,11 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
     const compareOutput = JSON.parse(compareResult.stdout);
     const comparison = JSON.parse(await fsp.readFile(compareOutput.paths.jsonPath, "utf8"));
     validateWithSchema(comparison, generationSessionComparisonSchema, "generation session comparison");
+    assert.equal(Boolean(comparison.baseline.firstAttempt.preview), true);
+    assert.equal(Boolean(comparison.baseline.latestAttempt.preview), true);
+    assert.equal(Boolean(comparison.guided.firstAttempt.preview), true);
+    assert.equal(comparison.baseline.firstAttempt.preview.metadataPath.endsWith(".preview.json"), true);
+    assert.equal(comparison.guided.latestAttempt.preview.imagePath.endsWith(".preview.png"), true);
     assert.equal(comparison.checks.meetsGoal, true);
     assert.equal(comparison.delta.firstAttemptBlockingFindingCountDelta < 0, true);
     assert.equal(comparison.delta.attemptsToAcceptableOutcome.baseline, 2);

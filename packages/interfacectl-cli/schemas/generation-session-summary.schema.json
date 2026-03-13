@@ -26,7 +26,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 2
+      "const": 3
     },
     "surfaceId": {
       "type": "string",
@@ -307,7 +307,43 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "preview": {
+            "$ref": "#/$defs/previewRef"
           }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "previewRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["imagePath", "metadataPath", "url", "finalUrl", "capturedAt"],
+      "properties": {
+        "imagePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metadataPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finalUrl": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "waitFor": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

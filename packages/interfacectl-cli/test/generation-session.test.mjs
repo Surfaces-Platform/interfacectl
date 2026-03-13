@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -10,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { validateDiffOutput } from "@surfaces/interfacectl-validator";
 import generationAssessmentSchema from "../schemas/generation-assessment.schema.json" with { type: "json" };
 import generationAttemptReviewSchema from "../schemas/generation-attempt-review.schema.json" with { type: "json" };
+import generationAttemptPreviewSchema from "../schemas/generation-attempt-preview.schema.json" with { type: "json" };
 import generationSessionSchema from "../schemas/generation-session.schema.json" with { type: "json" };
 import generationSessionSummarySchema from "../schemas/generation-session-summary.schema.json" with { type: "json" };
 import contractRunsSchema from "../schemas/contract-runs.schema.json" with { type: "json" };
@@ -163,6 +165,47 @@ function buildAssessment({
     notes,
     ...(touchedFiles ? { touchedFiles } : {}),
   };
+}
+
+let chromiumAvailability;
+
+async function ensureChromiumAvailable(t) {
+  if (chromiumAvailability === undefined) {
+    chromiumAvailability = await new Promise((resolve) => {
+      const child = spawn(
+        "node",
+        [
+          "-e",
+          "import('playwright').then(async ({ chromium }) => { const browser = await chromium.launch({ headless: true }); await browser.close(); }).then(() => process.exit(0)).catch(() => process.exit(1));",
+        ],
+        {
+          cwd: path.resolve(__dirname, ".."),
+          env: process.env,
+        },
+      );
+      child.on("exit", (code) => resolve(code === 0));
+    });
+  }
+  if (!chromiumAvailability) {
+    t.skip("Playwright Chromium is not installed.");
+  }
+}
+
+async function withServer(handler, callback) {
+  const server = http.createServer(handler);
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  const origin = `http://127.0.0.1:${address.port}`;
+  try {
+    return await callback(origin);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 }
 
 test("generation session commands freeze bundle input, record attempts, and emit canonical run artifacts", async () => {
@@ -436,6 +479,127 @@ test("review-generation-attempt marks reviewed warnings acceptable without chang
   }
 });
 
+test("capture-generation-preview writes preview artifacts and surfaces explicit preview refs in the session summary", async (t) => {
+  await ensureChromiumAvailable(t);
+
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-preview-"));
+  const workspaceRoot = path.join(tempRoot, "workspace");
+  const bundleRoot = path.join(tempRoot, "bundle");
+  const sessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "preview-session");
+
+  try {
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: true, colorValid: true });
+
+    const compileResult = await runCli(
+      [
+        "compile",
+        "--contract",
+        path.join(workspaceRoot, "contracts", "surfaces.web.contract.json"),
+        "--out",
+        bundleRoot,
+      ],
+      tempRoot,
+    );
+    assert.equal(compileResult.exitCode, 0, compileResult.stderr);
+
+    const initResult = await runCli(
+      [
+        "init-generation-session",
+        "--bundle-root",
+        bundleRoot,
+        "--surface",
+        "demo-surface",
+        "--workspace-root",
+        workspaceRoot,
+        "--session",
+        "preview-session",
+      ],
+      tempRoot,
+    );
+    assert.equal(initResult.exitCode, 0, initResult.stderr);
+
+    const assessmentPath = path.join(tempRoot, "preview-assessment.json");
+    await writeJson(
+      assessmentPath,
+      buildAssessment({
+        structure: "strong",
+        components: "strong",
+        boundary: "strong",
+        visual: "strong",
+        responsiveness: "strong",
+        notes: "Preview-ready attempt.",
+      }),
+    );
+
+    const recordResult = await runCli(
+      [
+        "record-generation-attempt",
+        "--session-dir",
+        sessionDir,
+        "--assessment-file",
+        assessmentPath,
+      ],
+      tempRoot,
+    );
+    assert.equal(recordResult.exitCode, 0, recordResult.stderr);
+
+    await withServer((request, response) => {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(`<!doctype html>
+<html>
+  <head><title>Preview target</title></head>
+  <body>
+    <main>
+      <h1>Demo Surface Preview</h1>
+      <p>Benchmark ready</p>
+    </main>
+  </body>
+</html>`);
+    }, async (origin) => {
+      const captureResult = await runCli(
+        [
+          "capture-generation-preview",
+          "--session-dir",
+          sessionDir,
+          "--attempt",
+          "1",
+          "--url",
+          `${origin}/preview`,
+          "--wait-for",
+          "Benchmark ready",
+        ],
+        tempRoot,
+      );
+      assert.equal(captureResult.exitCode, 0, captureResult.stderr);
+    });
+
+    const preview = JSON.parse(
+      await fsp.readFile(path.join(sessionDir, "attempts", "001.preview.json"), "utf8"),
+    );
+    validateWithSchema(preview, generationAttemptPreviewSchema, "generation attempt preview");
+    assert.equal(fs.existsSync(path.join(sessionDir, "attempts", "001.preview.png")), true);
+    assert.equal(preview.pageTitle, "Preview target");
+    assert.equal(preview.waitFor, "Benchmark ready");
+
+    const summaryResult = await runCli(
+      ["summarize-generation-session", "--session-dir", sessionDir],
+      tempRoot,
+    );
+    assert.equal(summaryResult.exitCode, 0, summaryResult.stderr);
+
+    const summary = JSON.parse(
+      await fsp.readFile(path.join(sessionDir, "summary.json"), "utf8"),
+    );
+    validateWithSchema(summary, generationSessionSummarySchema, "generation session summary");
+    assert.equal(summary.schemaVersion, 3);
+    assert.equal(summary.attempts[0].preview.imagePath, path.join(sessionDir, "attempts", "001.preview.png"));
+    assert.equal(summary.attempts[0].preview.metadataPath, path.join(sessionDir, "attempts", "001.preview.json"));
+    assert.equal(summary.attempts[0].preview.url.endsWith("/preview"), true);
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("generation session commands reject invalid bundle roots, duplicate sessions, invalid assessments, invalid reviews, and missing sessions", async () => {
   const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-session-errors-"));
   const workspaceRoot = path.join(tempRoot, "workspace");
@@ -598,6 +762,123 @@ test("generation session commands reject invalid bundle roots, duplicate session
     );
     assert.equal(missingSession.exitCode, 10);
     assert.match(missingSession.stderr, /Generation session not found/);
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("capture-generation-preview rejects missing attempts, invalid URLs, and unsatisfied wait conditions", async (t) => {
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-preview-errors-"));
+  const workspaceRoot = path.join(tempRoot, "workspace");
+  const bundleRoot = path.join(tempRoot, "bundle");
+  const sessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "preview-errors");
+
+  try {
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: true, colorValid: true });
+    const compileResult = await runCli(
+      [
+        "compile",
+        "--contract",
+        path.join(workspaceRoot, "contracts", "surfaces.web.contract.json"),
+        "--out",
+        bundleRoot,
+      ],
+      tempRoot,
+    );
+    assert.equal(compileResult.exitCode, 0, compileResult.stderr);
+
+    const initResult = await runCli(
+      [
+        "init-generation-session",
+        "--bundle-root",
+        bundleRoot,
+        "--surface",
+        "demo-surface",
+        "--workspace-root",
+        workspaceRoot,
+        "--session",
+        "preview-errors",
+      ],
+      tempRoot,
+    );
+    assert.equal(initResult.exitCode, 0, initResult.stderr);
+
+    const assessmentPath = path.join(tempRoot, "preview-errors-assessment.json");
+    await writeJson(
+      assessmentPath,
+      buildAssessment({
+        structure: "strong",
+        components: "strong",
+        boundary: "strong",
+        visual: "strong",
+        responsiveness: "strong",
+        notes: "Recorded attempt for preview error cases.",
+      }),
+    );
+    const recordResult = await runCli(
+      [
+        "record-generation-attempt",
+        "--session-dir",
+        sessionDir,
+        "--assessment-file",
+        assessmentPath,
+      ],
+      tempRoot,
+    );
+    assert.equal(recordResult.exitCode, 0, recordResult.stderr);
+
+    const missingAttempt = await runCli(
+      [
+        "capture-generation-preview",
+        "--session-dir",
+        sessionDir,
+        "--attempt",
+        "2",
+        "--url",
+        "https://example.com",
+      ],
+      tempRoot,
+    );
+    assert.equal(missingAttempt.exitCode, 10);
+    assert.match(missingAttempt.stderr, /Attempt 2 not found/);
+
+    const invalidUrl = await runCli(
+      [
+        "capture-generation-preview",
+        "--session-dir",
+        sessionDir,
+        "--attempt",
+        "1",
+        "--url",
+        "not-a-url",
+      ],
+      tempRoot,
+    );
+    assert.equal(invalidUrl.exitCode, 10);
+    assert.match(invalidUrl.stderr, /absolute URL/);
+
+    await ensureChromiumAvailable(t);
+    await withServer((request, response) => {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end("<!doctype html><html><body><main><h1>Preview</h1></main></body></html>");
+    }, async (origin) => {
+      const waitFailure = await runCli(
+        [
+          "capture-generation-preview",
+          "--session-dir",
+          sessionDir,
+          "--attempt",
+          "1",
+          "--url",
+          `${origin}/preview`,
+          "--wait-for",
+          "Never appears",
+        ],
+        tempRoot,
+      );
+      assert.equal(waitFailure.exitCode, 10);
+      assert.match(waitFailure.stderr, /wait condition/i);
+    });
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true });
   }

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { chromium } from "playwright";
 import {
   AdapterInputError,
   isRecord,
@@ -41,6 +42,13 @@ export interface InitGenerationSessionCommandOptions {
 export interface RecordGenerationAttemptCommandOptions {
   sessionDir?: string;
   assessmentFile?: string;
+}
+
+export interface CaptureGenerationPreviewCommandOptions {
+  sessionDir?: string;
+  attemptNumber?: string | number;
+  url?: string;
+  waitFor?: string;
 }
 
 export interface ReviewGenerationAttemptCommandOptions {
@@ -122,6 +130,23 @@ interface GenerationAttemptReview {
   reviewedAt: string;
 }
 
+interface GenerationAttemptPreview {
+  schemaVersion: 1;
+  surfaceId: string;
+  sessionId: string;
+  attemptNumber: number;
+  url: string;
+  finalUrl: string;
+  imagePath: string;
+  capturedAt: string;
+  viewport: {
+    width: number;
+    height: number;
+  };
+  pageTitle?: string;
+  waitFor?: string;
+}
+
 interface GenerationSessionAttemptMetadata {
   schemaVersion: 2;
   surfaceId: string;
@@ -146,7 +171,7 @@ interface GenerationSessionAttemptMetadata {
 }
 
 interface GenerationSessionSummary {
-  schemaVersion: 2;
+  schemaVersion: 3;
   surfaceId: string;
   sessionId: string;
   tool: SessionTool;
@@ -186,6 +211,14 @@ interface GenerationSessionSummary {
     reviewPath?: string;
     reviewStatus?: AttemptReviewStatus;
     createdAt?: string;
+    preview?: {
+      imagePath: string;
+      metadataPath: string;
+      url: string;
+      finalUrl: string;
+      capturedAt: string;
+      waitFor?: string;
+    };
   }>;
 }
 
@@ -217,10 +250,18 @@ interface ComparisonAttemptSnapshot {
   warningFindingCount: number;
   findingCodes: string[];
   assessment: GenerationAssessment;
+  preview?: {
+    imagePath: string;
+    metadataPath: string;
+    url: string;
+    finalUrl: string;
+    capturedAt: string;
+    waitFor?: string;
+  };
 }
 
 interface GenerationSessionComparison {
-  schemaVersion: 1;
+  schemaVersion: 2;
   surfaceId: string;
   tool: SessionTool;
   brief: {
@@ -343,10 +384,12 @@ interface LoadedAttempt {
   assessment: JsonRecord;
   metadata: JsonRecord;
   review: GenerationAttemptReview | null;
+  preview: GenerationAttemptPreview | null;
   validatePath: string;
   assessmentPath: string;
   metadataPath: string;
   reviewPath?: string;
+  previewMetadataPath?: string;
 }
 
 const VALID_TOOLS = new Set<SessionTool>(["codex", "cursor"]);
@@ -474,6 +517,8 @@ function getAttemptPaths(attemptsDir: string, attemptNumber: number) {
     assessmentPath: path.join(attemptsDir, `${attemptId}.assessment.json`),
     metadataPath: path.join(attemptsDir, `${attemptId}.metadata.json`),
     reviewPath: path.join(attemptsDir, `${attemptId}.review.json`),
+    previewMetadataPath: path.join(attemptsDir, `${attemptId}.preview.json`),
+    previewImagePath: path.join(attemptsDir, `${attemptId}.preview.png`),
   };
 }
 
@@ -554,6 +599,69 @@ function loadStoredAttemptReview(reviewPath: string): GenerationAttemptReview | 
     findingCodes: asStringArray(payload.findingCodes),
     rationale,
     reviewedAt: asString(payload.reviewedAt) ?? "",
+  };
+}
+
+function loadStoredAttemptPreview(previewMetadataPath: string, previewImagePath: string): GenerationAttemptPreview | null {
+  if (!fs.existsSync(previewMetadataPath)) {
+    return null;
+  }
+  if (!fs.existsSync(previewImagePath)) {
+    throw new SessionInputError(`Preview image not found at ${previewImagePath}.`);
+  }
+  const payload = readJsonFile<JsonRecord>(previewMetadataPath, "generation attempt preview");
+  const pageTitle = asString(payload.pageTitle);
+  const waitFor = asString(payload.waitFor);
+  const viewport = asRecord(payload.viewport);
+  const width = Number(viewport.width);
+  const height = Number(viewport.height);
+  if (!Number.isFinite(width) || width < 1 || !Number.isFinite(height) || height < 1) {
+    throw new SessionInputError(`Preview viewport is invalid in ${previewMetadataPath}.`);
+  }
+  const preview: GenerationAttemptPreview = {
+    schemaVersion: 1,
+    surfaceId: asString(payload.surfaceId) ?? "",
+    sessionId: asString(payload.sessionId) ?? "",
+    attemptNumber: Number(payload.attemptNumber),
+    url: asString(payload.url) ?? "",
+    finalUrl: asString(payload.finalUrl) ?? "",
+    imagePath: asString(payload.imagePath) ?? previewImagePath,
+    capturedAt: asString(payload.capturedAt) ?? "",
+    viewport: {
+      width,
+      height,
+    },
+    ...(pageTitle ? { pageTitle } : {}),
+    ...(waitFor ? { waitFor } : {}),
+  };
+  if (
+    preview.attemptNumber < 1 ||
+    !preview.surfaceId ||
+    !preview.sessionId ||
+    !preview.url ||
+    !preview.finalUrl ||
+    !preview.imagePath ||
+    !preview.capturedAt
+  ) {
+    throw new SessionInputError(`Generation attempt preview is missing required fields: ${previewMetadataPath}.`);
+  }
+  return preview;
+}
+
+function toPreviewReference(
+  preview: GenerationAttemptPreview | null,
+  previewMetadataPath?: string,
+): ComparisonAttemptSnapshot["preview"] | GenerationSessionSummary["attempts"][number]["preview"] | undefined {
+  if (!preview || !previewMetadataPath) {
+    return undefined;
+  }
+  return {
+    imagePath: preview.imagePath,
+    metadataPath: previewMetadataPath,
+    url: preview.url,
+    finalUrl: preview.finalUrl,
+    capturedAt: preview.capturedAt,
+    ...(preview.waitFor ? { waitFor: preview.waitFor } : {}),
   };
 }
 
@@ -647,6 +755,50 @@ function loadSession(sessionDirInput: string): { session: GenerationSession; pat
     session,
     paths,
   };
+}
+
+function toBrowserLaunchError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Executable doesn't exist|browserType\.launch/i.test(message)) {
+    return new Error(
+      `Playwright Chromium is not installed. Run "pnpm exec playwright install chromium" in /Users/mike/SurfacesPlatform/interfacectl.`,
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
+async function waitForPageSettle(page: {
+  waitForLoadState: (state: "domcontentloaded" | "networkidle", options?: { timeout?: number }) => Promise<void>;
+  waitForTimeout: (timeout: number) => Promise<void>;
+}) {
+  await page.waitForLoadState("domcontentloaded");
+  await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => undefined);
+  await page.waitForTimeout(300);
+}
+
+async function waitForPreviewCondition(
+  page: {
+    locator: (selector: string) => { first: () => { waitFor: (options: { state: "visible"; timeout: number }) => Promise<void> } };
+    getByText: (text: string, options: { exact: boolean }) => { first: () => { waitFor: (options: { state: "visible"; timeout: number }) => Promise<void> } };
+  },
+  waitFor: string,
+) {
+  const timeout = 5_000;
+  try {
+    await page.locator(waitFor).first().waitFor({ state: "visible", timeout });
+    return;
+  } catch (selectorError) {
+    try {
+      await page.getByText(waitFor, { exact: false }).first().waitFor({ state: "visible", timeout });
+      return;
+    } catch (textError) {
+      const selectorMessage = selectorError instanceof Error ? selectorError.message : String(selectorError);
+      const textMessage = textError instanceof Error ? textError.message : String(textError);
+      throw new SessionInputError(
+        `Preview wait condition "${waitFor}" was not satisfied. Selector error: ${selectorMessage}. Text error: ${textMessage}.`,
+      );
+    }
+  }
 }
 
 function nextAttemptNumber(attemptsDir: string): number {
@@ -793,16 +945,19 @@ function loadAttemptRecords(paths: ReturnType<typeof getSessionPaths>): LoadedAt
   return attemptNumbers.map((attemptNumber) => {
     const attemptPaths = getAttemptPaths(paths.attemptsDir, attemptNumber);
     const review = loadStoredAttemptReview(attemptPaths.reviewPath);
+    const preview = loadStoredAttemptPreview(attemptPaths.previewMetadataPath, attemptPaths.previewImagePath);
     return {
       attemptNumber,
       validate: readJsonFile<JsonRecord>(attemptPaths.validatePath, `attempt ${attemptNumber} validate payload`),
       assessment: readJsonFile<JsonRecord>(attemptPaths.assessmentPath, `attempt ${attemptNumber} assessment`),
       metadata: readJsonFile<JsonRecord>(attemptPaths.metadataPath, `attempt ${attemptNumber} metadata`),
       review,
+      preview,
       validatePath: attemptPaths.validatePath,
       assessmentPath: attemptPaths.assessmentPath,
       metadataPath: attemptPaths.metadataPath,
       ...(review ? { reviewPath: attemptPaths.reviewPath } : {}),
+      ...(preview ? { previewMetadataPath: attemptPaths.previewMetadataPath } : {}),
     };
   });
 }
@@ -869,7 +1024,7 @@ function buildGenerationSessionSummary(sessionDirInput: string) {
   );
 
   const summary: GenerationSessionSummary = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     surfaceId: session.surfaceId,
     sessionId: session.sessionId,
     tool: session.tool,
@@ -907,6 +1062,9 @@ function buildGenerationSessionSummary(sessionDirInput: string) {
         ...(attempt.reviewPath ? { reviewPath: attempt.reviewPath } : {}),
         ...(attempt.review ? { reviewStatus: attempt.review.status } : {}),
         createdAt: typeof attempt.metadata.createdAt === "string" ? attempt.metadata.createdAt : undefined,
+        ...(toPreviewReference(attempt.preview, attempt.previewMetadataPath)
+          ? { preview: toPreviewReference(attempt.preview, attempt.previewMetadataPath) }
+          : {}),
       };
     }),
   };
@@ -938,6 +1096,9 @@ function toComparisonAttemptSnapshot(
     warningFindingCount: counts.warnings,
     findingCodes,
     assessment: normalizeAssessment(attempt.assessment, attempt.assessmentPath, { allowLegacyMissing: true }),
+    ...(toPreviewReference(attempt.preview, attempt.previewMetadataPath)
+      ? { preview: toPreviewReference(attempt.preview, attempt.previewMetadataPath) }
+      : {}),
   };
 }
 
@@ -1183,7 +1344,7 @@ function buildComparisonArtifact(
     guidedFirstAttempt.blockingFindingCount < baselineFirstAttempt.blockingFindingCount;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     surfaceId: baselineBuilt.session.surfaceId,
     tool: baselineBuilt.session.tool,
     brief: {
@@ -1619,6 +1780,109 @@ export async function runRecordGenerationAttemptCommand(
       )}\n`,
     );
     return 0;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
+}
+
+export async function runCaptureGenerationPreviewCommand(
+  options: CaptureGenerationPreviewCommandOptions,
+): Promise<number> {
+  try {
+    if (!options.sessionDir) {
+      throw new SessionInputError("--session-dir is required.");
+    }
+    if (!options.url) {
+      throw new SessionInputError("--url is required.");
+    }
+    const attemptNumber = typeof options.attemptNumber === "number"
+      ? options.attemptNumber
+      : Number.parseInt(String(options.attemptNumber ?? ""), 10);
+    if (!Number.isInteger(attemptNumber) || attemptNumber < 1) {
+      throw new SessionInputError("--attempt must be a positive integer.");
+    }
+
+    const { session, paths } = loadSession(options.sessionDir);
+    const attemptPaths = getAttemptPaths(paths.attemptsDir, attemptNumber);
+    if (!fs.existsSync(attemptPaths.metadataPath) || !fs.existsSync(attemptPaths.validatePath)) {
+      throw new SessionInputError(`Attempt ${attemptNumber} not found in ${paths.attemptsDir}.`);
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(options.url);
+    } catch {
+      throw new SessionInputError(`Preview URL must be an absolute URL: ${options.url}.`);
+    }
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      throw new SessionInputError(`Preview URL must use http or https: ${options.url}.`);
+    }
+
+    const viewport = { width: 1440, height: 1024 };
+    const browser = await chromium.launch({
+      headless:
+        process.env.INTERFACECTL_PLAYWRIGHT_HEADLESS !== "0" &&
+        process.env.INTERFACECTL_PLAYWRIGHT_HEADLESS !== "false",
+    }).catch((error) => {
+      throw toBrowserLaunchError(error);
+    });
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+
+    try {
+      await page.goto(parsedUrl.toString(), { waitUntil: "load", timeout: 15_000 });
+      await waitForPageSettle(page);
+      const waitFor = asString(options.waitFor);
+      if (waitFor) {
+        await waitForPreviewCondition(page, waitFor);
+        await waitForPageSettle(page);
+      }
+      await page.screenshot({ path: attemptPaths.previewImagePath, fullPage: true, type: "png" });
+      const preview: GenerationAttemptPreview = {
+        schemaVersion: 1,
+        surfaceId: session.surfaceId,
+        sessionId: session.sessionId,
+        attemptNumber,
+        url: parsedUrl.toString(),
+        finalUrl: page.url(),
+        imagePath: attemptPaths.previewImagePath,
+        capturedAt: new Date().toISOString(),
+        viewport,
+        ...(asString(await page.title()) ? { pageTitle: asString(await page.title()) } : {}),
+        ...(waitFor ? { waitFor } : {}),
+      };
+      writeDeterministicJsonSync(attemptPaths.previewMetadataPath, preview);
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ok: true,
+            preview,
+            paths: {
+              metadataPath: attemptPaths.previewMetadataPath,
+              imagePath: attemptPaths.previewImagePath,
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      return 0;
+    } catch (error) {
+      if (error instanceof SessionInputError) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new SessionInputError(`Failed to capture preview for attempt ${attemptNumber}: ${message}.`);
+    } finally {
+      await context.close().catch(() => undefined);
+      await browser.close().catch(() => undefined);
+    }
   } catch (error) {
     if (error instanceof SessionInputError || error instanceof AdapterInputError) {
       writeError(error, error.code);

@@ -12,6 +12,12 @@ export interface RecordGenerationAttemptCommandOptions {
     sessionDir?: string;
     assessmentFile?: string;
 }
+export interface CaptureGenerationPreviewCommandOptions {
+    sessionDir?: string;
+    attemptNumber?: string | number;
+    url?: string;
+    waitFor?: string;
+}
 export interface ReviewGenerationAttemptCommandOptions {
     sessionDir?: string;
     attemptNumber?: string | number;
@@ -41,6 +47,7 @@ export interface SummarizeGenerationBenchmarkCommandOptions {
 }
 export declare function runInitGenerationSessionCommand(options: InitGenerationSessionCommandOptions): Promise<number>;
 export declare function runRecordGenerationAttemptCommand(options: RecordGenerationAttemptCommandOptions): Promise<number>;
+export declare function runCaptureGenerationPreviewCommand(options: CaptureGenerationPreviewCommandOptions): Promise<number>;
 export declare function runReviewGenerationAttemptCommand(options: ReviewGenerationAttemptCommandOptions): Promise<number>;
 export declare function runSummarizeGenerationSessionCommand(options: SummarizeGenerationSessionCommandOptions): Promise<number>;
 export declare function runCompareGenerationSessionsCommand(options: CompareGenerationSessionsCommandOptions): Promise<number>;
