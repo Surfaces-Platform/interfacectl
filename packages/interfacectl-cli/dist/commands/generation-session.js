@@ -1207,13 +1207,20 @@ export async function runCaptureGenerationPreviewCommand(options) {
             throw new SessionInputError(`Preview URL must use http or https: ${options.url}.`);
         }
         const viewport = { width: 1440, height: 1024 };
+        const storageStatePath = asString(options.storageStatePath);
+        if (storageStatePath && !fs.existsSync(storageStatePath)) {
+            throw new SessionInputError(`Storage state file not found: ${storageStatePath}.`);
+        }
         const browser = await chromium.launch({
             headless: process.env.INTERFACECTL_PLAYWRIGHT_HEADLESS !== "0" &&
                 process.env.INTERFACECTL_PLAYWRIGHT_HEADLESS !== "false",
         }).catch((error) => {
             throw toBrowserLaunchError(error);
         });
-        const context = await browser.newContext({ viewport });
+        const context = await browser.newContext({
+            viewport,
+            ...(storageStatePath ? { storageState: storageStatePath } : {}),
+        });
         const page = await context.newPage();
         try {
             await page.goto(parsedUrl.toString(), { waitUntil: "load", timeout: 15_000 });
