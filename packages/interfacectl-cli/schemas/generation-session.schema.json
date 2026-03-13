@@ -9,6 +9,7 @@
     "surfaceId",
     "sessionId",
     "tool",
+    "guidanceMode",
     "workspaceRoot",
     "sourceBundleRoot",
     "sessionDir",
@@ -22,7 +23,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 1
+      "const": 2
     },
     "surfaceId": {
       "type": "string",
@@ -35,6 +36,10 @@
     "tool": {
       "type": "string",
       "enum": ["codex", "cursor"]
+    },
+    "guidanceMode": {
+      "type": "string",
+      "enum": ["prepared", "unguided"]
     },
     "workspaceRoot": {
       "type": "string",
@@ -53,7 +58,7 @@
       "minLength": 1
     },
     "preparedInputPath": {
-      "type": "string",
+      "type": ["string", "null"],
       "minLength": 1
     },
     "contractPath": {
@@ -68,6 +73,21 @@
       "type": "string",
       "format": "date-time"
     },
+    "brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "successRule": {
       "type": "object",
       "additionalProperties": false,
@@ -75,7 +95,7 @@
       "properties": {
         "finalStatus": {
           "type": "string",
-          "const": "pass"
+          "const": "pass-or-reviewed-warn"
         }
       }
     }

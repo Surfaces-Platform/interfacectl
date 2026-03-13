@@ -641,13 +641,15 @@ Creates a tracked local-agent session from an already compiled bundle. The comma
 
 **Synopsis:**
 ```bash
-interfacectl init-generation-session --bundle-root <dir> --surface <id> --workspace-root <path> [--tool <codex|cursor>] [--session <id>] [--artifacts-root <path>]
+interfacectl init-generation-session --bundle-root <dir> --surface <id> --workspace-root <path> [--tool <codex|cursor>] [--guidance-mode <prepared|unguided>] [--brief-file <path>] [--session <id>] [--artifacts-root <path>]
 ```
 
 **Description:**
 - Requires a compiled bundle and does not call `compile` implicitly.
 - Defaults session artifacts to `<workspaceRoot>/artifacts/generation-sessions/<surfaceId>/<sessionId>/`.
-- Writes `bundle/`, `prepared-input.json`, and `session.json`.
+- Writes `bundle/`, optional `prepared-input.json`, and `session.json`.
+- `--guidance-mode prepared` is the guided contract-aware arm. `--guidance-mode unguided` intentionally withholds the prepared payload from the generator while still freezing the same bundle for later validation.
+- `--brief-file` freezes the implementation brief into the session so later benchmark comparisons can prove both sessions used the same task.
 - Canonical session schema lives at `packages/interfacectl-cli/schemas/generation-session.schema.json`.
 
 **Exit Codes:**
@@ -669,6 +671,7 @@ interfacectl record-generation-attempt --session-dir <path> --assessment-file <p
 **Description:**
 - Loads `session.json` from the provided session directory.
 - Validates the workspace against the frozen session bundle.
+- Requires a rubric assessment with `structure`, `components`, `boundary`, `visual`, `responsiveness`, `notes`, and optional `touchedFiles`.
 - Writes:
   - `attempts/<nnn>.validate.json`
   - `attempts/<nnn>.assessment.json`
@@ -683,6 +686,29 @@ interfacectl record-generation-attempt --session-dir <path> --assessment-file <p
 
 ---
 
+### `review-generation-attempt`
+
+Records an explicit human review for one `warn` attempt.
+
+**Synopsis:**
+```bash
+interfacectl review-generation-attempt --session-dir <path> --attempt <number> --review-file <path>
+```
+
+**Description:**
+- Loads the validate payload for the selected attempt and requires that the attempt status is `warn`.
+- Requires a review file with `status`, `findingCodes`, and `rationale`.
+- When `status=accepted`, the reviewed finding-code set must cover every remaining finding on the attempt.
+- Writes `attempts/<nnn>.review.json`.
+- Canonical review schema lives at `packages/interfacectl-cli/schemas/generation-attempt-review.schema.json`.
+
+**Exit Codes:**
+- `0`: Review recorded successfully
+- `10`: Invalid input, missing session/attempt, invalid review coverage, or unreadable files
+- `1`: Unexpected internal error
+
+---
+
 ### `summarize-generation-session`
 
 Summarizes recorded attempts for one session.
@@ -693,14 +719,104 @@ interfacectl summarize-generation-session --session-dir <path>
 ```
 
 **Description:**
-- Aggregates attempt count, first pass attempt, latest status, recurring finding codes, recurring repair codes, and the latest assessment.
+- Aggregates attempt count, first pass attempt, first acceptable attempt, latest status, latest outcome, recurring finding codes, recurring repair codes, latest assessment, and the latest review when present.
 - Writes `summary.json` and `summary.md`.
 - Canonical summary schema lives at `packages/interfacectl-cli/schemas/generation-session-summary.schema.json`.
 
 **Exit Codes:**
-- `0`: Latest attempt is `pass`
-- `30`: Latest attempt is `warn` or `block`
+- `0`: Latest outcome is `pass` or `accepted-warn`
+- `30`: Latest outcome is `warn` or `block`
 - `10`: Missing session or attempts, or invalid artifacts
+- `1`: Unexpected internal error
+
+---
+
+### `compare-generation-sessions`
+
+Compares one unguided baseline session against one prepared guided session for the same implementation brief.
+
+**Synopsis:**
+```bash
+interfacectl compare-generation-sessions --baseline-session-dir <path> --guided-session-dir <path> [--out-dir <path>]
+```
+
+**Description:**
+- Requires both sessions to target the same surface, use the same tool, and freeze the same brief file.
+- Requires `guidanceMode=unguided` for the baseline session and `guidanceMode=prepared` for the guided session.
+- Computes first-attempt finding deltas, attempts-to-acceptable-outcome delta, rubric deltas, and goal checks.
+- Writes `comparison.json` and `comparison.md`.
+- Canonical schema lives at `packages/interfacectl-cli/schemas/generation-session-comparison.schema.json`.
+
+**Exit Codes:**
+- `0`: Comparison artifacts written successfully
+- `10`: Invalid session pairing, mismatched brief, or unreadable artifacts
+- `1`: Unexpected internal error
+
+---
+
+### `suggest-contract-deltas`
+
+Generates evidence-backed contract-refinement suggestions from a guided session without mutating the contract.
+
+**Synopsis:**
+```bash
+interfacectl suggest-contract-deltas --session-dir <path> [--out <path>]
+```
+
+**Description:**
+- Requires a guided `prepared` session.
+- Uses the session repair map, repeated finding patterns, and latest validate evidence to propose contract paths for review.
+- Emits deterministic suggestion JSON and markdown.
+- Suggestions start as `status=proposed`.
+- Canonical schema lives at `packages/interfacectl-cli/schemas/contract-delta-suggestions.schema.json`.
+
+**Exit Codes:**
+- `0`: Suggestion artifacts written successfully
+- `10`: Invalid session state or unreadable artifacts
+- `1`: Unexpected internal error
+
+---
+
+### `review-contract-delta-suggestions`
+
+Applies human accept/reject decisions to suggestion artifacts without mutating the canonical contract.
+
+**Synopsis:**
+```bash
+interfacectl review-contract-delta-suggestions --suggestions <path> --review-file <path> [--out <path>]
+```
+
+**Description:**
+- Loads an existing suggestion artifact.
+- Applies review decisions keyed by `suggestionId`.
+- Preserves undecided suggestions as `proposed`.
+- Rewrites markdown alongside the updated JSON output.
+
+**Exit Codes:**
+- `0`: Suggestion review recorded successfully
+- `10`: Invalid decisions or unreadable files
+- `1`: Unexpected internal error
+
+---
+
+### `summarize-generation-benchmark`
+
+Aggregates one or more comparison artifacts and reviewed suggestion sets into one benchmark report.
+
+**Synopsis:**
+```bash
+interfacectl summarize-generation-benchmark --comparisons <path[,path...]> [--suggestions <path[,path...]>] [--out-dir <path>]
+```
+
+**Description:**
+- Summarizes whether guided sessions reduced first-attempt blocking findings, reached acceptable outcomes no later, and improved rubric dimensions.
+- Aggregates accepted/rejected/proposed suggestion counts across surfaces.
+- Writes `benchmark-report.json` and `benchmark-report.md`.
+- Canonical schema lives at `packages/interfacectl-cli/schemas/generation-benchmark-report.schema.json`.
+
+**Exit Codes:**
+- `0`: Benchmark report written successfully
+- `10`: Missing comparison inputs or unreadable artifacts
 - `1`: Unexpected internal error
 
 ---

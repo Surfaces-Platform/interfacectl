@@ -1,0 +1,343 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-session-comparison.schema.json",
+  "title": "GenerationSessionComparison",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "surfaceId", "tool", "brief", "baseline", "guided", "delta", "checks", "paths"],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "surfaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "enum": ["codex", "cursor"]
+    },
+    "brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "baselinePath", "guidedPath"],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baselinePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guidedPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "baseline": {
+      "$ref": "#/$defs/sessionSnapshot"
+    },
+    "guided": {
+      "$ref": "#/$defs/sessionSnapshot"
+    },
+    "delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firstAttemptVerdict", "firstAttemptFindingCountDelta", "firstAttemptBlockingFindingCountDelta", "firstAttemptWarningFindingCountDelta", "latestFindingCountDelta", "attemptsToAcceptableOutcome", "rubric"],
+      "properties": {
+        "firstAttemptVerdict": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseline", "guided"],
+          "properties": {
+            "baseline": {
+              "type": "string",
+              "enum": ["pass", "accepted-warn", "warn", "block"]
+            },
+            "guided": {
+              "type": "string",
+              "enum": ["pass", "accepted-warn", "warn", "block"]
+            }
+          }
+        },
+        "firstAttemptFindingCountDelta": {
+          "type": "number"
+        },
+        "firstAttemptBlockingFindingCountDelta": {
+          "type": "number"
+        },
+        "firstAttemptWarningFindingCountDelta": {
+          "type": "number"
+        },
+        "latestFindingCountDelta": {
+          "type": "number"
+        },
+        "attemptsToAcceptableOutcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseline", "guided", "delta"],
+          "properties": {
+            "baseline": {
+              "type": ["number", "null"]
+            },
+            "guided": {
+              "type": ["number", "null"]
+            },
+            "delta": {
+              "type": ["number", "null"]
+            }
+          }
+        },
+        "rubric": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["structure", "components", "boundary", "visual", "responsiveness"],
+          "properties": {
+            "structure": {
+              "$ref": "#/$defs/rubricDelta"
+            },
+            "components": {
+              "$ref": "#/$defs/rubricDelta"
+            },
+            "boundary": {
+              "$ref": "#/$defs/rubricDelta"
+            },
+            "visual": {
+              "$ref": "#/$defs/rubricDelta"
+            },
+            "responsiveness": {
+              "$ref": "#/$defs/rubricDelta"
+            }
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guidedFewerFirstAttemptBlockingFindings", "guidedReachedAcceptableNoLater", "guidedRubricAtLeastAsGood", "guidedRubricBetterDimensions", "meetsGoal"],
+      "properties": {
+        "guidedFewerFirstAttemptBlockingFindings": {
+          "type": "boolean"
+        },
+        "guidedReachedAcceptableNoLater": {
+          "type": "boolean"
+        },
+        "guidedRubricAtLeastAsGood": {
+          "type": "boolean"
+        },
+        "guidedRubricBetterDimensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["structure", "components", "boundary", "visual", "responsiveness"]
+          }
+        },
+        "meetsGoal": {
+          "type": "boolean"
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineSessionDir", "guidedSessionDir"],
+      "properties": {
+        "baselineSessionDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guidedSessionDir": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structure", "components", "boundary", "visual", "responsiveness", "notes"],
+      "properties": {
+        "structure": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "components": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "boundary": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "visual": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "responsiveness": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "touchedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "attemptSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attemptNumber", "status", "outcome", "findingCount", "blockingFindingCount", "warningFindingCount", "findingCodes", "assessment"],
+      "properties": {
+        "attemptNumber": {
+          "type": "number",
+          "minimum": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "warn", "block"]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["pass", "accepted-warn", "warn", "block"]
+        },
+        "findingCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "blockingFindingCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "warningFindingCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "findingCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "assessment": {
+          "$ref": "#/$defs/assessment"
+        }
+      }
+    },
+    "sessionSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "sessionDir", "guidanceMode", "attemptCount", "firstAcceptableAttempt", "latestOutcome", "firstAttempt", "latestAttempt", "recurringFindingCodes", "recurringRepairCodes"],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guidanceMode": {
+          "type": "string",
+          "enum": ["prepared", "unguided"]
+        },
+        "attemptCount": {
+          "type": "number",
+          "minimum": 1
+        },
+        "firstAcceptableAttempt": {
+          "type": ["number", "null"]
+        },
+        "latestOutcome": {
+          "type": "string",
+          "enum": ["pass", "accepted-warn", "warn", "block"]
+        },
+        "firstAttempt": {
+          "$ref": "#/$defs/attemptSnapshot"
+        },
+        "latestAttempt": {
+          "$ref": "#/$defs/attemptSnapshot"
+        },
+        "recurringFindingCodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "count"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "count": {
+                "type": "number",
+                "minimum": 2
+              }
+            }
+          }
+        },
+        "recurringRepairCodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "count", "priority", "category", "actionType"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "count": {
+                "type": "number",
+                "minimum": 2
+              },
+              "priority": {
+                "type": "string",
+                "minLength": 1
+              },
+              "category": {
+                "type": "string",
+                "minLength": 1
+              },
+              "actionType": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "rubricDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "guided", "delta"],
+      "properties": {
+        "baseline": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "guided": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "delta": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

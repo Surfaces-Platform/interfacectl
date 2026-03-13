@@ -9,12 +9,16 @@
     "surfaceId",
     "sessionId",
     "tool",
+    "guidanceMode",
     "attemptCount",
     "firstPassAttempt",
+    "firstAcceptableAttempt",
     "latestStatus",
+    "latestOutcome",
     "recurringFindingCodes",
     "recurringRepairCodes",
     "latestAssessment",
+    "latestReview",
     "successRule",
     "paths",
     "attempts"
@@ -22,7 +26,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 1
+      "const": 2
     },
     "surfaceId": {
       "type": "string",
@@ -36,6 +40,10 @@
       "type": "string",
       "enum": ["codex", "cursor"]
     },
+    "guidanceMode": {
+      "type": "string",
+      "enum": ["prepared", "unguided"]
+    },
     "attemptCount": {
       "type": "number",
       "minimum": 1
@@ -43,9 +51,16 @@
     "firstPassAttempt": {
       "type": ["number", "null"]
     },
+    "firstAcceptableAttempt": {
+      "type": ["number", "null"]
+    },
     "latestStatus": {
       "type": "string",
       "enum": ["pass", "warn", "block"]
+    },
+    "latestOutcome": {
+      "type": "string",
+      "enum": ["pass", "accepted-warn", "warn", "block"]
     },
     "recurringFindingCodes": {
       "type": "array",
@@ -103,9 +118,17 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["structure", "visual", "responsiveness", "notes"],
+          "required": ["structure", "components", "boundary", "visual", "responsiveness", "notes"],
           "properties": {
             "structure": {
+              "type": "string",
+              "enum": ["strong", "partial", "weak"]
+            },
+            "components": {
+              "type": "string",
+              "enum": ["strong", "partial", "weak"]
+            },
+            "boundary": {
               "type": "string",
               "enum": ["strong", "partial", "weak"]
             },
@@ -132,6 +155,70 @@
         }
       ]
     },
+    "latestReview": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "surfaceId", "sessionId", "attemptNumber", "status", "findingCodes", "rationale", "reviewedAt"],
+          "properties": {
+            "schemaVersion": {
+              "type": "number",
+              "const": 1
+            },
+            "surfaceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sessionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "attemptNumber": {
+              "type": "number",
+              "minimum": 1
+            },
+            "status": {
+              "type": "string",
+              "enum": ["accepted", "rejected"]
+            },
+            "findingCodes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reviewedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "successRule": {
       "type": "object",
       "additionalProperties": false,
@@ -139,7 +226,7 @@
       "properties": {
         "finalStatus": {
           "type": "string",
-          "const": "pass"
+          "const": "pass-or-reviewed-warn"
         }
       }
     },
@@ -157,7 +244,7 @@
           "minLength": 1
         },
         "preparedInputPath": {
-          "type": "string",
+          "type": ["string", "null"],
           "minLength": 1
         }
       }
@@ -171,6 +258,7 @@
         "required": [
           "attemptNumber",
           "status",
+          "outcome",
           "findingCodes",
           "validatePath",
           "assessmentPath",
@@ -184,6 +272,10 @@
           "status": {
             "type": "string",
             "enum": ["pass", "warn", "block"]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["pass", "accepted-warn", "warn", "block"]
           },
           "findingCodes": {
             "type": "array",
@@ -203,6 +295,14 @@
           "metadataPath": {
             "type": "string",
             "minLength": 1
+          },
+          "reviewPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewStatus": {
+            "type": "string",
+            "enum": ["accepted", "rejected"]
           },
           "createdAt": {
             "type": "string",

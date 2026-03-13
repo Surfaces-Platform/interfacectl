@@ -167,26 +167,66 @@ Use this before local agent generation. Use `validate-generation` after code is 
 
 ### `init-generation-session`
 
-Freezes one compiled bundle revision into a tracked local generation session under `artifacts/generation-sessions/<surface>/<sessionId>/` inside the workspace root.
+Freezes one compiled bundle revision into a tracked local generation session under `artifacts/generation-sessions/<surface>/<sessionId>/` inside the workspace root. Use `--guidance-mode` to distinguish guided vs unguided sessions, and use `--brief-file` when later benchmark comparisons need to prove both sessions implemented the same task brief.
 
 ```bash
-interfacectl init-generation-session --bundle-root <dir> --surface <id> --workspace-root <path> [--tool <codex|cursor>] [--session <id>] [--artifacts-root <path>]
+interfacectl init-generation-session --bundle-root <dir> --surface <id> --workspace-root <path> [--tool <codex|cursor>] [--guidance-mode <prepared|unguided>] [--brief-file <path>] [--session <id>] [--artifacts-root <path>]
 ```
 
 ### `record-generation-attempt`
 
-Validates one tracked session against the frozen bundle, records the validate payload and assessment, and emits a canonical `contract-runs.json` / `contract-lineage.json` update into the workspace.
+Validates one tracked session against the frozen bundle, records the validate payload plus the expanded rubric (`structure`, `components`, `boundary`, `visual`, `responsiveness`), and emits a canonical `contract-runs.json` / `contract-lineage.json` update into the workspace.
 
 ```bash
 interfacectl record-generation-attempt --session-dir <path> --assessment-file <path>
 ```
 
+### `review-generation-attempt`
+
+Marks the remaining findings on one `warn` attempt as explicitly reviewed so a tracked benchmark session can end in `accepted-warn` without mutating the canonical contract.
+
+```bash
+interfacectl review-generation-attempt --session-dir <path> --attempt <number> --review-file <path>
+```
+
 ### `summarize-generation-session`
 
-Aggregates recorded attempts for one tracked session, writes `summary.json` and `summary.md`, and exits non-zero unless the latest attempt is `pass`.
+Aggregates recorded attempts for one tracked session, writes `summary.json` and `summary.md`, and exits non-zero unless the latest outcome is `pass` or `accepted-warn`.
 
 ```bash
 interfacectl summarize-generation-session --session-dir <path>
+```
+
+### `compare-generation-sessions`
+
+Compares one unguided baseline session against one guided prepared session for the same brief and writes deterministic comparison artifacts.
+
+```bash
+interfacectl compare-generation-sessions --baseline-session-dir <path> --guided-session-dir <path> [--out-dir <path>]
+```
+
+### `suggest-contract-deltas`
+
+Generates evidence-backed, non-authoritative contract refinement suggestions from a guided session.
+
+```bash
+interfacectl suggest-contract-deltas --session-dir <path> [--out <path>]
+```
+
+### `review-contract-delta-suggestions`
+
+Applies human accept/reject decisions to contract-delta suggestions without mutating the canonical contract.
+
+```bash
+interfacectl review-contract-delta-suggestions --suggestions <path> --review-file <path> [--out <path>]
+```
+
+### `summarize-generation-benchmark`
+
+Aggregates one or more comparisons and reviewed suggestion sets into a benchmark report.
+
+```bash
+interfacectl summarize-generation-benchmark --comparisons <path[,path...]> [--suggestions <path[,path...]>] [--out-dir <path>]
 ```
 
 ### `emit-run-artifact`

@@ -6,11 +6,13 @@ Use this flow when a local agent or hosted generator needs contract-aware guidan
 
 1. Compile the contract into a generation bundle.
 2. For local agents, resolve the bundle into one agent-ready payload with `prepare-generation`.
-3. Freeze one tracked session with `init-generation-session` when you want iteration evidence.
+3. Freeze one tracked session with `init-generation-session` when you want iteration evidence or a guided-vs-unguided benchmark.
 4. Generate or edit UI.
 5. Run `record-generation-attempt` for each attempt.
-6. Run `summarize-generation-session` to aggregate progress.
-7. Use `validate-generation` directly when you need an ad hoc post-generation check without a tracked session.
+6. Optionally run `review-generation-attempt` when a `warn` result is explicitly acceptable.
+7. Run `summarize-generation-session` to aggregate progress.
+8. Use `compare-generation-sessions`, `suggest-contract-deltas`, and `summarize-generation-benchmark` when you are proving guided-vs-unguided outcomes.
+9. Use `validate-generation` directly when you need an ad hoc post-generation check without a tracked session.
 
 ## Step 1: compile the bundle
 
@@ -79,17 +81,35 @@ Exit semantics:
 interfacectl init-generation-session \
   --bundle-root ./artifacts/generation-bundles/surfaces-web \
   --surface surfaces-web \
-  --workspace-root .
+  --workspace-root . \
+  --guidance-mode prepared \
+  --brief-file ./artifacts/generation-briefs/surfaces-web.md
 
 interfacectl record-generation-attempt \
   --session-dir ./artifacts/generation-sessions/surfaces-web/<sessionId> \
   --assessment-file ./artifacts/generation-sessions/surfaces-web/<sessionId>/assessment.json
+
+interfacectl review-generation-attempt \
+  --session-dir ./artifacts/generation-sessions/surfaces-web/<sessionId> \
+  --attempt 1 \
+  --review-file ./artifacts/generation-sessions/surfaces-web/<sessionId>/review.json
 
 interfacectl summarize-generation-session \
   --session-dir ./artifacts/generation-sessions/surfaces-web/<sessionId>
 ```
 
 This loop freezes the bundle revision, records each assessment, and emits canonical run artifacts for downstream consumers.
+
+For an A/B proof loop, run one session with `--guidance-mode unguided` and the same `--brief-file`, run another with `--guidance-mode prepared`, then compare them:
+
+```bash
+interfacectl compare-generation-sessions \
+  --baseline-session-dir ./artifacts/generation-sessions/surfaces-web/baseline-unguided \
+  --guided-session-dir ./artifacts/generation-sessions/surfaces-web/guided-prepared
+
+interfacectl suggest-contract-deltas \
+  --session-dir ./artifacts/generation-sessions/surfaces-web/guided-prepared
+```
 
 ## HTTP mode
 

@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/contract-delta-suggestions.schema.json",
+  "title": "ContractDeltaSuggestionsArtifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "surfaceId", "sessionId", "tool", "guidanceMode", "generatedAt", "contract", "session", "suggestions"],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "surfaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "enum": ["codex", "cursor"]
+    },
+    "guidanceMode": {
+      "type": "string",
+      "enum": ["prepared", "unguided"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionPath", "summaryPath", "repairMapPath"],
+      "properties": {
+        "sessionPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summaryPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repairMapPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["suggestionId", "findingCode", "findingMessage", "repeatedFailureCount", "confidence", "status", "repair", "evidenceRefs", "proposedChange"],
+        "properties": {
+          "suggestionId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "findingCode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "findingMessage": {
+            "type": "string",
+            "minLength": 1
+          },
+          "repeatedFailureCount": {
+            "type": "number",
+            "minimum": 1
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["proposed", "accepted", "rejected"]
+          },
+          "repair": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["priority", "category", "actionType"],
+            "properties": {
+              "priority": {
+                "type": "string",
+                "minLength": 1
+              },
+              "category": {
+                "type": "string",
+                "minLength": 1
+              },
+              "actionType": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "evidenceRefs": {
+            "type": "array"
+          },
+          "proposedChange": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "actionType", "summary", "valueHints"],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "actionType": {
+                "type": "string",
+                "minLength": 1
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1
+              },
+              "valueHints": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "decision": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rationale", "decidedAt"],
+            "properties": {
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "decidedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

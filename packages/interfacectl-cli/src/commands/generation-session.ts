@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   AdapterInputError,
+  isRecord,
   loadCompiledSurfaceBundle,
   readJsonFile,
   type JsonRecord,
@@ -18,6 +19,13 @@ import { stringifyDeterministicJson, writeDeterministicJsonSync } from "../utils
 type SessionTool = "codex" | "cursor";
 type AssessmentGrade = "strong" | "partial" | "weak";
 type ValidateStatus = "pass" | "warn" | "block";
+type GuidanceMode = "prepared" | "unguided";
+type SessionSuccessRule = "pass" | "pass-or-reviewed-warn";
+type AttemptReviewStatus = "accepted" | "rejected";
+type AttemptOutcome = ValidateStatus | "accepted-warn";
+type SuggestionStatus = "proposed" | "accepted" | "rejected";
+
+type AssessmentDimension = "structure" | "components" | "boundary" | "visual" | "responsiveness";
 
 export interface InitGenerationSessionCommandOptions {
   bundleRoot?: string;
@@ -26,6 +34,8 @@ export interface InitGenerationSessionCommandOptions {
   tool?: string;
   sessionId?: string;
   artifactsRoot?: string;
+  guidanceMode?: string;
+  briefFile?: string;
 }
 
 export interface RecordGenerationAttemptCommandOptions {
@@ -33,42 +43,92 @@ export interface RecordGenerationAttemptCommandOptions {
   assessmentFile?: string;
 }
 
+export interface ReviewGenerationAttemptCommandOptions {
+  sessionDir?: string;
+  attemptNumber?: string | number;
+  reviewFile?: string;
+}
+
 export interface SummarizeGenerationSessionCommandOptions {
   sessionDir?: string;
 }
 
+export interface CompareGenerationSessionsCommandOptions {
+  baselineSessionDir?: string;
+  guidedSessionDir?: string;
+  outDir?: string;
+}
+
+export interface SuggestContractDeltasCommandOptions {
+  sessionDir?: string;
+  outPath?: string;
+}
+
+export interface ReviewContractDeltaSuggestionsCommandOptions {
+  suggestionsPath?: string;
+  reviewFile?: string;
+  outPath?: string;
+}
+
+export interface SummarizeGenerationBenchmarkCommandOptions {
+  comparisonPaths?: string;
+  suggestionPaths?: string;
+  outDir?: string;
+}
+
 interface GenerationAssessment {
   structure: AssessmentGrade;
+  components: AssessmentGrade;
+  boundary: AssessmentGrade;
   visual: AssessmentGrade;
   responsiveness: AssessmentGrade;
   notes: string;
   touchedFiles?: string[];
 }
 
+interface GenerationBrief {
+  path: string;
+  sha256: string;
+}
+
 interface GenerationSession {
-  schemaVersion: 1;
+  schemaVersion: 2;
   surfaceId: string;
   sessionId: string;
   tool: SessionTool;
+  guidanceMode: GuidanceMode;
   workspaceRoot: string;
   sourceBundleRoot: string;
   sessionDir: string;
   bundleRoot: string;
-  preparedInputPath: string;
+  preparedInputPath: string | null;
   contractPath: string;
   repairMapPath: string;
   startedAt: string;
+  brief?: GenerationBrief;
   successRule: {
-    finalStatus: "pass";
+    finalStatus: SessionSuccessRule;
   };
 }
 
-interface GenerationSessionAttemptMetadata {
+interface GenerationAttemptReview {
   schemaVersion: 1;
   surfaceId: string;
   sessionId: string;
   attemptNumber: number;
+  status: AttemptReviewStatus;
+  findingCodes: string[];
+  rationale: string;
+  reviewedAt: string;
+}
+
+interface GenerationSessionAttemptMetadata {
+  schemaVersion: 2;
+  surfaceId: string;
+  sessionId: string;
+  attemptNumber: number;
   tool: SessionTool;
+  guidanceMode: GuidanceMode;
   createdAt: string;
   validateStatus: ValidateStatus;
   validateExitCode: number;
@@ -86,13 +146,16 @@ interface GenerationSessionAttemptMetadata {
 }
 
 interface GenerationSessionSummary {
-  schemaVersion: 1;
+  schemaVersion: 2;
   surfaceId: string;
   sessionId: string;
   tool: SessionTool;
+  guidanceMode: GuidanceMode;
   attemptCount: number;
   firstPassAttempt: number | null;
+  firstAcceptableAttempt: number | null;
   latestStatus: ValidateStatus;
+  latestOutcome: AttemptOutcome;
   recurringFindingCodes: Array<{ code: string; count: number }>;
   recurringRepairCodes: Array<{
     code: string;
@@ -102,27 +165,203 @@ interface GenerationSessionSummary {
     actionType: string;
   }>;
   latestAssessment: GenerationAssessment | null;
+  latestReview: GenerationAttemptReview | null;
+  brief?: GenerationBrief;
   successRule: {
-    finalStatus: "pass";
+    finalStatus: SessionSuccessRule;
   };
   paths: {
     sessionPath: string;
     bundleRoot: string;
-    preparedInputPath: string;
+    preparedInputPath: string | null;
   };
   attempts: Array<{
     attemptNumber: number;
     status: ValidateStatus;
+    outcome: AttemptOutcome;
     findingCodes: string[];
     validatePath: string;
     assessmentPath: string;
     metadataPath: string;
+    reviewPath?: string;
+    reviewStatus?: AttemptReviewStatus;
     createdAt?: string;
   }>;
 }
 
+interface SessionComparisonSnapshot {
+  sessionId: string;
+  sessionDir: string;
+  guidanceMode: GuidanceMode;
+  attemptCount: number;
+  firstAcceptableAttempt: number | null;
+  latestOutcome: AttemptOutcome;
+  firstAttempt: ComparisonAttemptSnapshot;
+  latestAttempt: ComparisonAttemptSnapshot;
+  recurringFindingCodes: Array<{ code: string; count: number }>;
+  recurringRepairCodes: Array<{
+    code: string;
+    count: number;
+    priority: string;
+    category: string;
+    actionType: string;
+  }>;
+}
+
+interface ComparisonAttemptSnapshot {
+  attemptNumber: number;
+  status: ValidateStatus;
+  outcome: AttemptOutcome;
+  findingCount: number;
+  blockingFindingCount: number;
+  warningFindingCount: number;
+  findingCodes: string[];
+  assessment: GenerationAssessment;
+}
+
+interface GenerationSessionComparison {
+  schemaVersion: 1;
+  surfaceId: string;
+  tool: SessionTool;
+  brief: {
+    sha256: string;
+    baselinePath: string;
+    guidedPath: string;
+  };
+  baseline: SessionComparisonSnapshot;
+  guided: SessionComparisonSnapshot;
+  delta: {
+    firstAttemptVerdict: {
+      baseline: AttemptOutcome;
+      guided: AttemptOutcome;
+    };
+    firstAttemptFindingCountDelta: number;
+    firstAttemptBlockingFindingCountDelta: number;
+    firstAttemptWarningFindingCountDelta: number;
+    latestFindingCountDelta: number;
+    attemptsToAcceptableOutcome: {
+      baseline: number | null;
+      guided: number | null;
+      delta: number | null;
+    };
+    rubric: Record<AssessmentDimension, {
+      baseline: AssessmentGrade;
+      guided: AssessmentGrade;
+      delta: number;
+    }>;
+  };
+  checks: {
+    guidedFewerFirstAttemptBlockingFindings: boolean;
+    guidedReachedAcceptableNoLater: boolean;
+    guidedRubricAtLeastAsGood: boolean;
+    guidedRubricBetterDimensions: AssessmentDimension[];
+    meetsGoal: boolean;
+  };
+  paths: {
+    baselineSessionDir: string;
+    guidedSessionDir: string;
+  };
+}
+
+interface ContractDeltaSuggestion {
+  suggestionId: string;
+  findingCode: string;
+  findingMessage: string;
+  repeatedFailureCount: number;
+  confidence: number;
+  status: SuggestionStatus;
+  repair: {
+    priority: string;
+    category: string;
+    actionType: string;
+  };
+  evidenceRefs: unknown[];
+  proposedChange: {
+    path: string;
+    actionType: string;
+    summary: string;
+    valueHints: string[];
+  };
+  decision?: {
+    rationale: string;
+    decidedAt: string;
+  };
+}
+
+interface ContractDeltaSuggestionsArtifact {
+  schemaVersion: 1;
+  surfaceId: string;
+  sessionId: string;
+  tool: SessionTool;
+  guidanceMode: GuidanceMode;
+  generatedAt: string;
+  contract: {
+    path: string;
+  };
+  session: {
+    sessionPath: string;
+    summaryPath: string;
+    repairMapPath: string;
+  };
+  suggestions: ContractDeltaSuggestion[];
+}
+
+interface GenerationBenchmarkReport {
+  schemaVersion: 1;
+  generatedAt: string;
+  comparisons: Array<{
+    surfaceId: string;
+    tool: SessionTool;
+    comparisonPath: string;
+    meetsGoal: boolean;
+    guidedFewerFirstAttemptBlockingFindings: boolean;
+    guidedReachedAcceptableNoLater: boolean;
+    guidedRubricBetterDimensions: AssessmentDimension[];
+  }>;
+  suggestions: Array<{
+    surfaceId: string;
+    sessionId: string;
+    suggestionsPath: string;
+    proposedCount: number;
+    acceptedCount: number;
+    rejectedCount: number;
+  }>;
+  overall: {
+    surfaceCount: number;
+    surfacesMeetingGoal: number;
+    guidedFewerFirstAttemptBlockingFindings: number;
+    guidedReachedAcceptableNoLater: number;
+    acceptedSuggestionCount: number;
+    rejectedSuggestionCount: number;
+    proposedSuggestionCount: number;
+  };
+}
+
+interface LoadedAttempt {
+  attemptNumber: number;
+  validate: JsonRecord;
+  assessment: JsonRecord;
+  metadata: JsonRecord;
+  review: GenerationAttemptReview | null;
+  validatePath: string;
+  assessmentPath: string;
+  metadataPath: string;
+  reviewPath?: string;
+}
+
 const VALID_TOOLS = new Set<SessionTool>(["codex", "cursor"]);
 const VALID_GRADES = new Set<AssessmentGrade>(["strong", "partial", "weak"]);
+const VALID_GUIDANCE_MODES = new Set<GuidanceMode>(["prepared", "unguided"]);
+const VALID_REVIEW_STATUSES = new Set<AttemptReviewStatus>(["accepted", "rejected"]);
+const VALID_SUGGESTION_STATUSES = new Set<SuggestionStatus>(["proposed", "accepted", "rejected"]);
+const VALID_SUCCESS_RULES = new Set<SessionSuccessRule>(["pass", "pass-or-reviewed-warn"]);
+const ASSESSMENT_DIMENSIONS: AssessmentDimension[] = [
+  "structure",
+  "components",
+  "boundary",
+  "visual",
+  "responsiveness",
+];
 
 class SessionInputError extends Error {
   code: string;
@@ -148,12 +387,59 @@ function writeError(error: SessionInputError | AdapterInputError | Error, code: 
   );
 }
 
+function asRecord(value: unknown): JsonRecord {
+  return isRecord(value) ? value : {};
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(
+    value
+      .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+      .filter(Boolean),
+  )].sort((left, right) => left.localeCompare(right));
+}
+
+function sameStringSet(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function countBySeverity(validatePayload: JsonRecord) {
+  const findings = Array.isArray(validatePayload.findings) ? validatePayload.findings : [];
+  let errors = 0;
+  let warnings = 0;
+  for (const finding of findings) {
+    if (!finding || typeof finding !== "object") continue;
+    const severity = (finding as Record<string, unknown>).severity;
+    if (severity === "error") {
+      errors += 1;
+    } else if (severity === "warning") {
+      warnings += 1;
+    }
+  }
+  return { errors, warnings, total: errors + warnings };
+}
+
 function ensureSessionTool(tool?: string): SessionTool {
   const normalized = typeof tool === "string" ? tool.trim().toLowerCase() : "codex";
   if (!VALID_TOOLS.has(normalized as SessionTool)) {
     throw new SessionInputError(`Invalid --tool value "${tool ?? ""}". Expected codex|cursor.`);
   }
   return normalized as SessionTool;
+}
+
+function ensureGuidanceMode(guidanceMode?: string): GuidanceMode {
+  const normalized = typeof guidanceMode === "string" ? guidanceMode.trim().toLowerCase() : "prepared";
+  if (!VALID_GUIDANCE_MODES.has(normalized as GuidanceMode)) {
+    throw new SessionInputError(
+      `Invalid --guidance-mode value "${guidanceMode ?? ""}". Expected prepared|unguided.`,
+    );
+  }
+  return normalized as GuidanceMode;
 }
 
 function buildDefaultSessionId(): string {
@@ -176,12 +462,32 @@ function getSessionPaths(sessionDir: string) {
     attemptsDir: path.join(sessionDir, "attempts"),
     summaryJsonPath: path.join(sessionDir, "summary.json"),
     summaryMarkdownPath: path.join(sessionDir, "summary.md"),
+    suggestionsJsonPath: path.join(sessionDir, "contract-delta-suggestions.json"),
+    suggestionsMarkdownPath: path.join(sessionDir, "contract-delta-suggestions.md"),
   };
 }
 
-function normalizeAssessment(payload: JsonRecord, filePath: string): GenerationAssessment {
-  const grade = (key: keyof Pick<GenerationAssessment, "structure" | "visual" | "responsiveness">) => {
-    const value = payload[key];
+function getAttemptPaths(attemptsDir: string, attemptNumber: number) {
+  const attemptId = formatAttemptNumber(attemptNumber);
+  return {
+    validatePath: path.join(attemptsDir, `${attemptId}.validate.json`),
+    assessmentPath: path.join(attemptsDir, `${attemptId}.assessment.json`),
+    metadataPath: path.join(attemptsDir, `${attemptId}.metadata.json`),
+    reviewPath: path.join(attemptsDir, `${attemptId}.review.json`),
+  };
+}
+
+function normalizeAssessment(
+  payload: JsonRecord,
+  filePath: string,
+  options: { allowLegacyMissing?: boolean } = {},
+): GenerationAssessment {
+  const structureFallback = payload.structure;
+  const grade = (key: AssessmentDimension) => {
+    let value = payload[key];
+    if (value === undefined && options.allowLegacyMissing && (key === "components" || key === "boundary")) {
+      value = structureFallback;
+    }
     if (!VALID_GRADES.has(value as AssessmentGrade)) {
       throw new SessionInputError(
         `Assessment field "${key}" must be one of strong|partial|weak: ${filePath}.`,
@@ -209,6 +515,8 @@ function normalizeAssessment(payload: JsonRecord, filePath: string): GenerationA
 
   return {
     structure: grade("structure"),
+    components: grade("components"),
+    boundary: grade("boundary"),
     visual: grade("visual"),
     responsiveness: grade("responsiveness"),
     notes,
@@ -224,6 +532,70 @@ function loadAssessment(assessmentPath: string): GenerationAssessment {
   return normalizeAssessment(readJsonFile<JsonRecord>(resolvedPath, "generation assessment"), resolvedPath);
 }
 
+function loadStoredAttemptReview(reviewPath: string): GenerationAttemptReview | null {
+  if (!fs.existsSync(reviewPath)) {
+    return null;
+  }
+  const payload = readJsonFile<JsonRecord>(reviewPath, "generation attempt review");
+  const status = payload.status;
+  if (!VALID_REVIEW_STATUSES.has(status as AttemptReviewStatus)) {
+    throw new SessionInputError(`Unsupported review status in ${reviewPath}.`);
+  }
+  const rationale = typeof payload.rationale === "string" ? payload.rationale.trim() : "";
+  if (!rationale) {
+    throw new SessionInputError(`Review rationale must be a non-empty string: ${reviewPath}.`);
+  }
+  return {
+    schemaVersion: 1,
+    surfaceId: asString(payload.surfaceId) ?? "",
+    sessionId: asString(payload.sessionId) ?? "",
+    attemptNumber: Number(payload.attemptNumber),
+    status: status as AttemptReviewStatus,
+    findingCodes: asStringArray(payload.findingCodes),
+    rationale,
+    reviewedAt: asString(payload.reviewedAt) ?? "",
+  };
+}
+
+function normalizeReviewInput(
+  payload: JsonRecord,
+  filePath: string,
+  findingCodes: string[],
+): Omit<GenerationAttemptReview, "schemaVersion" | "surfaceId" | "sessionId" | "attemptNumber" | "reviewedAt"> {
+  const status = payload.status;
+  if (!VALID_REVIEW_STATUSES.has(status as AttemptReviewStatus)) {
+    throw new SessionInputError(
+      `Review field "status" must be accepted|rejected: ${filePath}.`,
+    );
+  }
+
+  const rationale = typeof payload.rationale === "string" ? payload.rationale.trim() : "";
+  if (!rationale) {
+    throw new SessionInputError(`Review field "rationale" must be a non-empty string: ${filePath}.`);
+  }
+
+  const reviewedCodes = asStringArray(payload.findingCodes);
+  if (reviewedCodes.length === 0) {
+    throw new SessionInputError(`Review field "findingCodes" must list the reviewed findings: ${filePath}.`);
+  }
+  for (const code of reviewedCodes) {
+    if (!findingCodes.includes(code)) {
+      throw new SessionInputError(`Review field "findingCodes" includes unknown finding code "${code}": ${filePath}.`);
+    }
+  }
+  if (status === "accepted" && !sameStringSet(reviewedCodes, findingCodes)) {
+    throw new SessionInputError(
+      `Accepted warn reviews must cover every remaining finding code: ${filePath}.`,
+    );
+  }
+
+  return {
+    status: status as AttemptReviewStatus,
+    findingCodes: reviewedCodes,
+    rationale,
+  };
+}
+
 function loadSession(sessionDirInput: string): { session: GenerationSession; paths: ReturnType<typeof getSessionPaths> } {
   const sessionDir = path.resolve(sessionDirInput);
   const paths = getSessionPaths(sessionDir);
@@ -231,12 +603,44 @@ function loadSession(sessionDirInput: string): { session: GenerationSession; pat
     throw new SessionInputError(`Generation session not found at ${paths.sessionPath}.`);
   }
 
-  const session = readJsonFile(paths.sessionPath, "generation session") as unknown as GenerationSession;
-  if (session.schemaVersion !== 1) {
-    throw new SessionInputError(`Unsupported generation session schemaVersion "${String((session as unknown as JsonRecord).schemaVersion ?? "unknown")}".`);
+  const payload = readJsonFile<JsonRecord>(paths.sessionPath, "generation session");
+  const schemaVersion = Number(payload.schemaVersion ?? 1);
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
+    throw new SessionInputError(`Unsupported generation session schemaVersion "${String(payload.schemaVersion ?? "unknown")}".`);
   }
-  if (!VALID_TOOLS.has(session.tool)) {
-    throw new SessionInputError(`Unsupported session tool "${session.tool}".`);
+
+  const tool = ensureSessionTool(asString(payload.tool));
+  const guidanceMode = ensureGuidanceMode(asString(payload.guidanceMode) ?? "prepared");
+  const finalStatus = asString(asRecord(payload.successRule).finalStatus) ?? "pass";
+  if (!VALID_SUCCESS_RULES.has(finalStatus as SessionSuccessRule)) {
+    throw new SessionInputError(`Unsupported session successRule.finalStatus "${finalStatus}".`);
+  }
+
+  const briefRecord = asRecord(payload.brief);
+  const briefPath = asString(briefRecord.path);
+  const briefSha256 = asString(briefRecord.sha256);
+  const session: GenerationSession = {
+    schemaVersion: 2,
+    surfaceId: asString(payload.surfaceId) ?? "",
+    sessionId: asString(payload.sessionId) ?? "",
+    tool,
+    guidanceMode,
+    workspaceRoot: asString(payload.workspaceRoot) ?? "",
+    sourceBundleRoot: asString(payload.sourceBundleRoot) ?? "",
+    sessionDir: asString(payload.sessionDir) ?? sessionDir,
+    bundleRoot: asString(payload.bundleRoot) ?? "",
+    preparedInputPath: typeof payload.preparedInputPath === "string" ? payload.preparedInputPath : null,
+    contractPath: asString(payload.contractPath) ?? "",
+    repairMapPath: asString(payload.repairMapPath) ?? "",
+    startedAt: asString(payload.startedAt) ?? "",
+    ...(briefPath && briefSha256 ? { brief: { path: briefPath, sha256: briefSha256 } } : {}),
+    successRule: {
+      finalStatus: finalStatus as SessionSuccessRule,
+    },
+  };
+
+  if (!session.surfaceId || !session.sessionId || !session.workspaceRoot || !session.bundleRoot || !session.contractPath || !session.repairMapPath || !session.startedAt) {
+    throw new SessionInputError(`Generation session is missing required fields: ${paths.sessionPath}.`);
   }
 
   return {
@@ -258,6 +662,7 @@ function nextAttemptNumber(attemptsDir: string): number {
   if (seen.length === 0) {
     return 1;
   }
+
   return Math.max(...seen) + 1;
 }
 
@@ -307,9 +712,12 @@ function renderSummaryMarkdown(summary: GenerationSessionSummary): string {
     `Surface: ${summary.surfaceId}`,
     `Session: ${summary.sessionId}`,
     `Tool: ${summary.tool}`,
+    `Guidance mode: ${summary.guidanceMode}`,
     `Latest status: ${summary.latestStatus}`,
+    `Latest outcome: ${summary.latestOutcome}`,
     `Attempts: ${summary.attemptCount}`,
     `First pass attempt: ${summary.firstPassAttempt ?? "not yet reached"}`,
+    `First acceptable attempt: ${summary.firstAcceptableAttempt ?? "not yet reached"}`,
     "",
     "## Recurring finding codes",
   ];
@@ -333,6 +741,8 @@ function renderSummaryMarkdown(summary: GenerationSessionSummary): string {
 
   lines.push("", "## Latest assessment");
   lines.push(`- structure: ${summary.latestAssessment?.structure ?? "n/a"}`);
+  lines.push(`- components: ${summary.latestAssessment?.components ?? "n/a"}`);
+  lines.push(`- boundary: ${summary.latestAssessment?.boundary ?? "n/a"}`);
   lines.push(`- visual: ${summary.latestAssessment?.visual ?? "n/a"}`);
   lines.push(`- responsiveness: ${summary.latestAssessment?.responsiveness ?? "n/a"}`);
   lines.push(`- notes: ${summary.latestAssessment?.notes ?? "n/a"}`);
@@ -340,8 +750,708 @@ function renderSummaryMarkdown(summary: GenerationSessionSummary): string {
   if (summary.latestAssessment?.touchedFiles?.length) {
     lines.push(`- touched files: ${summary.latestAssessment.touchedFiles.join(", ")}`);
   }
+  if (summary.latestReview) {
+    lines.push(`- latest review: ${summary.latestReview.status} (${summary.latestReview.findingCodes.join(", ")})`);
+    lines.push(`- review rationale: ${summary.latestReview.rationale}`);
+  }
 
   return `${lines.join("\n")}\n`;
+}
+
+function getSuccessOutcome(
+  status: ValidateStatus,
+  review: GenerationAttemptReview | null,
+  findingCodes: string[],
+  successRule: SessionSuccessRule,
+): AttemptOutcome {
+  if (status === "pass") {
+    return "pass";
+  }
+  if (
+    status === "warn" &&
+    successRule === "pass-or-reviewed-warn" &&
+    review &&
+    review.status === "accepted" &&
+    sameStringSet(review.findingCodes, findingCodes)
+  ) {
+    return "accepted-warn";
+  }
+  return status;
+}
+
+function loadAttemptRecords(paths: ReturnType<typeof getSessionPaths>): LoadedAttempt[] {
+  if (!fs.existsSync(paths.attemptsDir)) {
+    return [];
+  }
+
+  const attemptNumbers = fs.readdirSync(paths.attemptsDir)
+    .map((entry) => /^(\d{3})\.metadata\.json$/.exec(entry))
+    .filter((match): match is RegExpExecArray => Boolean(match))
+    .map((match) => Number.parseInt(match[1], 10))
+    .sort((left, right) => left - right);
+
+  return attemptNumbers.map((attemptNumber) => {
+    const attemptPaths = getAttemptPaths(paths.attemptsDir, attemptNumber);
+    const review = loadStoredAttemptReview(attemptPaths.reviewPath);
+    return {
+      attemptNumber,
+      validate: readJsonFile<JsonRecord>(attemptPaths.validatePath, `attempt ${attemptNumber} validate payload`),
+      assessment: readJsonFile<JsonRecord>(attemptPaths.assessmentPath, `attempt ${attemptNumber} assessment`),
+      metadata: readJsonFile<JsonRecord>(attemptPaths.metadataPath, `attempt ${attemptNumber} metadata`),
+      review,
+      validatePath: attemptPaths.validatePath,
+      assessmentPath: attemptPaths.assessmentPath,
+      metadataPath: attemptPaths.metadataPath,
+      ...(review ? { reviewPath: attemptPaths.reviewPath } : {}),
+    };
+  });
+}
+
+function buildGenerationSessionSummary(sessionDirInput: string) {
+  const { session, paths } = loadSession(sessionDirInput);
+  const attempts = loadAttemptRecords(paths);
+  if (attempts.length === 0) {
+    throw new SessionInputError(`No attempts recorded for session ${session.sessionId}.`);
+  }
+
+  const firstPassAttempt = attempts.find((attempt) => attempt.validate.status === "pass")?.attemptNumber ?? null;
+  const firstAcceptableAttempt = attempts.find((attempt) => {
+    const status = attempt.validate.status;
+    if (status !== "pass" && status !== "warn" && status !== "block") {
+      throw new SessionInputError(`Unsupported validate status "${String(status)}" in ${attempt.validatePath}.`);
+    }
+    const outcome = getSuccessOutcome(status, attempt.review, parseFindingCodes(attempt.validate), session.successRule.finalStatus);
+    return outcome === "pass" || outcome === "accepted-warn";
+  })?.attemptNumber ?? null;
+
+  const latestAttempt = attempts[attempts.length - 1];
+  const recurringFindingCodes = buildRecurringCounts(
+    attempts.flatMap((attempt) => parseFindingCodes(attempt.validate)),
+  );
+  const repairMapDoc = readJsonFile<JsonRecord>(session.repairMapPath, "repair map");
+  const repairs = Array.isArray(repairMapDoc.repairs) ? repairMapDoc.repairs : [];
+  const repairMapByCode = new Map(
+    repairs
+      .filter((entry): entry is JsonRecord => Boolean(entry) && typeof entry === "object")
+      .map((entry) => [typeof entry.code === "string" ? entry.code : "", entry] as const)
+      .filter(([code]) => Boolean(code)),
+  );
+  const recurringRepairCodes = recurringFindingCodes
+    .map((entry) => {
+      const repair = repairMapByCode.get(entry.code);
+      if (!repair) return undefined;
+      const action = repair.action && typeof repair.action === "object"
+        ? (repair.action as Record<string, unknown>)
+        : {};
+      return {
+        code: entry.code,
+        count: entry.count,
+        priority: typeof repair.priority === "string" ? repair.priority : "medium",
+        category: typeof repair.category === "string" ? repair.category : "unknown",
+        actionType: typeof action.type === "string" ? action.type : "unknown",
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+    .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
+
+  const latestAssessment = normalizeAssessment(latestAttempt.assessment, latestAttempt.assessmentPath, {
+    allowLegacyMissing: true,
+  });
+  const latestStatus = latestAttempt.validate.status;
+  if (latestStatus !== "pass" && latestStatus !== "warn" && latestStatus !== "block") {
+    throw new SessionInputError(`Unsupported validate status "${String(latestStatus)}" in ${latestAttempt.validatePath}.`);
+  }
+  const latestOutcome = getSuccessOutcome(
+    latestStatus,
+    latestAttempt.review,
+    parseFindingCodes(latestAttempt.validate),
+    session.successRule.finalStatus,
+  );
+
+  const summary: GenerationSessionSummary = {
+    schemaVersion: 2,
+    surfaceId: session.surfaceId,
+    sessionId: session.sessionId,
+    tool: session.tool,
+    guidanceMode: session.guidanceMode,
+    attemptCount: attempts.length,
+    firstPassAttempt,
+    firstAcceptableAttempt,
+    latestStatus,
+    latestOutcome,
+    recurringFindingCodes,
+    recurringRepairCodes,
+    latestAssessment,
+    latestReview: latestAttempt.review,
+    ...(session.brief ? { brief: session.brief } : {}),
+    successRule: session.successRule,
+    paths: {
+      sessionPath: paths.sessionPath,
+      bundleRoot: session.bundleRoot,
+      preparedInputPath: session.preparedInputPath,
+    },
+    attempts: attempts.map((attempt) => {
+      const status = attempt.validate.status;
+      if (status !== "pass" && status !== "warn" && status !== "block") {
+        throw new SessionInputError(`Unsupported validate status "${String(status)}" in ${attempt.validatePath}.`);
+      }
+      const findingCodes = parseFindingCodes(attempt.validate);
+      return {
+        attemptNumber: attempt.attemptNumber,
+        status,
+        outcome: getSuccessOutcome(status, attempt.review, findingCodes, session.successRule.finalStatus),
+        findingCodes,
+        validatePath: attempt.validatePath,
+        assessmentPath: attempt.assessmentPath,
+        metadataPath: attempt.metadataPath,
+        ...(attempt.reviewPath ? { reviewPath: attempt.reviewPath } : {}),
+        ...(attempt.review ? { reviewStatus: attempt.review.status } : {}),
+        createdAt: typeof attempt.metadata.createdAt === "string" ? attempt.metadata.createdAt : undefined,
+      };
+    }),
+  };
+
+  return {
+    session,
+    paths,
+    attempts,
+    summary,
+  };
+}
+
+function toComparisonAttemptSnapshot(
+  attempt: LoadedAttempt,
+  successRule: SessionSuccessRule,
+): ComparisonAttemptSnapshot {
+  const status = attempt.validate.status;
+  if (status !== "pass" && status !== "warn" && status !== "block") {
+    throw new SessionInputError(`Unsupported validate status "${String(status)}" in ${attempt.validatePath}.`);
+  }
+  const findingCodes = parseFindingCodes(attempt.validate);
+  const counts = countBySeverity(attempt.validate);
+  return {
+    attemptNumber: attempt.attemptNumber,
+    status,
+    outcome: getSuccessOutcome(status, attempt.review, findingCodes, successRule),
+    findingCount: counts.total,
+    blockingFindingCount: counts.errors,
+    warningFindingCount: counts.warnings,
+    findingCodes,
+    assessment: normalizeAssessment(attempt.assessment, attempt.assessmentPath, { allowLegacyMissing: true }),
+  };
+}
+
+function gradeToScore(grade: AssessmentGrade): number {
+  switch (grade) {
+    case "weak":
+      return 0;
+    case "partial":
+      return 1;
+    case "strong":
+      return 2;
+  }
+}
+
+function getRepairPriorityRank(priority: string): number {
+  switch (priority) {
+    case "high":
+      return 0;
+    case "medium":
+      return 1;
+    case "low":
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+function renderComparisonMarkdown(comparison: GenerationSessionComparison): string {
+  const lines = [
+    "# Generation Session Comparison",
+    "",
+    `Surface: ${comparison.surfaceId}`,
+    `Tool: ${comparison.tool}`,
+    `Baseline session: ${comparison.baseline.sessionId}`,
+    `Guided session: ${comparison.guided.sessionId}`,
+    `Meets goal: ${comparison.checks.meetsGoal ? "yes" : "no"}`,
+    "",
+    "## First attempt",
+    `- baseline outcome: ${comparison.baseline.firstAttempt.outcome}`,
+    `- guided outcome: ${comparison.guided.firstAttempt.outcome}`,
+    `- blocking finding delta: ${comparison.delta.firstAttemptBlockingFindingCountDelta}`,
+    `- warning finding delta: ${comparison.delta.firstAttemptWarningFindingCountDelta}`,
+    "",
+    "## Convergence",
+    `- baseline first acceptable attempt: ${comparison.baseline.firstAcceptableAttempt ?? "not reached"}`,
+    `- guided first acceptable attempt: ${comparison.guided.firstAcceptableAttempt ?? "not reached"}`,
+    `- attempts-to-acceptable delta: ${comparison.delta.attemptsToAcceptableOutcome.delta ?? "n/a"}`,
+    "",
+    "## Rubric delta",
+  ];
+
+  for (const dimension of ASSESSMENT_DIMENSIONS) {
+    const rubric = comparison.delta.rubric[dimension];
+    lines.push(`- ${dimension}: ${rubric.baseline} -> ${rubric.guided} (${rubric.delta})`);
+  }
+
+  if (comparison.checks.guidedRubricBetterDimensions.length > 0) {
+    lines.push(
+      "",
+      `Guided improved dimensions: ${comparison.checks.guidedRubricBetterDimensions.join(", ")}`,
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function renderSuggestionsMarkdown(artifact: ContractDeltaSuggestionsArtifact): string {
+  const lines = [
+    "# Contract Delta Suggestions",
+    "",
+    `Surface: ${artifact.surfaceId}`,
+    `Session: ${artifact.sessionId}`,
+    `Tool: ${artifact.tool}`,
+    `Guidance mode: ${artifact.guidanceMode}`,
+    "",
+  ];
+
+  if (artifact.suggestions.length === 0) {
+    lines.push("No suggestions.");
+    return `${lines.join("\n")}\n`;
+  }
+
+  for (const suggestion of artifact.suggestions) {
+    lines.push(`## ${suggestion.suggestionId}`);
+    lines.push(`- finding: ${suggestion.findingCode}`);
+    lines.push(`- status: ${suggestion.status}`);
+    lines.push(`- repeated failures: ${suggestion.repeatedFailureCount}`);
+    lines.push(`- confidence: ${suggestion.confidence}`);
+    lines.push(`- contract path: ${suggestion.proposedChange.path}`);
+    lines.push(`- action: ${suggestion.proposedChange.actionType}`);
+    lines.push(`- summary: ${suggestion.proposedChange.summary}`);
+    if (suggestion.decision) {
+      lines.push(`- rationale: ${suggestion.decision.rationale}`);
+    }
+    lines.push("");
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport): string {
+  const lines = [
+    "# Generation Benchmark Report",
+    "",
+    `Generated at: ${report.generatedAt}`,
+    `Surfaces: ${report.overall.surfaceCount}`,
+    `Surfaces meeting goal: ${report.overall.surfacesMeetingGoal}`,
+    `Guided fewer first-attempt blocking findings: ${report.overall.guidedFewerFirstAttemptBlockingFindings}`,
+    `Guided reached acceptable no later: ${report.overall.guidedReachedAcceptableNoLater}`,
+    "",
+    "## Comparisons",
+  ];
+
+  for (const comparison of report.comparisons) {
+    lines.push(
+      `- ${comparison.surfaceId}: meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`,
+    );
+  }
+
+  lines.push("", "## Suggestion decisions");
+  for (const suggestion of report.suggestions) {
+    lines.push(
+      `- ${suggestion.surfaceId}: proposed=${suggestion.proposedCount}, accepted=${suggestion.acceptedCount}, rejected=${suggestion.rejectedCount}`,
+    );
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function freezeBriefFile(sessionDir: string, briefFile: string): GenerationBrief {
+  const sourcePath = path.resolve(briefFile);
+  if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+    throw new SessionInputError(`Brief file not found at ${sourcePath}.`);
+  }
+  const extension = path.extname(sourcePath) || ".txt";
+  const destinationPath = path.join(sessionDir, `task-brief${extension}`);
+  const content = fs.readFileSync(sourcePath);
+  fs.writeFileSync(destinationPath, content);
+  return {
+    path: destinationPath,
+    sha256: crypto.createHash("sha256").update(content).digest("hex"),
+  };
+}
+
+function defaultComparisonDir(baseline: GenerationSession, guided: GenerationSession): string {
+  return path.join(
+    baseline.workspaceRoot,
+    "artifacts",
+    "generation-benchmarks",
+    baseline.surfaceId,
+    `${baseline.sessionId}--vs--${guided.sessionId}`,
+  );
+}
+
+function defaultBenchmarkReportDir(comparisonPaths: string[]): string {
+  const firstPath = comparisonPaths[0];
+  return path.join(
+    path.dirname(path.dirname(firstPath)),
+    "report",
+  );
+}
+
+function parseCsvPaths(value?: string): string[] {
+  if (!value) return [];
+  return [...new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => path.resolve(entry)),
+  )];
+}
+
+function buildComparisonArtifact(
+  baselineSessionDir: string,
+  guidedSessionDir: string,
+): GenerationSessionComparison {
+  const baselineBuilt = buildGenerationSessionSummary(baselineSessionDir);
+  const guidedBuilt = buildGenerationSessionSummary(guidedSessionDir);
+
+  if (baselineBuilt.session.surfaceId !== guidedBuilt.session.surfaceId) {
+    throw new SessionInputError("Baseline and guided sessions must target the same surface.");
+  }
+  if (baselineBuilt.session.tool !== guidedBuilt.session.tool) {
+    throw new SessionInputError("Baseline and guided sessions must use the same tool.");
+  }
+  if (baselineBuilt.session.guidanceMode !== "unguided") {
+    throw new SessionInputError("Baseline session must use guidanceMode=unguided.");
+  }
+  if (guidedBuilt.session.guidanceMode !== "prepared") {
+    throw new SessionInputError("Guided session must use guidanceMode=prepared.");
+  }
+  if (!baselineBuilt.session.brief || !guidedBuilt.session.brief) {
+    throw new SessionInputError("Both sessions must freeze the same implementation brief before comparison.");
+  }
+  if (baselineBuilt.session.brief.sha256 !== guidedBuilt.session.brief.sha256) {
+    throw new SessionInputError("Baseline and guided sessions must use the same implementation brief.");
+  }
+
+  const baselineFirstAttempt = toComparisonAttemptSnapshot(
+    baselineBuilt.attempts[0],
+    baselineBuilt.session.successRule.finalStatus,
+  );
+  const guidedFirstAttempt = toComparisonAttemptSnapshot(
+    guidedBuilt.attempts[0],
+    guidedBuilt.session.successRule.finalStatus,
+  );
+  const baselineLatestAttempt = toComparisonAttemptSnapshot(
+    baselineBuilt.attempts[baselineBuilt.attempts.length - 1],
+    baselineBuilt.session.successRule.finalStatus,
+  );
+  const guidedLatestAttempt = toComparisonAttemptSnapshot(
+    guidedBuilt.attempts[guidedBuilt.attempts.length - 1],
+    guidedBuilt.session.successRule.finalStatus,
+  );
+
+  const rubric = Object.fromEntries(
+    ASSESSMENT_DIMENSIONS.map((dimension) => {
+      const baseline = baselineLatestAttempt.assessment[dimension];
+      const guided = guidedLatestAttempt.assessment[dimension];
+      return [
+        dimension,
+        {
+          baseline,
+          guided,
+          delta: gradeToScore(guided) - gradeToScore(baseline),
+        },
+      ];
+    }),
+  ) as GenerationSessionComparison["delta"]["rubric"];
+
+  const guidedRubricBetterDimensions = ASSESSMENT_DIMENSIONS.filter(
+    (dimension) => rubric[dimension].delta > 0,
+  );
+  const guidedRubricAtLeastAsGood = ASSESSMENT_DIMENSIONS.every(
+    (dimension) => rubric[dimension].delta >= 0,
+  );
+  const guidedReachedAcceptableNoLater = baselineBuilt.summary.firstAcceptableAttempt === null
+    ? guidedBuilt.summary.firstAcceptableAttempt !== null
+    : guidedBuilt.summary.firstAcceptableAttempt !== null &&
+      guidedBuilt.summary.firstAcceptableAttempt <= baselineBuilt.summary.firstAcceptableAttempt;
+  const guidedFewerFirstAttemptBlockingFindings =
+    guidedFirstAttempt.blockingFindingCount < baselineFirstAttempt.blockingFindingCount;
+
+  return {
+    schemaVersion: 1,
+    surfaceId: baselineBuilt.session.surfaceId,
+    tool: baselineBuilt.session.tool,
+    brief: {
+      sha256: baselineBuilt.session.brief.sha256,
+      baselinePath: baselineBuilt.session.brief.path,
+      guidedPath: guidedBuilt.session.brief.path,
+    },
+    baseline: {
+      sessionId: baselineBuilt.session.sessionId,
+      sessionDir: baselineBuilt.session.sessionDir,
+      guidanceMode: baselineBuilt.session.guidanceMode,
+      attemptCount: baselineBuilt.summary.attemptCount,
+      firstAcceptableAttempt: baselineBuilt.summary.firstAcceptableAttempt,
+      latestOutcome: baselineBuilt.summary.latestOutcome,
+      firstAttempt: baselineFirstAttempt,
+      latestAttempt: baselineLatestAttempt,
+      recurringFindingCodes: baselineBuilt.summary.recurringFindingCodes,
+      recurringRepairCodes: baselineBuilt.summary.recurringRepairCodes,
+    },
+    guided: {
+      sessionId: guidedBuilt.session.sessionId,
+      sessionDir: guidedBuilt.session.sessionDir,
+      guidanceMode: guidedBuilt.session.guidanceMode,
+      attemptCount: guidedBuilt.summary.attemptCount,
+      firstAcceptableAttempt: guidedBuilt.summary.firstAcceptableAttempt,
+      latestOutcome: guidedBuilt.summary.latestOutcome,
+      firstAttempt: guidedFirstAttempt,
+      latestAttempt: guidedLatestAttempt,
+      recurringFindingCodes: guidedBuilt.summary.recurringFindingCodes,
+      recurringRepairCodes: guidedBuilt.summary.recurringRepairCodes,
+    },
+    delta: {
+      firstAttemptVerdict: {
+        baseline: baselineFirstAttempt.outcome,
+        guided: guidedFirstAttempt.outcome,
+      },
+      firstAttemptFindingCountDelta: guidedFirstAttempt.findingCount - baselineFirstAttempt.findingCount,
+      firstAttemptBlockingFindingCountDelta:
+        guidedFirstAttempt.blockingFindingCount - baselineFirstAttempt.blockingFindingCount,
+      firstAttemptWarningFindingCountDelta:
+        guidedFirstAttempt.warningFindingCount - baselineFirstAttempt.warningFindingCount,
+      latestFindingCountDelta: guidedLatestAttempt.findingCount - baselineLatestAttempt.findingCount,
+      attemptsToAcceptableOutcome: {
+        baseline: baselineBuilt.summary.firstAcceptableAttempt,
+        guided: guidedBuilt.summary.firstAcceptableAttempt,
+        delta:
+          baselineBuilt.summary.firstAcceptableAttempt !== null &&
+          guidedBuilt.summary.firstAcceptableAttempt !== null
+            ? guidedBuilt.summary.firstAcceptableAttempt - baselineBuilt.summary.firstAcceptableAttempt
+            : null,
+      },
+      rubric,
+    },
+    checks: {
+      guidedFewerFirstAttemptBlockingFindings,
+      guidedReachedAcceptableNoLater,
+      guidedRubricAtLeastAsGood,
+      guidedRubricBetterDimensions,
+      meetsGoal:
+        guidedFewerFirstAttemptBlockingFindings &&
+        guidedReachedAcceptableNoLater &&
+        guidedRubricAtLeastAsGood &&
+        guidedRubricBetterDimensions.length >= 2,
+    },
+    paths: {
+      baselineSessionDir: baselineBuilt.session.sessionDir,
+      guidedSessionDir: guidedBuilt.session.sessionDir,
+    },
+  };
+}
+
+function inferContractPath(surfaceId: string, findingCode: string, repair?: JsonRecord): string {
+  const actionType = asString(asRecord(repair?.action).type) ?? "";
+  switch (actionType) {
+    case "ensure-required-sections":
+    case "restrict-section-set":
+    case "restore-top-level-sections":
+    case "restore-section-order":
+      return `surfaces[id=${surfaceId}].requiredSections`;
+    case "restrict-fonts":
+    case "restore-marketing-typography-profile":
+      return `surfaces[id=${surfaceId}].allowedFonts`;
+    case "restrict-colors":
+      return "color.allowedValues";
+    case "restrict-icon-sources":
+      return "icons.allowedSources";
+    case "restrict-motion-durations":
+      return "constraints.motion.allowedDurationsMs";
+    case "restrict-motion-timing":
+      return "constraints.motion.allowedTimingFunctions";
+    case "reduce-content-width":
+    case "ensure-required-containers":
+    case "align-page-frame":
+    case "restore-page-background-mode":
+    case "restore-landing-pattern-signals":
+      return `surfaces[id=${surfaceId}].layout`;
+    case "restore-required-flows":
+    case "restore-required-flow-steps":
+    case "restore-required-transitions":
+      return `surfaces[id=${surfaceId}].flows`;
+    case "remove-prohibited-primitives":
+      return `surfaces[id=${surfaceId}].shell`;
+    default:
+      if (findingCode.startsWith("section.")) return `surfaces[id=${surfaceId}].requiredSections`;
+      if (findingCode.startsWith("layout.") || findingCode.startsWith("landing.")) return `surfaces[id=${surfaceId}].layout`;
+      if (findingCode.startsWith("font.")) return `surfaces[id=${surfaceId}].allowedFonts`;
+      if (findingCode.startsWith("color.")) return "color.allowedValues";
+      if (findingCode.startsWith("icon.")) return "icons.allowedSources";
+      if (findingCode.startsWith("motion.")) return "constraints.motion";
+      if (findingCode.startsWith("flow.")) return `surfaces[id=${surfaceId}].flows`;
+      return `surfaces[id=${surfaceId}]`;
+  }
+}
+
+function getSuggestionConfidence(
+  repeatedFailureCount: number,
+  repairPriority: string,
+  evidenceRefs: unknown[],
+  contractPath: string,
+): number {
+  let confidence = 0.45;
+  if (repeatedFailureCount > 1) confidence += 0.2;
+  if (repairPriority === "high") confidence += 0.15;
+  if (repairPriority === "medium") confidence += 0.05;
+  if (evidenceRefs.length > 0) confidence += 0.1;
+  if (contractPath === "surfaces[id=unknown]") confidence -= 0.15;
+  return Math.max(0.1, Math.min(0.95, Math.round(confidence * 100) / 100));
+}
+
+function getSuggestionSortKey(left: ContractDeltaSuggestion, right: ContractDeltaSuggestion): number {
+  return (
+    right.repeatedFailureCount - left.repeatedFailureCount ||
+    getRepairPriorityRank(left.repair.priority) - getRepairPriorityRank(right.repair.priority) ||
+    left.findingCode.localeCompare(right.findingCode)
+  );
+}
+
+function buildSuggestionArtifact(sessionDir: string): ContractDeltaSuggestionsArtifact {
+  const built = buildGenerationSessionSummary(sessionDir);
+  if (built.session.guidanceMode !== "prepared") {
+    throw new SessionInputError("Contract delta suggestions require a guided prepared session.");
+  }
+
+  const repairMapDoc = readJsonFile<JsonRecord>(built.session.repairMapPath, "repair map");
+  const repairs = Array.isArray(repairMapDoc.repairs) ? repairMapDoc.repairs : [];
+  const repairMapByCode = new Map(
+    repairs
+      .filter((entry): entry is JsonRecord => isRecord(entry))
+      .map((entry) => [asString(entry.code) ?? "", entry] as const)
+      .filter(([code]) => Boolean(code)),
+  );
+  const recurringCounts = new Map(
+    built.summary.recurringFindingCodes.map((entry) => [entry.code, entry.count] as const),
+  );
+
+  const latestAttempt = built.attempts[built.attempts.length - 1];
+  const latestFindings = Array.isArray(latestAttempt.validate.findings) ? latestAttempt.validate.findings : [];
+  const latestFindingByCode = new Map<string, JsonRecord>();
+  for (const finding of latestFindings) {
+    if (!finding || typeof finding !== "object") continue;
+    const entry = finding as JsonRecord;
+    const code = asString(entry.code);
+    if (!code) continue;
+    latestFindingByCode.set(code, entry);
+  }
+
+  const allCodes = [...new Set(
+    built.attempts.flatMap((attempt) => parseFindingCodes(attempt.validate)),
+  )].sort((left, right) => left.localeCompare(right));
+
+  const suggestions = allCodes.map((code) => {
+    const repair = repairMapByCode.get(code);
+    const latestFinding = latestFindingByCode.get(code);
+    const action = asRecord(repair?.action);
+    const repairPriority = asString(repair?.priority) ?? "medium";
+    const repairCategory = asString(repair?.category) ?? "unknown";
+    const actionType = asString(action.type) ?? "review-contract";
+    const evidence = latestFinding?.evidence;
+    const evidenceRefs = isRecord(evidence) && Object.keys(evidence).length > 0 ? [evidence] : [];
+    const contractPath = inferContractPath(built.session.surfaceId, code, repair);
+    const valueHints = [
+      ...(Array.isArray(action.sectionIds) ? action.sectionIds.filter((entry) => typeof entry === "string") as string[] : []),
+      ...(Array.isArray(action.sectionOrder) ? action.sectionOrder.filter((entry) => typeof entry === "string") as string[] : []),
+      ...(Array.isArray(action.allowedValues) ? action.allowedValues.filter((entry) => typeof entry === "string") as string[] : []),
+      ...(Array.isArray(action.allowedSources) ? action.allowedSources.filter((entry) => typeof entry === "string") as string[] : []),
+      ...(Array.isArray(action.requiredContainers) ? action.requiredContainers.filter((entry) => typeof entry === "string") as string[] : []),
+    ].slice(0, 6);
+    const repeatedFailureCount = recurringCounts.get(code) ?? 1;
+
+    return {
+      suggestionId: `suggestion:${code}`,
+      findingCode: code,
+      findingMessage: asString(latestFinding?.message) ?? `Review contract coverage for ${code}.`,
+      repeatedFailureCount,
+      confidence: getSuggestionConfidence(repeatedFailureCount, repairPriority, evidenceRefs, contractPath),
+      status: "proposed" as const,
+      repair: {
+        priority: repairPriority,
+        category: repairCategory,
+        actionType,
+      },
+      evidenceRefs,
+      proposedChange: {
+        path: contractPath,
+        actionType,
+        summary:
+          asString(latestFinding?.message) ??
+          `Review whether ${contractPath} needs refinement to better constrain ${code}.`,
+        valueHints,
+      },
+    };
+  }).sort(getSuggestionSortKey);
+
+  return {
+    schemaVersion: 1,
+    surfaceId: built.session.surfaceId,
+    sessionId: built.session.sessionId,
+    tool: built.session.tool,
+    guidanceMode: built.session.guidanceMode,
+    generatedAt:
+      asString(latestAttempt.metadata.createdAt) ??
+      asString(latestAttempt.validate.provenance && asRecord(latestAttempt.validate.provenance).evaluatedAt) ??
+      built.session.startedAt,
+    contract: {
+      path: built.session.contractPath,
+    },
+    session: {
+      sessionPath: built.paths.sessionPath,
+      summaryPath: built.paths.summaryJsonPath,
+      repairMapPath: built.session.repairMapPath,
+    },
+    suggestions,
+  };
+}
+
+function normalizeSuggestionReviewFile(filePath: string): Array<{
+  suggestionId: string;
+  status: Exclude<SuggestionStatus, "proposed">;
+  rationale: string;
+}> {
+  const payload = readJsonFile<JsonRecord>(filePath, "contract delta suggestion review");
+  const decisions = Array.isArray(payload.decisions) ? payload.decisions : [];
+  if (decisions.length === 0) {
+    throw new SessionInputError(`Review file must include a non-empty "decisions" array: ${filePath}.`);
+  }
+  return decisions.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new SessionInputError(`Review decision at index ${index} is invalid: ${filePath}.`);
+    }
+    const decision = entry as JsonRecord;
+    const suggestionId = asString(decision.suggestionId);
+    const status = asString(decision.status);
+    const rationale = typeof decision.rationale === "string" ? decision.rationale.trim() : "";
+    if (!suggestionId) {
+      throw new SessionInputError(`Review decision at index ${index} is missing suggestionId: ${filePath}.`);
+    }
+    if (status !== "accepted" && status !== "rejected") {
+      throw new SessionInputError(`Review decision for ${suggestionId} must use accepted|rejected: ${filePath}.`);
+    }
+    if (!rationale) {
+      throw new SessionInputError(`Review decision for ${suggestionId} must include rationale: ${filePath}.`);
+    }
+    return {
+      suggestionId,
+      status,
+      rationale,
+    };
+  });
 }
 
 export async function runInitGenerationSessionCommand(
@@ -359,6 +1469,7 @@ export async function runInitGenerationSessionCommand(
     }
 
     const tool = ensureSessionTool(options.tool);
+    const guidanceMode = ensureGuidanceMode(options.guidanceMode);
     const workspaceRoot = path.resolve(options.workspaceRoot);
     if (!fs.existsSync(workspaceRoot) || !fs.statSync(workspaceRoot).isDirectory()) {
       throw new SessionInputError(`Workspace root directory not found at ${workspaceRoot}.`);
@@ -378,24 +1489,30 @@ export async function runInitGenerationSessionCommand(
     fs.cpSync(loadedBundle.root, paths.bundleRoot, { recursive: true });
 
     const sessionBundle = loadCompiledSurfaceBundle(paths.bundleRoot, options.surfaceId, process.cwd());
-    const preparedPayload = buildPreparedGenerationPayload(sessionBundle);
-    writeDeterministicJsonSync(paths.preparedInputPath, preparedPayload);
+    let preparedInputPath: string | null = null;
+    if (guidanceMode === "prepared") {
+      const preparedPayload = buildPreparedGenerationPayload(sessionBundle);
+      writeDeterministicJsonSync(paths.preparedInputPath, preparedPayload);
+      preparedInputPath = paths.preparedInputPath;
+    }
 
     const session: GenerationSession = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       surfaceId: options.surfaceId,
       sessionId,
       tool,
+      guidanceMode,
       workspaceRoot,
       sourceBundleRoot: loadedBundle.root,
       sessionDir: paths.sessionDir,
       bundleRoot: paths.bundleRoot,
-      preparedInputPath: paths.preparedInputPath,
+      preparedInputPath,
       contractPath: sessionBundle.contract.path,
       repairMapPath: sessionBundle.surface.repairMap.path,
       startedAt: new Date().toISOString(),
+      ...(options.briefFile ? { brief: freezeBriefFile(paths.sessionDir, options.briefFile) } : {}),
       successRule: {
-        finalStatus: "pass",
+        finalStatus: "pass-or-reviewed-warn",
       },
     };
     writeDeterministicJsonSync(paths.sessionPath, session);
@@ -428,12 +1545,8 @@ export async function runRecordGenerationAttemptCommand(
     const { session, paths } = loadSession(options.sessionDir);
     const assessment = loadAssessment(options.assessmentFile);
     const attemptNumber = nextAttemptNumber(paths.attemptsDir);
-    const attemptId = formatAttemptNumber(attemptNumber);
+    const attemptPaths = getAttemptPaths(paths.attemptsDir, attemptNumber);
     fs.mkdirSync(paths.attemptsDir, { recursive: true });
-
-    const validatePath = path.join(paths.attemptsDir, `${attemptId}.validate.json`);
-    const assessmentPath = path.join(paths.attemptsDir, `${attemptId}.assessment.json`);
-    const metadataPath = path.join(paths.attemptsDir, `${attemptId}.metadata.json`);
 
     const response = await runGenerationAdapter(
       {
@@ -453,8 +1566,8 @@ export async function runRecordGenerationAttemptCommand(
       },
     );
 
-    writeDeterministicJsonSync(validatePath, response);
-    writeDeterministicJsonSync(assessmentPath, assessment);
+    writeDeterministicJsonSync(attemptPaths.validatePath, response);
+    writeDeterministicJsonSync(attemptPaths.assessmentPath, assessment);
 
     const findingCodes = parseFindingCodes(response as unknown as JsonRecord);
     const contractRun = emitContractRunArtifact({
@@ -463,28 +1576,29 @@ export async function runRecordGenerationAttemptCommand(
       surfaceId: session.surfaceId,
       source: "generation",
       status: mapAdapterStatusToRunStatus(response.status),
-      reportPath: validatePath,
+      reportPath: attemptPaths.validatePath,
       findingCodes,
       workspaceId: session.sessionId,
-      idempotencyKey: `${session.surfaceId}:${session.sessionId}:${attemptId}`,
+      idempotencyKey: `${session.surfaceId}:${session.sessionId}:${formatAttemptNumber(attemptNumber)}`,
     });
 
     const metadata: GenerationSessionAttemptMetadata = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       surfaceId: session.surfaceId,
       sessionId: session.sessionId,
       attemptNumber,
       tool: session.tool,
+      guidanceMode: session.guidanceMode,
       createdAt: new Date().toISOString(),
       validateStatus: response.status,
       validateExitCode: response.status === "block" ? 30 : 0,
       findingCodes,
-      assessmentPath,
-      validatePath,
+      assessmentPath: attemptPaths.assessmentPath,
+      validatePath: attemptPaths.validatePath,
       touchedFiles: assessment.touchedFiles ?? [],
       contractRun,
     };
-    writeDeterministicJsonSync(metadataPath, metadata);
+    writeDeterministicJsonSync(attemptPaths.metadataPath, metadata);
 
     process.stdout.write(
       `${JSON.stringify(
@@ -493,12 +1607,87 @@ export async function runRecordGenerationAttemptCommand(
           session,
           attempt: {
             attemptNumber,
-            validatePath,
-            assessmentPath,
-            metadataPath,
+            validatePath: attemptPaths.validatePath,
+            assessmentPath: attemptPaths.assessmentPath,
+            metadataPath: attemptPaths.metadataPath,
             validateStatus: response.status,
             findingCodes,
           },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 0;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
+}
+
+export async function runReviewGenerationAttemptCommand(
+  options: ReviewGenerationAttemptCommandOptions,
+): Promise<number> {
+  try {
+    if (!options.sessionDir) {
+      throw new SessionInputError("--session-dir is required.");
+    }
+    if (!options.reviewFile) {
+      throw new SessionInputError("--review-file is required.");
+    }
+    const attemptNumber = typeof options.attemptNumber === "number"
+      ? options.attemptNumber
+      : Number.parseInt(String(options.attemptNumber ?? ""), 10);
+    if (!Number.isInteger(attemptNumber) || attemptNumber < 1) {
+      throw new SessionInputError("--attempt must be a positive integer.");
+    }
+
+    const { session, paths } = loadSession(options.sessionDir);
+    const attemptPaths = getAttemptPaths(paths.attemptsDir, attemptNumber);
+    if (!fs.existsSync(attemptPaths.validatePath)) {
+      throw new SessionInputError(`Attempt ${attemptNumber} validate payload not found at ${attemptPaths.validatePath}.`);
+    }
+    const validatePayload = readJsonFile<JsonRecord>(attemptPaths.validatePath, `attempt ${attemptNumber} validate payload`);
+    if (validatePayload.status !== "warn") {
+      throw new SessionInputError(`Attempt ${attemptNumber} is ${String(validatePayload.status)}; only warn attempts can be reviewed.`);
+    }
+    const findingCodes = parseFindingCodes(validatePayload);
+    if (findingCodes.length === 0) {
+      throw new SessionInputError(`Attempt ${attemptNumber} does not have remaining finding codes to review.`);
+    }
+
+    const reviewInputPath = path.resolve(options.reviewFile);
+    if (!fs.existsSync(reviewInputPath)) {
+      throw new SessionInputError(`Review file not found at ${reviewInputPath}.`);
+    }
+    const reviewInput = normalizeReviewInput(
+      readJsonFile<JsonRecord>(reviewInputPath, "generation attempt review input"),
+      reviewInputPath,
+      findingCodes,
+    );
+
+    const review: GenerationAttemptReview = {
+      schemaVersion: 1,
+      surfaceId: session.surfaceId,
+      sessionId: session.sessionId,
+      attemptNumber,
+      status: reviewInput.status,
+      findingCodes: reviewInput.findingCodes,
+      rationale: reviewInput.rationale,
+      reviewedAt: new Date().toISOString(),
+    };
+    writeDeterministicJsonSync(attemptPaths.reviewPath, review);
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          review,
+          reviewPath: attemptPaths.reviewPath,
         },
         null,
         2,
@@ -522,108 +1711,281 @@ export async function runSummarizeGenerationSessionCommand(
     if (!options.sessionDir) {
       throw new SessionInputError("--session-dir is required.");
     }
-    const { session, paths } = loadSession(options.sessionDir);
 
-    if (!fs.existsSync(paths.attemptsDir)) {
-      throw new SessionInputError(`No attempts recorded for session ${session.sessionId}.`);
-    }
-
-    const attemptNumbers = fs.readdirSync(paths.attemptsDir)
-      .map((entry) => /^(\d{3})\.metadata\.json$/.exec(entry))
-      .filter((match): match is RegExpExecArray => Boolean(match))
-      .map((match) => Number.parseInt(match[1], 10))
-      .sort((left, right) => left - right);
-
-    if (attemptNumbers.length === 0) {
-      throw new SessionInputError(`No attempts recorded for session ${session.sessionId}.`);
-    }
-
-    const attempts = attemptNumbers.map((attemptNumber) => {
-      const attemptId = formatAttemptNumber(attemptNumber);
-      const validatePath = path.join(paths.attemptsDir, `${attemptId}.validate.json`);
-      const assessmentPath = path.join(paths.attemptsDir, `${attemptId}.assessment.json`);
-      const metadataPath = path.join(paths.attemptsDir, `${attemptId}.metadata.json`);
-
-      return {
-        attemptNumber,
-        validate: readJsonFile<JsonRecord>(validatePath, `attempt ${attemptId} validate payload`),
-        assessment: readJsonFile<JsonRecord>(assessmentPath, `attempt ${attemptId} assessment`),
-        metadata: readJsonFile<JsonRecord>(metadataPath, `attempt ${attemptId} metadata`),
-        validatePath,
-        assessmentPath,
-        metadataPath,
-      };
-    });
-
-    const firstPassAttempt = attempts.find((attempt) => attempt.validate.status === "pass")?.attemptNumber ?? null;
-    const latestAttempt = attempts[attempts.length - 1];
-    const recurringFindingCodes = buildRecurringCounts(
-      attempts.flatMap((attempt) => parseFindingCodes(attempt.validate)),
-    );
-    const repairMapDoc = readJsonFile<JsonRecord>(session.repairMapPath, "repair map");
-    const repairs = Array.isArray(repairMapDoc.repairs) ? repairMapDoc.repairs : [];
-    const repairMapByCode = new Map(
-      repairs
-        .filter((entry): entry is JsonRecord => Boolean(entry) && typeof entry === "object")
-        .map((entry) => [typeof entry.code === "string" ? entry.code : "", entry] as const)
-        .filter(([code]) => Boolean(code)),
-    );
-    const recurringRepairCodes = recurringFindingCodes
-      .map((entry) => {
-        const repair = repairMapByCode.get(entry.code);
-        if (!repair) return undefined;
-        const action = repair.action && typeof repair.action === "object"
-          ? (repair.action as Record<string, unknown>)
-          : {};
-        return {
-          code: entry.code,
-          count: entry.count,
-          priority: typeof repair.priority === "string" ? repair.priority : "medium",
-          category: typeof repair.category === "string" ? repair.category : "unknown",
-          actionType: typeof action.type === "string" ? action.type : "unknown",
-        };
-      })
-      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-      .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
-
-    const latestAssessment = normalizeAssessment(latestAttempt.assessment, latestAttempt.assessmentPath);
-    const latestStatus = latestAttempt.validate.status;
-    if (latestStatus !== "pass" && latestStatus !== "warn" && latestStatus !== "block") {
-      throw new SessionInputError(`Unsupported validate status "${String(latestStatus)}" in ${latestAttempt.validatePath}.`);
-    }
-
-    const summary: GenerationSessionSummary = {
-      schemaVersion: 1,
-      surfaceId: session.surfaceId,
-      sessionId: session.sessionId,
-      tool: session.tool,
-      attemptCount: attempts.length,
-      firstPassAttempt,
-      latestStatus,
-      recurringFindingCodes,
-      recurringRepairCodes,
-      latestAssessment,
-      successRule: session.successRule,
-      paths: {
-        sessionPath: paths.sessionPath,
-        bundleRoot: session.bundleRoot,
-        preparedInputPath: session.preparedInputPath,
-      },
-      attempts: attempts.map((attempt) => ({
-        attemptNumber: attempt.attemptNumber,
-        status: attempt.validate.status as ValidateStatus,
-        findingCodes: parseFindingCodes(attempt.validate),
-        validatePath: attempt.validatePath,
-        assessmentPath: attempt.assessmentPath,
-        metadataPath: attempt.metadataPath,
-        createdAt: typeof attempt.metadata.createdAt === "string" ? attempt.metadata.createdAt : undefined,
-      })),
-    };
-
+    const { paths, summary } = buildGenerationSessionSummary(options.sessionDir);
     writeDeterministicJsonSync(paths.summaryJsonPath, summary);
     fs.writeFileSync(paths.summaryMarkdownPath, renderSummaryMarkdown(summary), "utf8");
     process.stdout.write(`${JSON.stringify({ ok: true, summary, paths }, null, 2)}\n`);
-    return latestStatus === "pass" ? 0 : 30;
+    return summary.latestOutcome === "pass" || summary.latestOutcome === "accepted-warn" ? 0 : 30;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
+}
+
+export async function runCompareGenerationSessionsCommand(
+  options: CompareGenerationSessionsCommandOptions,
+): Promise<number> {
+  try {
+    if (!options.baselineSessionDir) {
+      throw new SessionInputError("--baseline-session-dir is required.");
+    }
+    if (!options.guidedSessionDir) {
+      throw new SessionInputError("--guided-session-dir is required.");
+    }
+
+    const comparison = buildComparisonArtifact(options.baselineSessionDir, options.guidedSessionDir);
+    const baseline = loadSession(options.baselineSessionDir).session;
+    const guided = loadSession(options.guidedSessionDir).session;
+    const outDir = options.outDir
+      ? path.resolve(options.outDir)
+      : defaultComparisonDir(baseline, guided);
+    const jsonPath = path.join(outDir, "comparison.json");
+    const markdownPath = path.join(outDir, "comparison.md");
+    writeDeterministicJsonSync(jsonPath, comparison);
+    fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
+    fs.writeFileSync(markdownPath, renderComparisonMarkdown(comparison), "utf8");
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          comparison,
+          paths: {
+            jsonPath,
+            markdownPath,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 0;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
+}
+
+export async function runSuggestContractDeltasCommand(
+  options: SuggestContractDeltasCommandOptions,
+): Promise<number> {
+  try {
+    if (!options.sessionDir) {
+      throw new SessionInputError("--session-dir is required.");
+    }
+    const artifact = buildSuggestionArtifact(options.sessionDir);
+    const sessionPaths = getSessionPaths(path.resolve(options.sessionDir));
+    const outPath = options.outPath
+      ? path.resolve(options.outPath)
+      : sessionPaths.suggestionsJsonPath;
+    const markdownPath = outPath.endsWith(".json")
+      ? `${outPath.slice(0, -5)}.md`
+      : `${outPath}.md`;
+    writeDeterministicJsonSync(outPath, artifact);
+    fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
+    fs.writeFileSync(markdownPath, renderSuggestionsMarkdown(artifact), "utf8");
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          artifact,
+          paths: {
+            jsonPath: outPath,
+            markdownPath,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 0;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
+}
+
+export async function runReviewContractDeltaSuggestionsCommand(
+  options: ReviewContractDeltaSuggestionsCommandOptions,
+): Promise<number> {
+  try {
+    if (!options.suggestionsPath) {
+      throw new SessionInputError("--suggestions is required.");
+    }
+    if (!options.reviewFile) {
+      throw new SessionInputError("--review-file is required.");
+    }
+    const suggestionsPath = path.resolve(options.suggestionsPath);
+    if (!fs.existsSync(suggestionsPath)) {
+      throw new SessionInputError(`Suggestions file not found at ${suggestionsPath}.`);
+    }
+    const artifact = readJsonFile<JsonRecord>(
+      suggestionsPath,
+      "contract delta suggestions artifact",
+    ) as unknown as ContractDeltaSuggestionsArtifact;
+    const reviewFile = path.resolve(options.reviewFile);
+    if (!fs.existsSync(reviewFile)) {
+      throw new SessionInputError(`Review file not found at ${reviewFile}.`);
+    }
+    const decisions = normalizeSuggestionReviewFile(reviewFile);
+    const decisionMap = new Map(decisions.map((entry) => [entry.suggestionId, entry] as const));
+    const knownIds = new Set(artifact.suggestions.map((suggestion) => suggestion.suggestionId));
+    for (const suggestionId of decisionMap.keys()) {
+      if (!knownIds.has(suggestionId)) {
+        throw new SessionInputError(`Unknown suggestionId "${suggestionId}" in ${reviewFile}.`);
+      }
+    }
+
+    const updatedArtifact: ContractDeltaSuggestionsArtifact = {
+      ...artifact,
+      suggestions: artifact.suggestions.map((suggestion) => {
+        const decision = decisionMap.get(suggestion.suggestionId);
+        if (!decision) {
+          return suggestion;
+        }
+        return {
+          ...suggestion,
+          status: decision.status,
+          decision: {
+            rationale: decision.rationale,
+            decidedAt: new Date().toISOString(),
+          },
+        };
+      }),
+    };
+
+    const outPath = options.outPath ? path.resolve(options.outPath) : suggestionsPath;
+    const markdownPath = outPath.endsWith(".json")
+      ? `${outPath.slice(0, -5)}.md`
+      : `${outPath}.md`;
+    writeDeterministicJsonSync(outPath, updatedArtifact);
+    fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
+    fs.writeFileSync(markdownPath, renderSuggestionsMarkdown(updatedArtifact), "utf8");
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          artifact: updatedArtifact,
+          paths: {
+            jsonPath: outPath,
+            markdownPath,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 0;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
+}
+
+export async function runSummarizeGenerationBenchmarkCommand(
+  options: SummarizeGenerationBenchmarkCommandOptions,
+): Promise<number> {
+  try {
+    const comparisonPaths = parseCsvPaths(options.comparisonPaths);
+    if (comparisonPaths.length === 0) {
+      throw new SessionInputError("--comparisons must include at least one comparison artifact path.");
+    }
+    const suggestionPaths = parseCsvPaths(options.suggestionPaths);
+    const comparisons = comparisonPaths.map((comparisonPath) => ({
+      path: comparisonPath,
+      value: readJsonFile<JsonRecord>(comparisonPath, "generation session comparison") as unknown as GenerationSessionComparison,
+    }));
+    const suggestions = suggestionPaths.map((suggestionPath) => ({
+      path: suggestionPath,
+      value: readJsonFile<JsonRecord>(suggestionPath, "contract delta suggestions artifact") as unknown as ContractDeltaSuggestionsArtifact,
+    }));
+
+    const report: GenerationBenchmarkReport = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      comparisons: comparisons.map(({ path: comparisonPath, value }) => ({
+        surfaceId: value.surfaceId,
+        tool: value.tool,
+        comparisonPath,
+        meetsGoal: value.checks.meetsGoal,
+        guidedFewerFirstAttemptBlockingFindings: value.checks.guidedFewerFirstAttemptBlockingFindings,
+        guidedReachedAcceptableNoLater: value.checks.guidedReachedAcceptableNoLater,
+        guidedRubricBetterDimensions: value.checks.guidedRubricBetterDimensions,
+      })),
+      suggestions: suggestions.map(({ path: suggestionsPath, value }) => ({
+        surfaceId: value.surfaceId,
+        sessionId: value.sessionId,
+        suggestionsPath,
+        proposedCount: value.suggestions.filter((entry) => entry.status === "proposed").length,
+        acceptedCount: value.suggestions.filter((entry) => entry.status === "accepted").length,
+        rejectedCount: value.suggestions.filter((entry) => entry.status === "rejected").length,
+      })),
+      overall: {
+        surfaceCount: comparisons.length,
+        surfacesMeetingGoal: comparisons.filter(({ value }) => value.checks.meetsGoal).length,
+        guidedFewerFirstAttemptBlockingFindings: comparisons.filter(
+          ({ value }) => value.checks.guidedFewerFirstAttemptBlockingFindings,
+        ).length,
+        guidedReachedAcceptableNoLater: comparisons.filter(
+          ({ value }) => value.checks.guidedReachedAcceptableNoLater,
+        ).length,
+        acceptedSuggestionCount: suggestions.reduce(
+          (total, entry) => total + entry.value.suggestions.filter((suggestion) => suggestion.status === "accepted").length,
+          0,
+        ),
+        rejectedSuggestionCount: suggestions.reduce(
+          (total, entry) => total + entry.value.suggestions.filter((suggestion) => suggestion.status === "rejected").length,
+          0,
+        ),
+        proposedSuggestionCount: suggestions.reduce(
+          (total, entry) => total + entry.value.suggestions.filter((suggestion) => suggestion.status === "proposed").length,
+          0,
+        ),
+      },
+    };
+
+    const outDir = options.outDir
+      ? path.resolve(options.outDir)
+      : defaultBenchmarkReportDir(comparisonPaths);
+    const jsonPath = path.join(outDir, "benchmark-report.json");
+    const markdownPath = path.join(outDir, "benchmark-report.md");
+    writeDeterministicJsonSync(jsonPath, report);
+    fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
+    fs.writeFileSync(markdownPath, renderBenchmarkReportMarkdown(report), "utf8");
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          report,
+          paths: {
+            jsonPath,
+            markdownPath,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 0;
   } catch (error) {
     if (error instanceof SessionInputError || error instanceof AdapterInputError) {
       writeError(error, error.code);

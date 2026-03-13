@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { validateDiffOutput } from "@surfaces/interfacectl-validator";
 import generationAssessmentSchema from "../schemas/generation-assessment.schema.json" with { type: "json" };
+import generationAttemptReviewSchema from "../schemas/generation-attempt-review.schema.json" with { type: "json" };
 import generationSessionSchema from "../schemas/generation-session.schema.json" with { type: "json" };
 import generationSessionSummarySchema from "../schemas/generation-session-summary.schema.json" with { type: "json" };
 import contractRunsSchema from "../schemas/contract-runs.schema.json" with { type: "json" };
@@ -93,7 +94,7 @@ function buildContract() {
   };
 }
 
-async function writeDemoWorkspace(workspaceRoot, { valid }) {
+async function writeDemoWorkspace(workspaceRoot, { sectionValid, colorValid }) {
   await writeJson(
     path.join(workspaceRoot, "contracts", "surfaces.web.contract.json"),
     buildContract(),
@@ -113,7 +114,7 @@ async function writeDemoWorkspace(workspaceRoot, { valid }) {
 
 body {
   font-family: sans-serif;
-  color: #111111;
+  color: ${colorValid ? "#111111" : "#ff00ff"};
   background: #ffffff;
 }
 
@@ -127,8 +128,8 @@ body {
 `,
   );
 
-  const sectionAttribute = valid ? ' data-contract-section="main.hero"' : "";
-  const containerAttribute = valid ? ' data-contract-container="page-container"' : "";
+  const sectionAttribute = sectionValid ? ' data-contract-section="main.hero"' : "";
+  const containerAttribute = sectionValid ? ' data-contract-container="page-container"' : "";
   await writeText(
     path.join(workspaceRoot, "apps", "demo-surface", "app", "page.tsx"),
     `export default function Page() {
@@ -144,6 +145,26 @@ body {
   );
 }
 
+function buildAssessment({
+  structure,
+  components,
+  boundary,
+  visual,
+  responsiveness,
+  notes,
+  touchedFiles,
+}) {
+  return {
+    structure,
+    components,
+    boundary,
+    visual,
+    responsiveness,
+    notes,
+    ...(touchedFiles ? { touchedFiles } : {}),
+  };
+}
+
 test("generation session commands freeze bundle input, record attempts, and emit canonical run artifacts", async () => {
   const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-session-"));
   const workspaceRoot = path.join(tempRoot, "workspace");
@@ -151,7 +172,7 @@ test("generation session commands freeze bundle input, record attempts, and emit
   const sessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "demo-session");
 
   try {
-    await writeDemoWorkspace(workspaceRoot, { valid: false });
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: false, colorValid: true });
 
     const compileResult = await runCli(
       [
@@ -185,17 +206,23 @@ test("generation session commands freeze bundle input, record attempts, and emit
 
     const session = JSON.parse(await fsp.readFile(path.join(sessionDir, "session.json"), "utf8"));
     validateWithSchema(session, generationSessionSchema, "generation session");
+    assert.equal(session.guidanceMode, "prepared");
     assert.ok(fs.existsSync(path.join(sessionDir, "bundle", "manifest.json")));
     assert.ok(fs.existsSync(path.join(sessionDir, "prepared-input.json")));
 
     const assessmentOnePath = path.join(tempRoot, "assessment-1.json");
-    await writeJson(assessmentOnePath, {
-      structure: "weak",
-      visual: "partial",
-      responsiveness: "weak",
-      notes: "Initial draft misses the contract markers.",
-      touchedFiles: ["apps/demo-surface/app/page.tsx"],
-    });
+    await writeJson(
+      assessmentOnePath,
+      buildAssessment({
+        structure: "weak",
+        components: "weak",
+        boundary: "weak",
+        visual: "partial",
+        responsiveness: "weak",
+        notes: "Initial draft misses the contract markers.",
+        touchedFiles: ["apps/demo-surface/app/page.tsx"],
+      }),
+    );
 
     const attemptOneResult = await runCli(
       [
@@ -233,15 +260,20 @@ test("generation session commands freeze bundle input, record attempts, and emit
     assert.equal(runsAfterFirstAttempt.runs[0].workspaceId, "demo-session");
     assert.match(runsAfterFirstAttempt.runs[0].ingestedAt, /T/);
 
-    await writeDemoWorkspace(workspaceRoot, { valid: true });
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: true, colorValid: true });
     const assessmentTwoPath = path.join(tempRoot, "assessment-2.json");
-    await writeJson(assessmentTwoPath, {
-      structure: "strong",
-      visual: "strong",
-      responsiveness: "strong",
-      notes: "Added the missing section and container markers.",
-      touchedFiles: ["apps/demo-surface/app/page.tsx", "apps/demo-surface/app/globals.css"],
-    });
+    await writeJson(
+      assessmentTwoPath,
+      buildAssessment({
+        structure: "strong",
+        components: "strong",
+        boundary: "strong",
+        visual: "strong",
+        responsiveness: "strong",
+        notes: "Added the missing section and container markers.",
+        touchedFiles: ["apps/demo-surface/app/page.tsx", "apps/demo-surface/app/globals.css"],
+      }),
+    );
 
     const attemptTwoResult = await runCli(
       [
@@ -267,7 +299,9 @@ test("generation session commands freeze bundle input, record attempts, and emit
     validateWithSchema(summary, generationSessionSummarySchema, "generation session summary");
     assert.equal(summary.attemptCount, 2);
     assert.equal(summary.firstPassAttempt, 2);
+    assert.equal(summary.firstAcceptableAttempt, 2);
     assert.equal(summary.latestStatus, "pass");
+    assert.equal(summary.latestOutcome, "pass");
     assert.equal(summary.latestAssessment.notes, "Added the missing section and container markers.");
     assert.deepEqual(summary.recurringFindingCodes, []);
     assert.deepEqual(summary.recurringRepairCodes, []);
@@ -283,14 +317,133 @@ test("generation session commands freeze bundle input, record attempts, and emit
   }
 });
 
-test("generation session commands reject invalid bundle roots, duplicate sessions, invalid assessments, and missing sessions", async () => {
+test("review-generation-attempt marks reviewed warnings acceptable without changing the validate payload", async () => {
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-review-"));
+  const workspaceRoot = path.join(tempRoot, "workspace");
+  const bundleRoot = path.join(tempRoot, "bundle");
+  const sessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "warn-session");
+
+  try {
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: true, colorValid: false });
+
+    const compileResult = await runCli(
+      [
+        "compile",
+        "--contract",
+        path.join(workspaceRoot, "contracts", "surfaces.web.contract.json"),
+        "--out",
+        bundleRoot,
+      ],
+      tempRoot,
+    );
+    assert.equal(compileResult.exitCode, 0, compileResult.stderr);
+
+    const initResult = await runCli(
+      [
+        "init-generation-session",
+        "--bundle-root",
+        bundleRoot,
+        "--surface",
+        "demo-surface",
+        "--workspace-root",
+        workspaceRoot,
+        "--session",
+        "warn-session",
+      ],
+      tempRoot,
+    );
+    assert.equal(initResult.exitCode, 0, initResult.stderr);
+
+    const assessmentPath = path.join(tempRoot, "warn-assessment.json");
+    await writeJson(
+      assessmentPath,
+      buildAssessment({
+        structure: "strong",
+        components: "strong",
+        boundary: "strong",
+        visual: "partial",
+        responsiveness: "strong",
+        notes: "Everything matches except the text color.",
+      }),
+    );
+
+    const recordResult = await runCli(
+      [
+        "record-generation-attempt",
+        "--session-dir",
+        sessionDir,
+        "--assessment-file",
+        assessmentPath,
+      ],
+      tempRoot,
+    );
+    assert.equal(recordResult.exitCode, 0, recordResult.stderr);
+
+    const validatePayload = JSON.parse(
+      await fsp.readFile(path.join(sessionDir, "attempts", "001.validate.json"), "utf8"),
+    );
+    assert.equal(validatePayload.status, "warn");
+    const findingCodes = validatePayload.findings.map((entry) => entry.code).sort();
+
+    const reviewFile = path.join(tempRoot, "warn-review.json");
+    await writeJson(reviewFile, {
+      status: "accepted",
+      findingCodes,
+      rationale: "The remaining color warning is acceptable for this benchmark attempt.",
+    });
+
+    const reviewResult = await runCli(
+      [
+        "review-generation-attempt",
+        "--session-dir",
+        sessionDir,
+        "--attempt",
+        "1",
+        "--review-file",
+        reviewFile,
+      ],
+      tempRoot,
+    );
+    assert.equal(reviewResult.exitCode, 0, reviewResult.stderr);
+
+    const reviewPayload = JSON.parse(
+      await fsp.readFile(path.join(sessionDir, "attempts", "001.review.json"), "utf8"),
+    );
+    validateWithSchema(reviewPayload, generationAttemptReviewSchema, "generation attempt review");
+    assert.equal(reviewPayload.status, "accepted");
+
+    const summaryResult = await runCli(
+      ["summarize-generation-session", "--session-dir", sessionDir],
+      tempRoot,
+    );
+    assert.equal(summaryResult.exitCode, 0, summaryResult.stderr);
+
+    const summary = JSON.parse(
+      await fsp.readFile(path.join(sessionDir, "summary.json"), "utf8"),
+    );
+    validateWithSchema(summary, generationSessionSummarySchema, "generation session summary");
+    assert.equal(summary.latestStatus, "warn");
+    assert.equal(summary.latestOutcome, "accepted-warn");
+    assert.equal(summary.firstAcceptableAttempt, 1);
+    assert.equal(summary.latestReview.status, "accepted");
+
+    const validatePayloadAfterReview = JSON.parse(
+      await fsp.readFile(path.join(sessionDir, "attempts", "001.validate.json"), "utf8"),
+    );
+    assert.deepEqual(validatePayloadAfterReview, validatePayload);
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("generation session commands reject invalid bundle roots, duplicate sessions, invalid assessments, invalid reviews, and missing sessions", async () => {
   const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-session-errors-"));
   const workspaceRoot = path.join(tempRoot, "workspace");
   const bundleRoot = path.join(tempRoot, "bundle");
   const sessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "demo-session");
 
   try {
-    await writeDemoWorkspace(workspaceRoot, { valid: true });
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: true, colorValid: true });
     const compileResult = await runCli(
       [
         "compile",
@@ -369,6 +522,8 @@ test("generation session commands reject invalid bundle roots, duplicate session
     const invalidAssessmentPath = path.join(tempRoot, "assessment-invalid.json");
     await writeJson(invalidAssessmentPath, {
       structure: "bad",
+      components: "partial",
+      boundary: "weak",
       visual: "partial",
       responsiveness: "weak",
       notes: "Invalid assessment payload.",
@@ -386,6 +541,52 @@ test("generation session commands reject invalid bundle roots, duplicate session
     );
     assert.equal(invalidAssessment.exitCode, 10);
     assert.match(invalidAssessment.stderr, /strong\|partial\|weak/);
+
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: true, colorValid: false });
+    const warnAssessmentPath = path.join(tempRoot, "assessment-warn.json");
+    await writeJson(
+      warnAssessmentPath,
+      buildAssessment({
+        structure: "strong",
+        components: "strong",
+        boundary: "strong",
+        visual: "partial",
+        responsiveness: "strong",
+        notes: "Warn attempt for invalid review coverage.",
+      }),
+    );
+    const warnAttempt = await runCli(
+      [
+        "record-generation-attempt",
+        "--session-dir",
+        sessionDir,
+        "--assessment-file",
+        warnAssessmentPath,
+      ],
+      tempRoot,
+    );
+    assert.equal(warnAttempt.exitCode, 0, warnAttempt.stderr);
+
+    const invalidReviewPath = path.join(tempRoot, "review-invalid.json");
+    await writeJson(invalidReviewPath, {
+      status: "accepted",
+      findingCodes: ["missing.code"],
+      rationale: "This should fail because the finding code is wrong.",
+    });
+    const invalidReview = await runCli(
+      [
+        "review-generation-attempt",
+        "--session-dir",
+        sessionDir,
+        "--attempt",
+        "1",
+        "--review-file",
+        invalidReviewPath,
+      ],
+      tempRoot,
+    );
+    assert.equal(invalidReview.exitCode, 10);
+    assert.match(invalidReview.stderr, /unknown finding code/);
 
     const missingSession = await runCli(
       [
@@ -409,10 +610,11 @@ test("generation session summary aggregates recurring finding and repair codes",
 
   try {
     await writeJson(path.join(sessionDir, "session.json"), {
-      schemaVersion: 1,
+      schemaVersion: 2,
       surfaceId: "demo-surface",
       sessionId: "summary-session",
       tool: "codex",
+      guidanceMode: "prepared",
       workspaceRoot: tempRoot,
       sourceBundleRoot: path.join(tempRoot, "source-bundle"),
       sessionDir,
@@ -421,7 +623,7 @@ test("generation session summary aggregates recurring finding and repair codes",
       contractPath: path.join(sessionDir, "bundle", "contract", "normalized.json"),
       repairMapPath: path.join(bundleSurfaceDir, "repair-map.json"),
       startedAt: "2026-03-12T00:00:00.000Z",
-      successRule: { finalStatus: "pass" },
+      successRule: { finalStatus: "pass-or-reviewed-warn" },
     });
     await writeJson(path.join(bundleSurfaceDir, "repair-map.json"), {
       repairs: [
@@ -439,12 +641,17 @@ test("generation session summary aggregates recurring finding and repair codes",
       status: "warn",
       findings: [{ code: "section.required.missing" }],
     });
-    await writeJson(path.join(sessionDir, "attempts", "001.assessment.json"), {
-      structure: "partial",
-      visual: "partial",
-      responsiveness: "partial",
-      notes: "Still missing the hero section.",
-    });
+    await writeJson(
+      path.join(sessionDir, "attempts", "001.assessment.json"),
+      buildAssessment({
+        structure: "partial",
+        components: "partial",
+        boundary: "partial",
+        visual: "partial",
+        responsiveness: "partial",
+        notes: "Still missing the hero section.",
+      }),
+    );
     await writeJson(path.join(sessionDir, "attempts", "001.metadata.json"), {
       createdAt: "2026-03-12T00:00:00.000Z",
     });
@@ -452,12 +659,17 @@ test("generation session summary aggregates recurring finding and repair codes",
       status: "warn",
       findings: [{ code: "section.required.missing" }],
     });
-    await writeJson(path.join(sessionDir, "attempts", "002.assessment.json"), {
-      structure: "partial",
-      visual: "strong",
-      responsiveness: "strong",
-      notes: "Section is still pending.",
-    });
+    await writeJson(
+      path.join(sessionDir, "attempts", "002.assessment.json"),
+      buildAssessment({
+        structure: "partial",
+        components: "partial",
+        boundary: "partial",
+        visual: "strong",
+        responsiveness: "strong",
+        notes: "Section is still pending.",
+      }),
+    );
     await writeJson(path.join(sessionDir, "attempts", "002.metadata.json"), {
       createdAt: "2026-03-12T00:01:00.000Z",
     });
