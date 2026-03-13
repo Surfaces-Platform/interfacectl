@@ -17,7 +17,7 @@ import { runValidateCommand } from "../commands/validate.js";
 
 export { AdapterInputError, isAdapterInputError } from "./bundle.js";
 
-const VALID_TOOLS = new Set(["codex", "cursor", "lovable", "figma-make"]);
+const VALID_TOOLS = new Set(["codex", "cursor", "local-llm", "lovable", "figma-make"]);
 const VALID_MODES = new Set(["workspace", "descriptor"]);
 const DEFAULT_DESCRIPTOR_PARITY_CONFIG =
   "contracts/generation-descriptor-parity.json";

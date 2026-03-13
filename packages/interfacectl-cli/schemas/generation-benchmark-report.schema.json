@@ -27,7 +27,7 @@
           },
           "tool": {
             "type": "string",
-            "enum": ["codex", "cursor"]
+            "enum": ["codex", "cursor", "local-llm"]
           },
           "comparisonPath": {
             "type": "string",
