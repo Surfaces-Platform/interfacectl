@@ -9,6 +9,9 @@ import { runGenerateContractCommand } from "./commands/generate-contract.js";
 import { runMigrateColorPolicyCommand } from "./commands/migrate-color-policy.js";
 import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
 import { runDescribeCommand } from "./commands/describe.js";
+import { runPrepareGenerationCommand } from "./commands/prepare-generation.js";
+import { runValidateGenerationCommand } from "./commands/validate-generation.js";
+import { runServeGenerationAdapterCommand } from "./commands/serve-generation-adapter.js";
 import { runInitCommand } from "./commands/init.js";
 import { runAnalyzeCommand } from "./commands/analyze.js";
 import { runAuthCaptureCommand, runAuthClearCommand, runAuthListCommandWithOptions, runAuthTestCommand, } from "./commands/auth.js";
@@ -188,6 +191,63 @@ program
         format: options.format,
     }, pkg.version ?? "0.0.0");
     process.exitCode = exitCode;
+});
+program
+    .command("prepare-generation")
+    .description("Resolve a compiled generation bundle into one agent-ready JSON payload")
+    .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
+    .requiredOption("--surface <id>", "Surface identifier")
+    .option("--out <path>", "Write the prepared JSON payload to the provided file")
+    .action(async (options) => {
+    process.exitCode = await runPrepareGenerationCommand({
+        bundleRoot: options.bundleRoot,
+        surfaceId: options.surface,
+        outPath: options.out,
+    });
+});
+program
+    .command("validate-generation")
+    .description("Validate generated UI against a compiled generation bundle")
+    .requiredOption("--tool <tool>", "Generator tool identifier")
+    .requiredOption("--surface <id>", "Surface identifier")
+    .requiredOption("--mode <workspace|descriptor>", "Validation mode")
+    .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
+    .option("--workspace-root <path>", "Required when mode=workspace")
+    .option("--descriptor-path <path>", "Required when mode=descriptor")
+    .option("--descriptor-parity-config <path>", "Optional descriptor parity config path")
+    .option("--out <path>", "Write output JSON to the provided file")
+    .option("--request-id <id>", "Optional request identifier")
+    .action(async (options) => {
+    process.exitCode = await runValidateGenerationCommand({
+        tool: options.tool,
+        surfaceId: options.surface,
+        mode: options.mode,
+        bundleRoot: options.bundleRoot,
+        workspaceRoot: options.workspaceRoot,
+        descriptorPath: options.descriptorPath,
+        descriptorParityConfigPath: options.descriptorParityConfig,
+        outPath: options.out,
+        requestId: options.requestId,
+    });
+});
+program
+    .command("serve-generation-adapter")
+    .description("Serve the generation adapter over HTTP for a compiled generation bundle")
+    .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
+    .option("--host <host>", "Bind host (default: 127.0.0.1)")
+    .option("--port <port>", "Bind port (default: 7777)")
+    .option("--token <value>", "Optional auth token")
+    .option("--token-header <name>", "Token header name (default: x-surfaces-adapter-token)")
+    .option("--descriptor-parity-config <path>", "Optional descriptor parity config path")
+    .action(async (options) => {
+    await runServeGenerationAdapterCommand({
+        host: options.host,
+        port: options.port ? Number(options.port) : undefined,
+        token: options.token,
+        tokenHeader: options.tokenHeader,
+        bundleRoot: options.bundleRoot,
+        descriptorParityConfigPath: options.descriptorParityConfig,
+    });
 });
 program
     .command("generate-contract")

@@ -1,0 +1,27 @@
+{
+  "constraints": {
+    "color": {
+      "allowedValues": [],
+      "policy": "off"
+    },
+    "layoutPolicy": {
+      "maxContentWidth": 960,
+      "requiredContainers": []
+    },
+    "marketingProfiles": {},
+    "motion": {
+      "allowedDurationsMs": [
+        120
+      ],
+      "allowedTimingFunctions": [
+        "linear"
+      ]
+    }
+  },
+  "provenance": {
+    "bundleVersion": "2.0",
+    "contractId": "demo-ui",
+    "contractVersion": "1.0.0",
+    "surfaceId": "demo-surface"
+  }
+}

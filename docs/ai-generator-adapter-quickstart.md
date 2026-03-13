@@ -1,68 +1,93 @@
 # AI Generator Adapter Quick Start
 
-Use this flow when a generator authors or modifies UI and you want immediate contract feedback at `Generation time`.
-
-## Purpose
-
-The generator adapter loop gives tools a stable verdict contract:
-
-- `pass`
-- `warn`
-- `block`
-
-The adapter is not a separate policy system. It translates generator output into the same contract-aware feedback loop that `interfacectl validate` uses for authoritative compliance checks.
+Use this flow when a local agent or hosted generator needs contract-aware guidance before generation and structured findings after generation.
 
 ## Integration flow
 
-1. Load the target contract and surface id.
-2. Choose execution mode:
-   - `descriptor` for hosted builders or tools without a full checkout
-   - `workspace` for local agents or CI jobs with a checkout
-3. Convert generated output into a descriptor or point the adapter at the workspace.
-4. Run generation guard checks so shell-boundary violations and other generation-time findings surface immediately.
-5. In `workspace` mode, run full `interfacectl validate` and treat that result as the authoritative promotion gate.
-6. Feed structured findings back into the generator and regenerate until the result is `pass` or an accepted `warn`.
+1. Compile the contract into a generation bundle.
+2. For local agents, resolve the bundle into one agent-ready payload with `prepare-generation`.
+3. Generate or edit UI.
+4. Run `validate-generation` against the same bundle.
+5. Repeat until the result is `pass` or an accepted `warn`.
 
-## Mode guidance
+## Step 1: compile the bundle
 
-### `descriptor`
+```bash
+interfacectl compile --contract <path> --out <dir>
+```
 
-Use `descriptor` mode for tools such as Lovable, Figma Make, or other hosted builders that do not operate inside a repo checkout.
+All later steps use `bundleRoot` from this compiled directory. The CLI never compiles implicitly inside adapter commands.
 
-- Always evaluate shell-boundary signals.
-- Evaluate any additional parity checks that the consumer repo enables for descriptor-mode rollout.
-- Never treat descriptor-only success as the final shipping gate.
+## Step 2: prepare local-agent input
+
+Use `prepare-generation` for workspace agents such as Codex, Cursor, or Claude Code.
+
+```bash
+interfacectl prepare-generation \
+  --bundle-root ./artifacts/generation-bundles/surfaces-web \
+  --surface surfaces-web \
+  --out ./artifacts/generation-inputs/surfaces-web.json
+```
+
+The output is one tool-neutral JSON payload with:
+
+- bundle and contract provenance
+- resolved boundary, structure, layout, visual, and guidance data
+- sections, components, constraints, repair map, and optional authoring hints
+- summary text plus checklist items
+- evidence refs only, never inline extracted payloads
+
+## Step 3: validate generation
 
 ### `workspace`
 
-Use `workspace` mode for tools such as Codex, Cursor, Claude Code, or any local generator that can inspect the real repo state.
+Use `workspace` mode after a local agent edits the repo.
 
-- Run generation guard checks first for fast feedback.
-- Run full `interfacectl validate` before promotion or merge.
-- Prefer deterministic exit-code modes in CI so generated changes can be blocked cleanly.
+```bash
+interfacectl validate-generation \
+  --tool codex \
+  --surface surfaces-web \
+  --mode workspace \
+  --workspace-root . \
+  --bundle-root ./artifacts/generation-bundles/surfaces-web
+```
 
-## Adapter outputs
+### `descriptor`
 
-Every adapter wrapper should return:
+Use `descriptor` mode for hosted builders such as Lovable or Figma Make.
 
-- `requestId`
-- `status`
-- `findings`
-- `coverage`
-- `contract` metadata
-- `timings`
-- `provenance`
+```bash
+interfacectl validate-generation \
+  --tool lovable \
+  --surface reference-target-web \
+  --mode descriptor \
+  --bundle-root ./artifacts/generation-bundles/reference-target-web \
+  --descriptor-path ./generated/reference-target-web.descriptor.json
+```
 
-See [AI Generator Adapter API](./ai-generator-adapter-api.md) for the canonical request/response contract.
+Exit semantics:
 
-## Consumer wiring
+- `0` for `pass` and `warn`
+- `30` for `block`
+- `10` for malformed adapter input or unreadable bundle
 
-Consumer repos may expose the adapter through wrapper commands, HTTP endpoints, editor tasks, or MCP tools. Those entrypoints are repo-local concerns. They should preserve the canonical verdict semantics documented here and in the adapter API.
+## HTTP mode
+
+Hosted builders can still use the HTTP adapter:
+
+```bash
+interfacectl serve-generation-adapter \
+  --bundle-root ./artifacts/generation-bundles/reference-target-web
+```
+
+Endpoint:
+
+- `POST /surfaces.validateGeneration`
+- `422` for `status=block`
+- `400` for invalid request
 
 ## Related docs
 
 - [AI Generator Adapter API](./ai-generator-adapter-api.md)
 - [AI Tool Playbooks](./ai-tool-playbooks.md)
 - [Generator-Aware Contract Consumption](./generator-consumption.md)
-- [Shell Boundary Semantics](./shell-boundary.md)
-- [Generation Boundaries Guide](./generation-boundaries.md)

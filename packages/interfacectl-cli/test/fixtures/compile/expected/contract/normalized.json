@@ -1,4 +1,8 @@
 {
+  "color": {
+    "allowedValues": [],
+    "policy": "off"
+  },
   "constraints": {
     "motion": {
       "allowedDurationsMs": [
@@ -35,9 +39,5 @@
       "type": "web"
     }
   ],
-  "version": "1.0.0",
-  "color": {
-    "policy": "off",
-    "allowedValues": []
-  }
+  "version": "1.0.0"
 }

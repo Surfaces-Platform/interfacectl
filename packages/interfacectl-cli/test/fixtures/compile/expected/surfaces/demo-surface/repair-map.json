@@ -1,0 +1,76 @@
+{
+  "provenance": {
+    "bundleVersion": "2.0",
+    "contractId": "demo-ui",
+    "contractVersion": "1.0.0",
+    "surfaceId": "demo-surface"
+  },
+  "repairs": [
+    {
+      "action": {
+        "sectionIds": [
+          "main.hero"
+        ],
+        "type": "ensure-required-sections"
+      },
+      "category": "structure",
+      "code": "section.missing",
+      "priority": "high"
+    },
+    {
+      "action": {
+        "allowedSectionIds": [
+          "main.hero"
+        ],
+        "type": "restrict-section-set"
+      },
+      "category": "structure",
+      "code": "section.unexpected",
+      "priority": "medium"
+    },
+    {
+      "action": {
+        "allowedFonts": [
+          "Demo Sans",
+          "sans-serif",
+          "var(--font-demo)"
+        ],
+        "type": "restrict-fonts"
+      },
+      "category": "visual",
+      "code": "font.disallowed",
+      "priority": "medium"
+    },
+    {
+      "action": {
+        "allowedDurationsMs": [
+          120
+        ],
+        "type": "restrict-motion-durations"
+      },
+      "category": "visual",
+      "code": "motion.duration",
+      "priority": "medium"
+    },
+    {
+      "action": {
+        "allowedTimingFunctions": [
+          "linear"
+        ],
+        "type": "restrict-motion-timing"
+      },
+      "category": "visual",
+      "code": "motion.timing",
+      "priority": "medium"
+    },
+    {
+      "action": {
+        "maxContentWidth": 960,
+        "type": "reduce-content-width"
+      },
+      "category": "layout",
+      "code": "layout.width-exceeded",
+      "priority": "medium"
+    }
+  ]
+}

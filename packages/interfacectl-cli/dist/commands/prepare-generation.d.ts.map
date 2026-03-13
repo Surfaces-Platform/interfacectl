@@ -1,0 +1,1 @@
+{"version":3,"file":"prepare-generation.d.ts","sourceRoot":"","sources":["../../src/commands/prepare-generation.ts"],"names":[],"mappings":"AAUA,MAAM,WAAW,+BAA+B;IAC9C,UAAU,CAAC,EAAE,MAAM,CAAC;IACpB,SAAS,CAAC,EAAE,MAAM,CAAC;IACnB,OAAO,CAAC,EAAE,MAAM,CAAC;CAClB;AAkOD,wBAAsB,2BAA2B,CAC/C,OAAO,EAAE,+BAA+B,GACvC,OAAO,CAAC,MAAM,CAAC,CAgCjB"}

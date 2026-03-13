@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-adapter-request.schema.json",
+  "title": "GenerationAdapterRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requestId", "tool", "surfaceId", "mode", "bundleRoot"],
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "enum": ["codex", "cursor", "lovable", "figma-make"]
+    },
+    "surfaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["workspace", "descriptor"]
+    },
+    "bundleRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "descriptor": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/descriptorEntry"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": { "const": "workspace" }
+        }
+      },
+      "then": {
+        "required": ["workspaceRoot"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": { "const": "descriptor" }
+        }
+      },
+      "then": {
+        "required": ["descriptor"]
+      }
+    }
+  ],
+  "$defs": {
+    "descriptorEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["surfaceId", "primitives", "colors"],
+      "properties": {
+        "surfaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primitives": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "icons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["value"],
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "boundary": {
+    "allowSources": [],
+    "contentSlot": null,
+    "mustNotEmit": [],
+    "shellOwns": []
+  },
+  "guidance": {
+    "boundaryRules": [
+      {
+        "id": "shell-ownership",
+        "mustNotEmit": [],
+        "shellOwns": []
+      }
+    ],
+    "doNotEmitRoles": [],
+    "generationFocusOrder": [
+      "boundary",
+      "sections",
+      "layout"
+    ],
+    "priorities": [
+      {
+        "id": "boundary",
+        "rank": 1
+      },
+      {
+        "id": "structure",
+        "rank": 2
+      },
+      {
+        "id": "layout",
+        "rank": 3
+      },
+      {
+        "id": "visual",
+        "rank": 4
+      },
+      {
+        "id": "interaction",
+        "rank": 5
+      }
+    ],
+    "requiredOutputs": [
+      {
+        "required": true,
+        "type": "surface-content"
+      },
+      {
+        "required": true,
+        "sectionId": "main.hero",
+        "type": "section"
+      }
+    ]
+  },
+  "identity": {
+    "displayName": "Demo Surface",
+    "surfaceId": "demo-surface",
+    "type": "web"
+  },
+  "layout": {
+    "maxContentWidth": 960,
+    "requiredContainers": [],
+    "viewportIds": []
+  },
+  "provenance": {
+    "bundleVersion": "2.0",
+    "contractId": "demo-ui",
+    "contractVersion": "1.0.0",
+    "surfaceId": "demo-surface"
+  },
+  "refs": {
+    "components": "./components.json",
+    "constraints": "./constraints.json",
+    "contract": "../../contract/normalized.json",
+    "repairMap": "./repair-map.json",
+    "sections": "./sections.json"
+  },
+  "structure": {
+    "flowSummary": null,
+    "requiredSectionIds": [
+      "main.hero"
+    ],
+    "sectionCount": 1,
+    "sectionOrder": [],
+    "topLevelSectionIds": []
+  },
+  "visual": {
+    "allowedFonts": [
+      "Demo Sans",
+      "sans-serif",
+      "var(--font-demo)"
+    ],
+    "color": {
+      "allowedValuesCount": 0,
+      "policy": "off"
+    },
+    "icons": null,
+    "motion": {
+      "allowedDurationsMs": [
+        120
+      ],
+      "allowedTimingFunctions": [
+        "linear"
+      ]
+    },
+    "typography": {
+      "marketingPolicy": "off",
+      "marketingProfileId": null,
+      "tokenPolicyCategories": []
+    }
+  }
+}

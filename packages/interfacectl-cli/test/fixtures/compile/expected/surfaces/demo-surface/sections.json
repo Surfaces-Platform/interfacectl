@@ -1,0 +1,16 @@
+{
+  "provenance": {
+    "bundleVersion": "2.0",
+    "contractId": "demo-ui",
+    "contractVersion": "1.0.0",
+    "surfaceId": "demo-surface"
+  },
+  "sections": [
+    {
+      "description": "Demo hero section",
+      "id": "main.hero",
+      "intent": "primary-intro",
+      "requiredBySurface": true
+    }
+  ]
+}

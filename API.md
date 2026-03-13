@@ -563,15 +563,19 @@ The output directory contains:
 | Path | Description |
 |------|-------------|
 | `manifest.json` | Bundle manifest with version, contract id/version, tool info, inputs, and file hashes |
-| `contract.normalized.json` | Normalized full contract (stable key order, same information as source) |
-| `surfaces/<surfaceId>.json` | One file per surface; surface data plus minimal metadata for runtime loading |
-| `constraints/motion.json` | Motion constraint category (other categories may be added later) |
+| `contract/normalized.json` | Normalized full contract kept for traceability and downstream validation |
+| `surfaces/<surfaceId>/generation.json` | Surface entrypoint for generators and adapter consumers |
+| `surfaces/<surfaceId>/sections.json` | Surface-local section slices and anatomy references |
+| `surfaces/<surfaceId>/components.json` | Shared component catalog referenced by sections |
+| `surfaces/<surfaceId>/constraints.json` | Cross-cutting contract-authoritative constraints for the surface |
+| `surfaces/<surfaceId>/repair-map.json` | Deterministic repair actions keyed by canonical finding codes |
+| `surfaces/<surfaceId>/authoring.json` | Optional authoring hints when the surface declares them |
 
 **Manifest fields**
 
 | Field | Description |
 |-------|-------------|
-| `bundleVersion` | Format version for this bundle (e.g. `"1.0"`) |
+| `bundleVersion` | Format version for this bundle (e.g. `"2.0"`) |
 | `contractId` | From the contract |
 | `contractVersion` | From the contract (`version` field) |
 | `schemaVersion` | Schema bundle identifier used by the CLI (e.g. `surfaces.web.contract@1`) |
@@ -580,6 +584,54 @@ The output directory contains:
 | `files` | Array of `{ path, sha256 }` for all bundle files except `manifest.json`, sorted lexicographically by `path`. Hashes are SHA-256 hex strings. |
 
 No timestamps are included in the manifest so that bundles remain deterministic.
+
+---
+
+### `prepare-generation`
+
+Resolves one compiled surface bundle into a single, agent-ready JSON payload for local workspace agents.
+
+**Synopsis:**
+```bash
+interfacectl prepare-generation --bundle-root <dir> --surface <id> [--out <path>]
+```
+
+**Description:**
+- Loads a compiled generation bundle and validates that the requested surface exists.
+- Resolves `generation.json`, `sections.json`, `components.json`, `constraints.json`, `repair-map.json`, optional `authoring.json`, and `contract/normalized.json`.
+- Emits one deterministic JSON document with summary text, checklist items, resolved generation guidance, sections, components, constraints, repairs, provenance, and source file paths.
+- Uses evidence refs only; it does not inline extracted observation payloads.
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--bundle-root <dir>` | Path to the compiled generation bundle directory (required) |
+| `--surface <id>` | Surface identifier to resolve from the bundle (required) |
+| `--out <path>` | Optional output file path. When provided, the command writes the JSON payload to disk and suppresses the full stdout payload |
+
+**Exit Codes:**
+- `0`: Prepared payload written successfully
+- `10`: Invalid input, missing bundle files, unsupported bundle version, or unreadable compiled contract
+- `1`: Unexpected internal error
+
+**Output shape**
+
+The generated JSON document includes:
+
+| Field | Description |
+|-------|-------------|
+| `surface` | `{ surfaceId, displayName, type }` |
+| `bundle` | `{ root, version, manifestPath, sourcePaths }` |
+| `contract` | `{ id, version, normalizedPath }` |
+| `summary` | Human-readable text plus checklist/focus items and top repair priorities |
+| `generation` | Resolved `boundary`, `structure`, `layout`, `visual`, and `guidance` objects |
+| `sections` | Resolved section list for the target surface |
+| `components` | Resolved component catalog for the target surface |
+| `constraints` | Cross-cutting contract-authoritative constraints |
+| `repairMap` | Deterministic repair actions keyed by canonical finding codes |
+| `authoring` | Optional authoring hints when present in the source bundle |
+| `evidenceRefs` | Evidence refs only; no inline extracted payloads |
 
 ---
 

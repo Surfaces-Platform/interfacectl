@@ -1,5 +1,5 @@
 {
-  "bundleVersion": "1.0",
+  "bundleVersion": "2.0",
   "contractId": "demo-ui",
   "contractVersion": "1.0.0",
   "schemaVersion": "surfaces.web.contract@1",
@@ -13,15 +13,27 @@
   },
   "files": [
     {
-      "path": "constraints/motion.json",
+      "path": "contract/normalized.json",
       "sha256": "<deterministic-hash>"
     },
     {
-      "path": "contract.normalized.json",
+      "path": "surfaces/demo-surface/components.json",
       "sha256": "<deterministic-hash>"
     },
     {
-      "path": "surfaces/demo-surface.json",
+      "path": "surfaces/demo-surface/constraints.json",
+      "sha256": "<deterministic-hash>"
+    },
+    {
+      "path": "surfaces/demo-surface/generation.json",
+      "sha256": "<deterministic-hash>"
+    },
+    {
+      "path": "surfaces/demo-surface/repair-map.json",
+      "sha256": "<deterministic-hash>"
+    },
+    {
+      "path": "surfaces/demo-surface/sections.json",
       "sha256": "<deterministic-hash>"
     }
   ]

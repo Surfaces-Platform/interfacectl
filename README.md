@@ -147,13 +147,23 @@ interfacectl enforce [options]
 
 ### `compile`
 
-Compiles a validated interface contract into a deterministic, runtime-readable bundle. The bundle includes a manifest, a normalized contract, per-surface files, and per-constraint files for downstream tools to consume.
+Compiles a validated interface contract into a deterministic, generation-oriented bundle. The bundle includes a manifest, `contract/normalized.json`, and per-surface slices for downstream generators, adapters, and workbench consumers.
 
 This command does **not** perform enforcement or runtime gating. It produces a stable artifact intended for inspection, tooling, or future runtime consumption.
 
 ```bash
 interfacectl compile --contract <path> --out <dir>
 ```
+
+### `prepare-generation`
+
+Resolves one compiled surface bundle into a single, agent-ready JSON payload for local workspace agents. The payload includes bundle and contract provenance, resolved generation guidance, sections, components, constraints, repair actions, and optional authoring hints.
+
+```bash
+interfacectl prepare-generation --bundle-root <dir> --surface <id> [--out <path>]
+```
+
+Use this before local agent generation. Use `validate-generation` after code is written.
 
 ### `generate-contract` (Phase 0 expert command)
 
@@ -200,6 +210,9 @@ interfacectl separates interface governance into clear phases:
 
 - **Compile**  
   Produces a deterministic, runtime-readable bundle (manifest, normalized contract, surfaces, constraints) that serves as the handoff point to other tools.
+
+- **Prepare generation**  
+  Resolves one surface from the bundle into a single local-agent payload.
 
 - **Runtime consumption (framing only)**  
   Consumption semantics are documented in Phase 4. No runtime enforcement or loaders exist in this repo.
