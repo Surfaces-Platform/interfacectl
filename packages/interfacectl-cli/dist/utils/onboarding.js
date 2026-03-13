@@ -1,14 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stableStringify } from "@surfaces/interfacectl-extractor";
-function statusSummary(status, findingCodes) {
-    return {
-        errorCount: status === "fail" ? Math.max(1, findingCodes.length) : 0,
-        warnCount: status === "warn" ? Math.max(1, findingCodes.length) : 0,
-    };
-}
+import { emitContractRunArtifact } from "./run-artifacts.js";
 async function writeJsonAtomic(filePath, payload) {
     await mkdir(path.dirname(filePath), { recursive: true });
     const tempPath = `${filePath}.tmp`;
@@ -28,9 +23,6 @@ async function readJson(filePath, fallback) {
 }
 function sha256FromContent(content) {
     return createHash("sha256").update(content).digest("hex");
-}
-function toRelative(root, candidate) {
-    return path.relative(root, candidate);
 }
 export function suggestSurfaceIdFromUrl(rawUrl) {
     const url = new URL(rawUrl);
@@ -122,74 +114,17 @@ export async function writeBootstrapArtifacts(input) {
     await writeJsonAtomic(reportPath, input.report);
     return { contractPath, reportPath };
 }
-async function readCanonicalContract(rootDir) {
-    const canonicalPath = path.resolve(rootDir, "contracts", "surfaces.web.contract.json");
-    if (!existsSync(canonicalPath)) {
-        return { id: "unknown", version: "unknown", sha256: "0".repeat(64) };
-    }
-    try {
-        const raw = await readFile(canonicalPath, "utf-8");
-        const parsed = JSON.parse(raw);
-        return {
-            id: parsed.contractId ?? "unknown",
-            version: parsed.version ?? "unknown",
-            sha256: sha256FromContent(raw),
-        };
-    }
-    catch {
-        return { id: "unknown", version: "unknown", sha256: "0".repeat(64) };
-    }
-}
 export async function emitOnboardingRunArtifact(input) {
-    const generatedDir = path.resolve(input.rootDir, "contracts", "generated");
-    const runsPath = path.join(generatedDir, "contract-runs.json");
-    const lineagePath = path.join(generatedDir, "contract-lineage.json");
-    const runsDoc = await readJson(runsPath, {
-        schemaVersion: 1,
-        runs: [],
-    });
-    const lineageDoc = await readJson(lineagePath, {
-        schemaVersion: 1,
-        surfaces: {},
-    });
-    const runId = randomUUID();
-    const createdAt = new Date().toISOString();
-    const canonical = await readCanonicalContract(input.rootDir);
-    const runRecord = {
-        runId,
-        createdAt,
+    const result = emitContractRunArtifact({
+        rootDir: input.rootDir,
         surfaceId: input.surfaceId,
         source: input.source,
-        contract: canonical,
-        artifacts: {
-            extractionPath: toRelative(input.rootDir, input.extractionPath),
-            reportPath: toRelative(input.rootDir, input.reportPath),
-        },
         status: input.status,
-        findingCodes: [...input.findingCodes].sort(),
-        summary: statusSummary(input.status, input.findingCodes),
-    };
-    const deduped = runsDoc.runs.filter((run) => run.runId !== runId);
-    deduped.push(runRecord);
-    deduped.sort((a, b) => {
-        const timeDiff = Date.parse(a.createdAt) - Date.parse(b.createdAt);
-        if (timeDiff !== 0)
-            return timeDiff;
-        return a.runId.localeCompare(b.runId);
+        findingCodes: input.findingCodes,
+        extractionPath: input.extractionPath,
+        reportPath: input.reportPath,
     });
-    runsDoc.runs = deduped;
-    lineageDoc.surfaces[input.surfaceId] = {
-        lastRunId: runRecord.runId,
-        lastRunAt: runRecord.createdAt,
-        lastSource: runRecord.source,
-        lastStatus: runRecord.status,
-        contract: runRecord.contract,
-        artifacts: runRecord.artifacts,
-        findingCodes: runRecord.findingCodes,
-    };
-    await writeJsonAtomic(runsPath, runsDoc);
-    await writeJsonAtomic(lineagePath, lineageDoc);
-    return { runId };
+    return { runId: result.runId };
 }
 export async function emitBootstrapRunArtifact(input) {
     return emitOnboardingRunArtifact({

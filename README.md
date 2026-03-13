@@ -165,6 +165,38 @@ interfacectl prepare-generation --bundle-root <dir> --surface <id> [--out <path>
 
 Use this before local agent generation. Use `validate-generation` after code is written.
 
+### `init-generation-session`
+
+Freezes one compiled bundle revision into a tracked local generation session under `artifacts/generation-sessions/<surface>/<sessionId>/` inside the workspace root.
+
+```bash
+interfacectl init-generation-session --bundle-root <dir> --surface <id> --workspace-root <path> [--tool <codex|cursor>] [--session <id>] [--artifacts-root <path>]
+```
+
+### `record-generation-attempt`
+
+Validates one tracked session against the frozen bundle, records the validate payload and assessment, and emits a canonical `contract-runs.json` / `contract-lineage.json` update into the workspace.
+
+```bash
+interfacectl record-generation-attempt --session-dir <path> --assessment-file <path>
+```
+
+### `summarize-generation-session`
+
+Aggregates recorded attempts for one tracked session, writes `summary.json` and `summary.md`, and exits non-zero unless the latest attempt is `pass`.
+
+```bash
+interfacectl summarize-generation-session --session-dir <path>
+```
+
+### `emit-run-artifact`
+
+Writes one canonical run-artifact entry into `contracts/generated/contract-runs.json` and rebuilds `contract-lineage.json`.
+
+```bash
+interfacectl emit-run-artifact --workspace-root <path> --surface <id> --source <bootstrap|generation|ci|runtime> --status <pass|warn|fail|unknown> [--finding-codes <csv>]
+```
+
 ### `generate-contract` (Phase 0 expert command)
 
 Extracts a **deterministic contract artifact** from a Next.js app by analyzing app code and config. This is **contract extraction only** — no first-run classification, no design-system draft, and no onboarding summary. Prefer `interfacectl init` for the user-facing entry point.
@@ -213,6 +245,9 @@ interfacectl separates interface governance into clear phases:
 
 - **Prepare generation**  
   Resolves one surface from the bundle into a single local-agent payload.
+
+- **Generation sessions**  
+  Freezes one bundle revision, records local-agent attempts, and emits canonical run artifacts.
 
 - **Runtime consumption (framing only)**  
   Consumption semantics are documented in Phase 4. No runtime enforcement or loaders exist in this repo.

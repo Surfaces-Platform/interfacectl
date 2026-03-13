@@ -1,25 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { AdapterInputError, isRecord, loadCompiledSurfaceBundle, } from "../adapter/bundle.js";
-function sortKeysRecursive(value) {
-    if (value === null || value === undefined) {
-        return value;
-    }
-    if (Array.isArray(value)) {
-        return value.map(sortKeysRecursive);
-    }
-    if (typeof value === "object") {
-        const sorted = {};
-        for (const key of Object.keys(value).sort()) {
-            sorted[key] = sortKeysRecursive(value[key]);
-        }
-        return sorted;
-    }
-    return value;
-}
-function stringifyDeterministic(value) {
-    return `${JSON.stringify(sortKeysRecursive(value), null, 2)}\n`;
-}
+import { stringifyDeterministicJson } from "../utils/deterministic-json.js";
 function asRecord(value) {
     return isRecord(value) ? value : {};
 }
@@ -132,7 +114,7 @@ function buildSummary(bundle) {
         topRepairs: repairs.slice(0, 5),
     };
 }
-function buildPreparedGenerationPayload(bundle) {
+export function buildPreparedGenerationPayload(bundle) {
     const generation = asRecord(bundle.surface.generation.value);
     const generationRefs = asRecord(generation.refs);
     const identity = asRecord(generation.identity);
@@ -186,6 +168,10 @@ function buildPreparedGenerationPayload(bundle) {
         evidenceRefs: Array.isArray(generationRefs.evidence) ? generationRefs.evidence : [],
     };
 }
+export function loadPreparedGenerationPayload(bundleRoot, surfaceId, cwd = process.cwd()) {
+    const bundle = loadCompiledSurfaceBundle(bundleRoot, surfaceId, cwd);
+    return buildPreparedGenerationPayload(bundle);
+}
 function writeError(error, code) {
     process.stderr.write(`${JSON.stringify({
         status: "error",
@@ -201,9 +187,8 @@ export async function runPrepareGenerationCommand(options) {
         if (!options.surfaceId) {
             throw new AdapterInputError("--surface is required.");
         }
-        const bundle = loadCompiledSurfaceBundle(options.bundleRoot, options.surfaceId, process.cwd());
-        const payload = buildPreparedGenerationPayload(bundle);
-        const serialized = stringifyDeterministic(payload);
+        const payload = loadPreparedGenerationPayload(options.bundleRoot, options.surfaceId, process.cwd());
+        const serialized = stringifyDeterministicJson(payload);
         if (options.outPath) {
             const outPath = path.resolve(options.outPath);
             fs.mkdirSync(path.dirname(outPath), { recursive: true });

@@ -6,9 +6,11 @@ Use this flow when a local agent or hosted generator needs contract-aware guidan
 
 1. Compile the contract into a generation bundle.
 2. For local agents, resolve the bundle into one agent-ready payload with `prepare-generation`.
-3. Generate or edit UI.
-4. Run `validate-generation` against the same bundle.
-5. Repeat until the result is `pass` or an accepted `warn`.
+3. Freeze one tracked session with `init-generation-session` when you want iteration evidence.
+4. Generate or edit UI.
+5. Run `record-generation-attempt` for each attempt.
+6. Run `summarize-generation-session` to aggregate progress.
+7. Use `validate-generation` directly when you need an ad hoc post-generation check without a tracked session.
 
 ## Step 1: compile the bundle
 
@@ -41,7 +43,7 @@ The output is one tool-neutral JSON payload with:
 
 ### `workspace`
 
-Use `workspace` mode after a local agent edits the repo.
+Use `workspace` mode after a local agent edits the repo, either directly or through `record-generation-attempt`.
 
 ```bash
 interfacectl validate-generation \
@@ -70,6 +72,24 @@ Exit semantics:
 - `0` for `pass` and `warn`
 - `30` for `block`
 - `10` for malformed adapter input or unreadable bundle
+
+## Optional tracked-session loop
+
+```bash
+interfacectl init-generation-session \
+  --bundle-root ./artifacts/generation-bundles/surfaces-web \
+  --surface surfaces-web \
+  --workspace-root .
+
+interfacectl record-generation-attempt \
+  --session-dir ./artifacts/generation-sessions/surfaces-web/<sessionId> \
+  --assessment-file ./artifacts/generation-sessions/surfaces-web/<sessionId>/assessment.json
+
+interfacectl summarize-generation-session \
+  --session-dir ./artifacts/generation-sessions/surfaces-web/<sessionId>
+```
+
+This loop freezes the bundle revision, records each assessment, and emits canonical run artifacts for downstream consumers.
 
 ## HTTP mode
 

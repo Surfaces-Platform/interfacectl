@@ -13,6 +13,12 @@ import { runDescribeCommand } from "./commands/describe.js";
 import { runPrepareGenerationCommand } from "./commands/prepare-generation.js";
 import { runValidateGenerationCommand } from "./commands/validate-generation.js";
 import { runServeGenerationAdapterCommand } from "./commands/serve-generation-adapter.js";
+import { runEmitRunArtifactCommand } from "./commands/emit-run-artifact.js";
+import {
+  runInitGenerationSessionCommand,
+  runRecordGenerationAttemptCommand,
+  runSummarizeGenerationSessionCommand,
+} from "./commands/generation-session.js";
 import { runInitCommand } from "./commands/init.js";
 import { runAnalyzeCommand } from "./commands/analyze.js";
 import {
@@ -303,6 +309,48 @@ program
   });
 
 program
+  .command("init-generation-session")
+  .description("Freeze one compiled bundle revision into a tracked local generation session")
+  .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
+  .requiredOption("--surface <id>", "Surface identifier")
+  .requiredOption("--workspace-root <path>", "Workspace root for emitted run artifacts")
+  .option("--tool <tool>", "Generation tool identifier (codex|cursor)")
+  .option("--session <id>", "Optional session identifier")
+  .option("--artifacts-root <path>", "Optional session artifacts root (defaults under workspaceRoot/artifacts/generation-sessions)")
+  .action(async (options) => {
+    process.exitCode = await runInitGenerationSessionCommand({
+      bundleRoot: options.bundleRoot,
+      surfaceId: options.surface,
+      workspaceRoot: options.workspaceRoot,
+      tool: options.tool,
+      sessionId: options.session,
+      artifactsRoot: options.artifactsRoot,
+    });
+  });
+
+program
+  .command("record-generation-attempt")
+  .description("Validate and record one generation attempt for a tracked session")
+  .requiredOption("--session-dir <path>", "Path to the generation session directory")
+  .requiredOption("--assessment-file <path>", "Path to the assessment JSON file")
+  .action(async (options) => {
+    process.exitCode = await runRecordGenerationAttemptCommand({
+      sessionDir: options.sessionDir,
+      assessmentFile: options.assessmentFile,
+    });
+  });
+
+program
+  .command("summarize-generation-session")
+  .description("Aggregate recorded generation attempts for a tracked session")
+  .requiredOption("--session-dir <path>", "Path to the generation session directory")
+  .action(async (options) => {
+    process.exitCode = await runSummarizeGenerationSessionCommand({
+      sessionDir: options.sessionDir,
+    });
+  });
+
+program
   .command("validate-generation")
   .description("Validate generated UI against a compiled generation bundle")
   .requiredOption("--tool <tool>", "Generator tool identifier")
@@ -345,6 +393,38 @@ program
       tokenHeader: options.tokenHeader,
       bundleRoot: options.bundleRoot,
       descriptorParityConfigPath: options.descriptorParityConfig,
+    });
+  });
+
+program
+  .command("emit-run-artifact")
+  .description("Emit one canonical run artifact into contracts/generated")
+  .requiredOption("--workspace-root <path>", "Workspace root for contracts/generated")
+  .requiredOption("--surface <id>", "Surface identifier")
+  .requiredOption("--source <bootstrap|generation|ci|runtime>", "Run source")
+  .requiredOption("--status <pass|warn|fail|unknown>", "Run status")
+  .option("--contract <path>", "Optional contract path override")
+  .option("--extraction-path <path>", "Optional extraction artifact path")
+  .option("--report-path <path>", "Optional report artifact path")
+  .option("--finding-codes <csv>", "Optional comma-separated finding codes")
+  .option("--workspace-id <id>", "Optional workspace identifier")
+  .option("--idempotency-key <key>", "Optional idempotency key")
+  .option("--created-at <timestamp>", "Optional created-at timestamp")
+  .option("--run-id <id>", "Optional run identifier")
+  .action(async (options) => {
+    process.exitCode = await runEmitRunArtifactCommand({
+      workspaceRoot: options.workspaceRoot,
+      surfaceId: options.surface,
+      source: options.source,
+      status: options.status,
+      contractPath: options.contract,
+      extractionPath: options.extractionPath,
+      reportPath: options.reportPath,
+      findingCodes: options.findingCodes,
+      workspaceId: options.workspaceId,
+      idempotencyKey: options.idempotencyKey,
+      createdAt: options.createdAt,
+      runId: options.runId,
     });
   });
 

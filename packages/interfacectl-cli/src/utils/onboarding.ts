@@ -3,56 +3,9 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stableStringify } from "@surfaces/interfacectl-extractor";
-
-type ValidationOutcome = "pass" | "warn" | "fail" | "unknown";
-export type OnboardingRunSource = "bootstrap" | "generation" | "ci" | "runtime";
-
-interface ContractRunsDocument {
-  schemaVersion: number;
-  runs: ContractRun[];
-}
-
-interface ContractRun {
-  runId: string;
-  createdAt: string;
-  surfaceId: string;
-  source: OnboardingRunSource;
-  contract: {
-    id: string;
-    version: string;
-    sha256: string;
-  };
-  artifacts: {
-    extractionPath?: string;
-    reportPath?: string;
-  };
-  status: ValidationOutcome;
-  findingCodes: string[];
-  summary: {
-    errorCount: number;
-    warnCount: number;
-  };
-}
-
-interface ContractLineageDocument {
-  schemaVersion: number;
-  surfaces: Record<string, {
-    lastRunId: string;
-    lastRunAt: string;
-    lastSource: OnboardingRunSource;
-    lastStatus: ValidationOutcome;
-    contract: {
-      id: string;
-      version: string;
-      sha256: string;
-    };
-    artifacts: {
-      extractionPath?: string;
-      reportPath?: string;
-    };
-    findingCodes: string[];
-  }>;
-}
+import { emitContractRunArtifact, type RunArtifactStatus, type RunArtifactSource } from "./run-artifacts.js";
+type ValidationOutcome = RunArtifactStatus;
+export type OnboardingRunSource = RunArtifactSource;
 
 export interface BootstrapExtractionReport {
   surfaceId: string;
@@ -80,13 +33,6 @@ export interface BootstrapExtractionReport {
   };
 }
 
-function statusSummary(status: ValidationOutcome, findingCodes: string[]) {
-  return {
-    errorCount: status === "fail" ? Math.max(1, findingCodes.length) : 0,
-    warnCount: status === "warn" ? Math.max(1, findingCodes.length) : 0,
-  };
-}
-
 async function writeJsonAtomic(filePath: string, payload: unknown): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp`;
@@ -106,10 +52,6 @@ async function readJson<T>(filePath: string, fallback: T): Promise<T> {
 
 function sha256FromContent(content: string): string {
   return createHash("sha256").update(content).digest("hex");
-}
-
-function toRelative(root: string, candidate: string): string {
-  return path.relative(root, candidate);
 }
 
 export function suggestSurfaceIdFromUrl(rawUrl: string): string {
@@ -222,28 +164,6 @@ export async function writeBootstrapArtifacts(input: {
   return { contractPath, reportPath };
 }
 
-async function readCanonicalContract(rootDir: string): Promise<{
-  id: string;
-  version: string;
-  sha256: string;
-}> {
-  const canonicalPath = path.resolve(rootDir, "contracts", "surfaces.web.contract.json");
-  if (!existsSync(canonicalPath)) {
-    return { id: "unknown", version: "unknown", sha256: "0".repeat(64) };
-  }
-  try {
-    const raw = await readFile(canonicalPath, "utf-8");
-    const parsed = JSON.parse(raw) as { contractId?: string; version?: string };
-    return {
-      id: parsed.contractId ?? "unknown",
-      version: parsed.version ?? "unknown",
-      sha256: sha256FromContent(raw),
-    };
-  } catch {
-    return { id: "unknown", version: "unknown", sha256: "0".repeat(64) };
-  }
-}
-
 export async function emitOnboardingRunArtifact(input: {
   rootDir: string;
   surfaceId: string;
@@ -253,58 +173,16 @@ export async function emitOnboardingRunArtifact(input: {
   extractionPath: string;
   reportPath: string;
 }): Promise<{ runId: string }> {
-  const generatedDir = path.resolve(input.rootDir, "contracts", "generated");
-  const runsPath = path.join(generatedDir, "contract-runs.json");
-  const lineagePath = path.join(generatedDir, "contract-lineage.json");
-
-  const runsDoc = await readJson<ContractRunsDocument>(runsPath, {
-    schemaVersion: 1,
-    runs: [],
-  });
-  const lineageDoc = await readJson<ContractLineageDocument>(lineagePath, {
-    schemaVersion: 1,
-    surfaces: {},
-  });
-
-  const runId = randomUUID();
-  const createdAt = new Date().toISOString();
-  const canonical = await readCanonicalContract(input.rootDir);
-  const runRecord: ContractRun = {
-    runId,
-    createdAt,
+  const result = emitContractRunArtifact({
+    rootDir: input.rootDir,
     surfaceId: input.surfaceId,
     source: input.source,
-    contract: canonical,
-    artifacts: {
-      extractionPath: toRelative(input.rootDir, input.extractionPath),
-      reportPath: toRelative(input.rootDir, input.reportPath),
-    },
     status: input.status,
-    findingCodes: [...input.findingCodes].sort(),
-    summary: statusSummary(input.status, input.findingCodes),
-  };
-
-  const deduped = runsDoc.runs.filter((run) => run.runId !== runId);
-  deduped.push(runRecord);
-  deduped.sort((a, b) => {
-    const timeDiff = Date.parse(a.createdAt) - Date.parse(b.createdAt);
-    if (timeDiff !== 0) return timeDiff;
-    return a.runId.localeCompare(b.runId);
+    findingCodes: input.findingCodes,
+    extractionPath: input.extractionPath,
+    reportPath: input.reportPath,
   });
-  runsDoc.runs = deduped;
-  lineageDoc.surfaces[input.surfaceId] = {
-    lastRunId: runRecord.runId,
-    lastRunAt: runRecord.createdAt,
-    lastSource: runRecord.source,
-    lastStatus: runRecord.status,
-    contract: runRecord.contract,
-    artifacts: runRecord.artifacts,
-    findingCodes: runRecord.findingCodes,
-  };
-
-  await writeJsonAtomic(runsPath, runsDoc);
-  await writeJsonAtomic(lineagePath, lineageDoc);
-  return { runId };
+  return { runId: result.runId };
 }
 
 export async function emitBootstrapRunArtifact(input: {

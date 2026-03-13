@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-assessment.schema.json",
+  "title": "GenerationAssessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["structure", "visual", "responsiveness", "notes"],
+  "properties": {
+    "structure": {
+      "type": "string",
+      "enum": ["strong", "partial", "weak"]
+    },
+    "visual": {
+      "type": "string",
+      "enum": ["strong", "partial", "weak"]
+    },
+    "responsiveness": {
+      "type": "string",
+      "enum": ["strong", "partial", "weak"]
+    },
+    "notes": {
+      "type": "string",
+      "minLength": 1
+    },
+    "touchedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

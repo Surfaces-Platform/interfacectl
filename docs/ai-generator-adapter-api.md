@@ -2,7 +2,7 @@
 
 This page defines the canonical request/response semantics for generator adapters built around `interfacectl` validation and the compiled generation bundle.
 
-For local workspace agents, the expected pre-generation handoff is `interfacectl prepare-generation`. This document covers the post-generation validation contract.
+For local workspace agents, the expected pre-generation handoff is `interfacectl prepare-generation`. Tracked session orchestration now also lives in `interfacectl` through `init-generation-session`, `record-generation-attempt`, and `summarize-generation-session`. This document covers the post-generation validation contract.
 
 JSON Schemas for this contract live in:
 

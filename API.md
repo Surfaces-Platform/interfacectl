@@ -635,6 +635,98 @@ The generated JSON document includes:
 
 ---
 
+### `init-generation-session`
+
+Creates a tracked local-agent session from an already compiled bundle. The command copies the bundle into a session-local directory, prepares the canonical agent payload once, and writes `session.json`.
+
+**Synopsis:**
+```bash
+interfacectl init-generation-session --bundle-root <dir> --surface <id> --workspace-root <path> [--tool <codex|cursor>] [--session <id>] [--artifacts-root <path>]
+```
+
+**Description:**
+- Requires a compiled bundle and does not call `compile` implicitly.
+- Defaults session artifacts to `<workspaceRoot>/artifacts/generation-sessions/<surfaceId>/<sessionId>/`.
+- Writes `bundle/`, `prepared-input.json`, and `session.json`.
+- Canonical session schema lives at `packages/interfacectl-cli/schemas/generation-session.schema.json`.
+
+**Exit Codes:**
+- `0`: Session created successfully
+- `10`: Invalid input, unreadable bundle, duplicate session, or unreadable workspace root
+- `1`: Unexpected internal error
+
+---
+
+### `record-generation-attempt`
+
+Records one operator-reviewed attempt for a tracked session.
+
+**Synopsis:**
+```bash
+interfacectl record-generation-attempt --session-dir <path> --assessment-file <path>
+```
+
+**Description:**
+- Loads `session.json` from the provided session directory.
+- Validates the workspace against the frozen session bundle.
+- Writes:
+  - `attempts/<nnn>.validate.json`
+  - `attempts/<nnn>.assessment.json`
+  - `attempts/<nnn>.metadata.json`
+- Emits a canonical `generation` run into `contracts/generated/contract-runs.json` and rebuilds `contract-lineage.json`.
+- Canonical assessment schema lives at `packages/interfacectl-cli/schemas/generation-assessment.schema.json`.
+
+**Exit Codes:**
+- `0`: Attempt recorded successfully
+- `10`: Invalid input, missing session, invalid assessment payload, or unreadable files
+- `1`: Unexpected internal error
+
+---
+
+### `summarize-generation-session`
+
+Summarizes recorded attempts for one session.
+
+**Synopsis:**
+```bash
+interfacectl summarize-generation-session --session-dir <path>
+```
+
+**Description:**
+- Aggregates attempt count, first pass attempt, latest status, recurring finding codes, recurring repair codes, and the latest assessment.
+- Writes `summary.json` and `summary.md`.
+- Canonical summary schema lives at `packages/interfacectl-cli/schemas/generation-session-summary.schema.json`.
+
+**Exit Codes:**
+- `0`: Latest attempt is `pass`
+- `30`: Latest attempt is `warn` or `block`
+- `10`: Missing session or attempts, or invalid artifacts
+- `1`: Unexpected internal error
+
+---
+
+### `emit-run-artifact`
+
+Writes one canonical run record into `contracts/generated/contract-runs.json` and rebuilds `contract-lineage.json`.
+
+**Synopsis:**
+```bash
+interfacectl emit-run-artifact --workspace-root <path> --surface <id> --source <bootstrap|generation|ci|runtime> --status <pass|warn|fail|unknown> [--contract <path>] [--extraction-path <path>] [--report-path <path>] [--finding-codes <csv>] [--workspace-id <id>] [--idempotency-key <key>] [--created-at <timestamp>] [--run-id <id>]
+```
+
+**Description:**
+- Creates `contract-runs.json` and `contract-lineage.json` if they do not yet exist.
+- Uses canonical schema files:
+  - `packages/interfacectl-cli/schemas/contract-runs.schema.json`
+  - `packages/interfacectl-cli/schemas/contract-lineage.schema.json`
+- Dedupes by `(workspaceId, runId)` and `(workspaceId, idempotencyKey)` when provided.
+
+**Exit Codes:**
+- `0`: Run artifact emitted successfully
+- `10`: Invalid input
+
+---
+
 ### `generate-contract` (Phase 0)
 
 Extracts a deterministic contract artifact from a Next.js app by analyzing app code. **Extraction only** — no enforcement, no network calls. Output is schema-valid; extracted-only fields live under `x_extracted`.

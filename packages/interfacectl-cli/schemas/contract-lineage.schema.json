@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/contract-lineage.schema.json",
+  "title": "ContractLineageDocument",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "surfaces"],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "surfaces": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lastRunId",
+          "lastRunAt",
+          "lastSource",
+          "lastStatus",
+          "contract",
+          "artifacts",
+          "findingCodes"
+        ],
+        "properties": {
+          "lastRunId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastRunAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSource": {
+            "type": "string",
+            "enum": ["bootstrap", "generation", "ci", "runtime"]
+          },
+          "lastStatus": {
+            "type": "string",
+            "enum": ["pass", "warn", "fail", "unknown"]
+          },
+          "contract": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "version", "sha256"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9]{64}$"
+              }
+            }
+          },
+          "artifacts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "extractionPath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reportPath": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "findingCodes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

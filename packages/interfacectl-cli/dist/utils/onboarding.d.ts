@@ -1,5 +1,6 @@
-type ValidationOutcome = "pass" | "warn" | "fail" | "unknown";
-export type OnboardingRunSource = "bootstrap" | "generation" | "ci" | "runtime";
+import { type RunArtifactStatus, type RunArtifactSource } from "./run-artifacts.js";
+type ValidationOutcome = RunArtifactStatus;
+export type OnboardingRunSource = RunArtifactSource;
 export interface BootstrapExtractionReport {
     surfaceId: string;
     appRoot: string;

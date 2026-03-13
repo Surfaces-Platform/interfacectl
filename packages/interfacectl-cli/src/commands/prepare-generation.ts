@@ -7,6 +7,7 @@ import {
   type JsonRecord,
   type LoadedCompiledSurfaceBundle,
 } from "../adapter/bundle.js";
+import { stringifyDeterministicJson } from "../utils/deterministic-json.js";
 
 export interface PrepareGenerationCommandOptions {
   bundleRoot?: string;
@@ -21,27 +22,6 @@ interface SummaryRepairItem {
   priority: RepairPriority;
   category: string;
   actionType: string;
-}
-
-function sortKeysRecursive(value: unknown): unknown {
-  if (value === null || value === undefined) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map(sortKeysRecursive);
-  }
-  if (typeof value === "object") {
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      sorted[key] = sortKeysRecursive((value as Record<string, unknown>)[key]);
-    }
-    return sorted;
-  }
-  return value;
-}
-
-function stringifyDeterministic(value: unknown): string {
-  return `${JSON.stringify(sortKeysRecursive(value), null, 2)}\n`;
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -168,7 +148,7 @@ function buildSummary(bundle: LoadedCompiledSurfaceBundle) {
   };
 }
 
-function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBundle) {
+export function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBundle) {
   const generation = asRecord(bundle.surface.generation.value);
   const generationRefs = asRecord(generation.refs);
   const identity = asRecord(generation.identity);
@@ -224,6 +204,15 @@ function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBundle) {
   };
 }
 
+export function loadPreparedGenerationPayload(
+  bundleRoot: string,
+  surfaceId: string,
+  cwd = process.cwd(),
+) {
+  const bundle = loadCompiledSurfaceBundle(bundleRoot, surfaceId, cwd);
+  return buildPreparedGenerationPayload(bundle);
+}
+
 function writeError(error: AdapterInputError | Error, code: string) {
   process.stderr.write(
     `${JSON.stringify(
@@ -249,9 +238,8 @@ export async function runPrepareGenerationCommand(
       throw new AdapterInputError("--surface is required.");
     }
 
-    const bundle = loadCompiledSurfaceBundle(options.bundleRoot, options.surfaceId, process.cwd());
-    const payload = buildPreparedGenerationPayload(bundle);
-    const serialized = stringifyDeterministic(payload);
+    const payload = loadPreparedGenerationPayload(options.bundleRoot, options.surfaceId, process.cwd());
+    const serialized = stringifyDeterministicJson(payload);
 
     if (options.outPath) {
       const outPath = path.resolve(options.outPath);

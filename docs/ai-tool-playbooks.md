@@ -22,14 +22,14 @@ Recommended flow:
 
 1. Run `interfacectl compile`.
 2. Run `interfacectl prepare-generation` for the target surface.
-3. Feed the prepared JSON into the agent context or repo-local wrapper.
-4. Generate directly in the repo.
-5. Run `interfacectl validate-generation --mode workspace`.
-6. Treat `block` as a hard stop and feed findings back into the next attempt.
+3. Optionally run `interfacectl init-generation-session` when you want tracked iteration evidence.
+4. Feed the prepared JSON into the agent context or repo-local wrapper.
+5. Generate directly in the repo.
+6. Run `interfacectl validate-generation --mode workspace`, or `interfacectl record-generation-attempt` for tracked sessions.
+7. Treat `block` as a hard stop and feed findings back into the next attempt.
 
 These tools should consume the prepared generation payload, not the raw contract or sibling bundle files directly.
-
-When you want tracked iteration evidence around a local-agent loop, pair `prepare-generation` and `validate-generation` with a repo-local session harness that freezes one bundle revision, records each assessment, and aggregates recurring repair codes.
+When you want tracked iteration evidence around a local-agent loop, use the canonical session commands rather than a repo-local harness.
 
 ## Hosted builders
 
