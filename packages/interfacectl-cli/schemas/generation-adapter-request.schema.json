@@ -12,7 +12,7 @@
     },
     "tool": {
       "type": "string",
-      "enum": ["codex", "cursor", "lovable", "figma-make"]
+      "enum": ["codex", "cursor", "local-llm", "lovable", "figma-make"]
     },
     "surfaceId": {
       "type": "string",

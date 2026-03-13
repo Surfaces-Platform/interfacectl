@@ -17,7 +17,7 @@ import {
 } from "../utils/run-artifacts.js";
 import { stringifyDeterministicJson, writeDeterministicJsonSync } from "../utils/deterministic-json.js";
 
-type SessionTool = "codex" | "cursor";
+type SessionTool = "codex" | "cursor" | "local-llm";
 type AssessmentGrade = "strong" | "partial" | "weak";
 type ValidateStatus = "pass" | "warn" | "block";
 type GuidanceMode = "prepared" | "unguided";
@@ -393,7 +393,7 @@ interface LoadedAttempt {
   previewMetadataPath?: string;
 }
 
-const VALID_TOOLS = new Set<SessionTool>(["codex", "cursor"]);
+const VALID_TOOLS = new Set<SessionTool>(["codex", "cursor", "local-llm"]);
 const VALID_GRADES = new Set<AssessmentGrade>(["strong", "partial", "weak"]);
 const VALID_GUIDANCE_MODES = new Set<GuidanceMode>(["prepared", "unguided"]);
 const VALID_REVIEW_STATUSES = new Set<AttemptReviewStatus>(["accepted", "rejected"]);
@@ -471,7 +471,7 @@ function countBySeverity(validatePayload: JsonRecord) {
 function ensureSessionTool(tool?: string): SessionTool {
   const normalized = typeof tool === "string" ? tool.trim().toLowerCase() : "codex";
   if (!VALID_TOOLS.has(normalized as SessionTool)) {
-    throw new SessionInputError(`Invalid --tool value "${tool ?? ""}". Expected codex|cursor.`);
+    throw new SessionInputError(`Invalid --tool value "${tool ?? ""}". Expected codex|cursor|local-llm.`);
   }
   return normalized as SessionTool;
 }

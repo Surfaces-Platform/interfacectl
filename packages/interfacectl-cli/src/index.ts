@@ -320,7 +320,7 @@ program
   .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
   .requiredOption("--surface <id>", "Surface identifier")
   .requiredOption("--workspace-root <path>", "Workspace root for emitted run artifacts")
-  .option("--tool <tool>", "Generation tool identifier (codex|cursor)")
+  .option("--tool <tool>", "Generation tool identifier (codex|cursor|local-llm)")
   .option("--guidance-mode <mode>", "Session guidance mode (prepared|unguided)")
   .option("--brief-file <path>", "Optional implementation brief file to freeze into the session")
   .option("--session <id>", "Optional session identifier")
