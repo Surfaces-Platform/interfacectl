@@ -9,7 +9,7 @@
     "surfaceId",
     "sessionId",
     "tool",
-    "guidanceMode",
+    "guidanceStrategy",
     "workspaceRoot",
     "sourceBundleRoot",
     "sessionDir",
@@ -17,13 +17,14 @@
     "preparedInputPath",
     "contractPath",
     "repairMapPath",
+    "guidanceArtifacts",
     "startedAt",
     "successRule"
   ],
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 2
+      "const": 3
     },
     "surfaceId": {
       "type": "string",
@@ -37,9 +38,9 @@
       "type": "string",
       "enum": ["codex", "cursor", "local-llm"]
     },
-    "guidanceMode": {
+    "guidanceStrategy": {
       "type": "string",
-      "enum": ["prepared", "unguided"]
+      "enum": ["prompt-summary", "json-primary", "unguided"]
     },
     "workspaceRoot": {
       "type": "string",
@@ -68,6 +69,17 @@
     "repairMapPath": {
       "type": "string",
       "minLength": 1
+    },
+    "guidanceArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseHandoffPath"],
+      "properties": {
+        "baseHandoffPath": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
     },
     "startedAt": {
       "type": "string",

@@ -18,6 +18,7 @@ import {
   runCaptureGenerationPreviewCommand,
   runCompareGenerationSessionsCommand,
   runInitGenerationSessionCommand,
+  runPrepareGenerationHandoffCommand,
   runRecordGenerationAttemptCommand,
   runReviewContractDeltaSuggestionsCommand,
   runReviewGenerationAttemptCommand,
@@ -321,7 +322,8 @@ program
   .requiredOption("--surface <id>", "Surface identifier")
   .requiredOption("--workspace-root <path>", "Workspace root for emitted run artifacts")
   .option("--tool <tool>", "Generation tool identifier (codex|cursor|local-llm)")
-  .option("--guidance-mode <mode>", "Session guidance mode (prepared|unguided)")
+  .option("--guidance-strategy <strategy>", "Session guidance strategy (prompt-summary|json-primary|unguided)")
+  .option("--guidance-mode <mode>", "Legacy alias for --guidance-strategy (prepared|unguided)")
   .option("--brief-file <path>", "Optional implementation brief file to freeze into the session")
   .option("--session <id>", "Optional session identifier")
   .option("--artifacts-root <path>", "Optional session artifacts root (defaults under workspaceRoot/artifacts/generation-sessions)")
@@ -331,10 +333,31 @@ program
       surfaceId: options.surface,
       workspaceRoot: options.workspaceRoot,
       tool: options.tool,
+      guidanceStrategy: options.guidanceStrategy,
       guidanceMode: options.guidanceMode,
       briefFile: options.briefFile,
       sessionId: options.session,
       artifactsRoot: options.artifactsRoot,
+    });
+  });
+
+program
+  .command("prepare-generation-handoff")
+  .description("Build one canonical strategy-aware guidance handoff artifact for a tracked generation session")
+  .requiredOption("--session-dir <path>", "Path to the generation session directory")
+  .option("--guidance-strategy <strategy>", "Optional guidance strategy override (prompt-summary|json-primary|unguided)")
+  .option("--accepted-suggestions <path>", "Optional accepted suggestions JSON file")
+  .option("--designer-notes <path>", "Optional designer notes JSON file")
+  .option("--finding-codes <codes>", "Optional comma-separated finding codes to match against repair guidance")
+  .option("--out <path>", "Write the handoff JSON to the provided file")
+  .action(async (options) => {
+    process.exitCode = await runPrepareGenerationHandoffCommand({
+      sessionDir: options.sessionDir,
+      guidanceStrategy: options.guidanceStrategy,
+      acceptedSuggestionsFile: options.acceptedSuggestions,
+      designerNotesFile: options.designerNotes,
+      findingCodes: options.findingCodes,
+      outPath: options.out,
     });
   });
 
@@ -394,9 +417,9 @@ program
 
 program
   .command("compare-generation-sessions")
-  .description("Compare one unguided session against one prepared guided session")
-  .requiredOption("--baseline-session-dir <path>", "Path to the unguided baseline session directory")
-  .requiredOption("--guided-session-dir <path>", "Path to the prepared guided session directory")
+  .description("Compare two generation sessions for the same frozen brief")
+  .requiredOption("--baseline-session-dir <path>", "Path to the baseline generation session directory")
+  .requiredOption("--guided-session-dir <path>", "Path to the candidate generation session directory")
   .option("--out-dir <path>", "Output directory for comparison artifacts")
   .action(async (options) => {
     process.exitCode = await runCompareGenerationSessionsCommand({
@@ -408,7 +431,7 @@ program
 
 program
   .command("suggest-contract-deltas")
-  .description("Generate evidence-backed contract refinement suggestions from one guided session")
+  .description("Generate evidence-backed contract refinement suggestions from one guided generation session")
   .requiredOption("--session-dir <path>", "Path to the guided generation session directory")
   .option("--out <path>", "Write suggestion JSON to the provided file")
   .action(async (options) => {

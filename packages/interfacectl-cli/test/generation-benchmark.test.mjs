@@ -150,6 +150,7 @@ function buildAssessment({
   visual,
   responsiveness,
   notes,
+  heuristics,
 }) {
   return {
     structure,
@@ -158,6 +159,7 @@ function buildAssessment({
     visual,
     responsiveness,
     notes,
+    ...(heuristics ? { heuristics } : {}),
   };
 }
 
@@ -206,14 +208,14 @@ async function withServer(handler, callback) {
   }
 }
 
-test("guided vs unguided benchmark artifacts compare sessions, emit deterministic suggestions, track reviewed decisions, and carry explicit preview refs", async (t) => {
+test("strategy-aware benchmark artifacts compare sessions, emit deterministic suggestions, track reviewed decisions, and carry explicit preview refs", async (t) => {
   await ensureChromiumAvailable(t);
 
   const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-benchmark-"));
   const workspaceRoot = path.join(tempRoot, "workspace");
   const bundleRoot = path.join(tempRoot, "bundle");
-  const baselineSessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "baseline-unguided");
-  const guidedSessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "guided-prepared");
+  const baselineSessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "baseline-prompt-summary");
+  const guidedSessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "guided-json-primary");
   const briefPath = path.join(tempRoot, "task-brief.md");
 
   try {
@@ -235,9 +237,9 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
     );
     assert.equal(compileResult.exitCode, 0, compileResult.stderr);
 
-    for (const [sessionId, guidanceMode] of [
-      ["baseline-unguided", "unguided"],
-      ["guided-prepared", "prepared"],
+    for (const [sessionId, guidanceStrategy] of [
+      ["baseline-prompt-summary", "prompt-summary"],
+      ["guided-json-primary", "json-primary"],
     ]) {
       const initResult = await runCli(
         [
@@ -250,8 +252,8 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
           workspaceRoot,
           "--session",
           sessionId,
-          "--guidance-mode",
-          guidanceMode,
+          "--guidance-strategy",
+          guidanceStrategy,
           "--brief-file",
           briefPath,
         ],
@@ -270,6 +272,12 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
         visual: "partial",
         responsiveness: "weak",
         notes: "Unguided baseline missed the contract markers on the first attempt.",
+        heuristics: {
+          unresolvedAcceptedSuggestionCount: 2,
+          unresolvedAcceptedSuggestionRate: 1,
+          noChangesAfterEditFailureCount: 1,
+          recoverableToolErrorCount: 2,
+        },
       }),
     );
     const baselineAttemptOne = await runCli(
@@ -315,6 +323,13 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
         visual: "partial",
         responsiveness: "partial",
         notes: "Baseline corrected the structure but still drifted on color.",
+        heuristics: {
+          unresolvedAcceptedSuggestionCount: 1,
+          unresolvedAcceptedSuggestionRate: 0.5,
+          noChangesAfterEditFailureCount: 1,
+          recoverableToolErrorCount: 1,
+          touchedFilesPerResolvedFinding: 2,
+        },
       }),
     );
     const baselineAttemptTwo = await runCli(
@@ -388,6 +403,13 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
         visual: "partial",
         responsiveness: "strong",
         notes: "Guided attempt matched the structure but still carried a color warning.",
+        heuristics: {
+          unresolvedAcceptedSuggestionCount: 0,
+          unresolvedAcceptedSuggestionRate: 0,
+          noChangesAfterEditFailureCount: 0,
+          recoverableToolErrorCount: 0,
+          touchedFilesPerResolvedFinding: 1,
+        },
       }),
     );
     const guidedAttemptOne = await runCli(
@@ -466,6 +488,8 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
     const compareOutput = JSON.parse(compareResult.stdout);
     const comparison = JSON.parse(await fsp.readFile(compareOutput.paths.jsonPath, "utf8"));
     validateWithSchema(comparison, generationSessionComparisonSchema, "generation session comparison");
+    assert.equal(comparison.baseline.guidanceStrategy, "prompt-summary");
+    assert.equal(comparison.guided.guidanceStrategy, "json-primary");
     assert.equal(Boolean(comparison.baseline.firstAttempt.preview), true);
     assert.equal(Boolean(comparison.baseline.latestAttempt.preview), true);
     assert.equal(Boolean(comparison.guided.firstAttempt.preview), true);
@@ -475,6 +499,8 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
     assert.equal(comparison.delta.firstAttemptBlockingFindingCountDelta < 0, true);
     assert.equal(comparison.delta.attemptsToAcceptableOutcome.baseline, 2);
     assert.equal(comparison.delta.attemptsToAcceptableOutcome.guided, 1);
+    assert.equal(comparison.heuristics.delta.unresolvedAcceptedSuggestionRate < 0, true);
+    assert.equal(comparison.heuristics.delta.recoverableToolErrorCount < 0, true);
 
     const contractPath = path.join(workspaceRoot, "contracts", "generated", "demo-surface.contract.json");
     const contractBeforeReview = await fsp.readFile(contractPath);
@@ -563,6 +589,9 @@ test("guided vs unguided benchmark artifacts compare sessions, emit deterministi
     assert.equal(benchmarkReport.overall.surfaceCount, 1);
     assert.equal(benchmarkReport.overall.surfacesMeetingGoal, 1);
     assert.equal(benchmarkReport.overall.acceptedSuggestionCount, 1);
+    assert.equal(benchmarkReport.comparisons[0].baselineGuidanceStrategy, "prompt-summary");
+    assert.equal(benchmarkReport.comparisons[0].guidedGuidanceStrategy, "json-primary");
+    assert.equal(benchmarkReport.overall.heuristics.lowerRecoverableToolErrorCount, 1);
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true });
   }

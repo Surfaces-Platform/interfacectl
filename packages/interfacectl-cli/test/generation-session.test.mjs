@@ -14,6 +14,7 @@ import generationAttemptReviewSchema from "../schemas/generation-attempt-review.
 import generationAttemptPreviewSchema from "../schemas/generation-attempt-preview.schema.json" with { type: "json" };
 import generationSessionSchema from "../schemas/generation-session.schema.json" with { type: "json" };
 import generationSessionSummarySchema from "../schemas/generation-session-summary.schema.json" with { type: "json" };
+import generationGuidanceHandoffSchema from "../schemas/generation-guidance-handoff.schema.json" with { type: "json" };
 import contractRunsSchema from "../schemas/contract-runs.schema.json" with { type: "json" };
 import contractLineageSchema from "../schemas/contract-lineage.schema.json" with { type: "json" };
 
@@ -155,6 +156,7 @@ function buildAssessment({
   responsiveness,
   notes,
   touchedFiles,
+  heuristics,
 }) {
   return {
     structure,
@@ -164,6 +166,7 @@ function buildAssessment({
     responsiveness,
     notes,
     ...(touchedFiles ? { touchedFiles } : {}),
+    ...(heuristics ? { heuristics } : {}),
   };
 }
 
@@ -249,9 +252,15 @@ test("generation session commands freeze bundle input, record attempts, and emit
 
     const session = JSON.parse(await fsp.readFile(path.join(sessionDir, "session.json"), "utf8"));
     validateWithSchema(session, generationSessionSchema, "generation session");
-    assert.equal(session.guidanceMode, "prepared");
+    assert.equal(session.guidanceStrategy, "prompt-summary");
     assert.ok(fs.existsSync(path.join(sessionDir, "bundle", "manifest.json")));
     assert.ok(fs.existsSync(path.join(sessionDir, "prepared-input.json")));
+    assert.ok(fs.existsSync(path.join(sessionDir, "guidance-handoff.json")));
+    const handoff = JSON.parse(await fsp.readFile(path.join(sessionDir, "guidance-handoff.json"), "utf8"));
+    validateWithSchema(handoff, generationGuidanceHandoffSchema, "generation guidance handoff");
+    assert.equal(handoff.guidanceStrategy, "prompt-summary");
+    assert.equal(Boolean(handoff.promptSummary), true);
+    assert.equal(handoff.jsonPrimary, null);
 
     const assessmentOnePath = path.join(tempRoot, "assessment-1.json");
     await writeJson(
@@ -355,6 +364,127 @@ test("generation session commands freeze bundle input, record attempts, and emit
     validateWithSchema(lineage, contractLineageSchema, "contract lineage");
     assert.equal(lineage.surfaces["demo-surface"].lastStatus, "pass");
     assert.equal(lineage.surfaces["demo-surface"].lastSource, "generation");
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("prepare-generation-handoff emits deterministic strategy artifacts with runtime guidance", async () => {
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-handoff-"));
+  const workspaceRoot = path.join(tempRoot, "workspace");
+  const bundleRoot = path.join(tempRoot, "bundle");
+  const sessionDir = path.join(workspaceRoot, "artifacts", "generation-sessions", "demo-surface", "handoff-session");
+  const acceptedSuggestionsPath = path.join(tempRoot, "accepted-suggestions.json");
+  const designerNotesPath = path.join(tempRoot, "designer-notes.json");
+  const promptSummaryPath = path.join(tempRoot, "prompt-summary-handoff.json");
+  const jsonPrimaryOnePath = path.join(tempRoot, "json-primary-handoff-1.json");
+  const jsonPrimaryTwoPath = path.join(tempRoot, "json-primary-handoff-2.json");
+
+  try {
+    await writeDemoWorkspace(workspaceRoot, { sectionValid: false, colorValid: true });
+
+    const compileResult = await runCli(
+      [
+        "compile",
+        "--contract",
+        path.join(workspaceRoot, "contracts", "surfaces.web.contract.json"),
+        "--out",
+        bundleRoot,
+      ],
+      tempRoot,
+    );
+    assert.equal(compileResult.exitCode, 0, compileResult.stderr);
+
+    const initResult = await runCli(
+      [
+        "init-generation-session",
+        "--bundle-root",
+        bundleRoot,
+        "--surface",
+        "demo-surface",
+        "--workspace-root",
+        workspaceRoot,
+        "--session",
+        "handoff-session",
+      ],
+      tempRoot,
+    );
+    assert.equal(initResult.exitCode, 0, initResult.stderr);
+
+    await writeJson(acceptedSuggestionsPath, {
+      suggestions: [
+        {
+          findingCode: "section.required.missing",
+          findingMessage: "Main hero section is missing.",
+          summary: "Restore the main hero section.",
+          suggestedPath: "surfaces[id=demo-surface].requiredSections",
+          rationale: "The fixture requires the main hero section.",
+        },
+      ],
+    });
+    await writeJson(designerNotesPath, {
+      designerNotes: [
+        "Keep the hero heading flush left.",
+        "Anchor links should use the contract accent.",
+      ],
+    });
+
+    const promptSummaryResult = await runCli(
+      [
+        "prepare-generation-handoff",
+        "--session-dir",
+        sessionDir,
+        "--guidance-strategy",
+        "prompt-summary",
+        "--accepted-suggestions",
+        acceptedSuggestionsPath,
+        "--designer-notes",
+        designerNotesPath,
+        "--finding-codes",
+        "section.required.missing",
+        "--out",
+        promptSummaryPath,
+      ],
+      tempRoot,
+    );
+    assert.equal(promptSummaryResult.exitCode, 0, promptSummaryResult.stderr);
+
+    const jsonPrimaryArgs = [
+      "prepare-generation-handoff",
+      "--session-dir",
+      sessionDir,
+      "--guidance-strategy",
+      "json-primary",
+      "--accepted-suggestions",
+      acceptedSuggestionsPath,
+      "--designer-notes",
+      designerNotesPath,
+      "--finding-codes",
+      "section.required.missing",
+    ];
+    const jsonPrimaryOneResult = await runCli([...jsonPrimaryArgs, "--out", jsonPrimaryOnePath], tempRoot);
+    const jsonPrimaryTwoResult = await runCli([...jsonPrimaryArgs, "--out", jsonPrimaryTwoPath], tempRoot);
+    assert.equal(jsonPrimaryOneResult.exitCode, 0, jsonPrimaryOneResult.stderr);
+    assert.equal(jsonPrimaryTwoResult.exitCode, 0, jsonPrimaryTwoResult.stderr);
+
+    const promptSummary = JSON.parse(await fsp.readFile(promptSummaryPath, "utf8"));
+    const jsonPrimaryOne = JSON.parse(await fsp.readFile(jsonPrimaryOnePath, "utf8"));
+    const jsonPrimaryTwo = JSON.parse(await fsp.readFile(jsonPrimaryTwoPath, "utf8"));
+    validateWithSchema(promptSummary, generationGuidanceHandoffSchema, "prompt-summary guidance handoff");
+    validateWithSchema(jsonPrimaryOne, generationGuidanceHandoffSchema, "json-primary guidance handoff");
+    validateWithSchema(jsonPrimaryTwo, generationGuidanceHandoffSchema, "repeated json-primary guidance handoff");
+    assert.deepEqual(jsonPrimaryOne, jsonPrimaryTwo);
+    assert.equal(promptSummary.guidanceStrategy, "prompt-summary");
+    assert.equal(jsonPrimaryOne.guidanceStrategy, "json-primary");
+    assert.equal(Boolean(promptSummary.promptSummary), true);
+    assert.equal(promptSummary.jsonPrimary, null);
+    assert.equal(promptSummary.runtimeGuidance.acceptedSuggestions.length, 1);
+    assert.equal(promptSummary.runtimeGuidance.designerNotes.length, 2);
+    assert.equal(promptSummary.runtimeGuidance.findingCodes.includes("section.required.missing"), true);
+    assert.equal(jsonPrimaryOne.promptSummary, null);
+    assert.equal(Boolean(jsonPrimaryOne.jsonPrimary), true);
+    assert.equal(jsonPrimaryOne.jsonPrimary.sections.length > 0, true);
+    assert.equal(Array.isArray(jsonPrimaryOne.runtimeGuidance.matchedRepairCodes), true);
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true });
   }
@@ -591,7 +721,7 @@ test("capture-generation-preview writes preview artifacts and surfaces explicit 
       await fsp.readFile(path.join(sessionDir, "summary.json"), "utf8"),
     );
     validateWithSchema(summary, generationSessionSummarySchema, "generation session summary");
-    assert.equal(summary.schemaVersion, 3);
+    assert.equal(summary.schemaVersion, 4);
     assert.equal(summary.attempts[0].preview.imagePath, path.join(sessionDir, "attempts", "001.preview.png"));
     assert.equal(summary.attempts[0].preview.metadataPath, path.join(sessionDir, "attempts", "001.preview.json"));
     assert.equal(summary.attempts[0].preview.url.endsWith("/preview"), true);
@@ -891,11 +1021,11 @@ test("generation session summary aggregates recurring finding and repair codes",
 
   try {
     await writeJson(path.join(sessionDir, "session.json"), {
-      schemaVersion: 2,
+      schemaVersion: 3,
       surfaceId: "demo-surface",
       sessionId: "summary-session",
       tool: "codex",
-      guidanceMode: "prepared",
+      guidanceStrategy: "prompt-summary",
       workspaceRoot: tempRoot,
       sourceBundleRoot: path.join(tempRoot, "source-bundle"),
       sessionDir,
@@ -903,6 +1033,9 @@ test("generation session summary aggregates recurring finding and repair codes",
       preparedInputPath: path.join(sessionDir, "prepared-input.json"),
       contractPath: path.join(sessionDir, "bundle", "contract", "normalized.json"),
       repairMapPath: path.join(bundleSurfaceDir, "repair-map.json"),
+      guidanceArtifacts: {
+        baseHandoffPath: path.join(sessionDir, "guidance-handoff.json"),
+      },
       startedAt: "2026-03-12T00:00:00.000Z",
       successRule: { finalStatus: "pass-or-reviewed-warn" },
     });

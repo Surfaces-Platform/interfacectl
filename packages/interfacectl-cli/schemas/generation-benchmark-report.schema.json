@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 1
+      "const": 2
     },
     "generatedAt": {
       "type": "string",
@@ -19,7 +19,18 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["surfaceId", "tool", "comparisonPath", "meetsGoal", "guidedFewerFirstAttemptBlockingFindings", "guidedReachedAcceptableNoLater", "guidedRubricBetterDimensions"],
+        "required": [
+          "surfaceId",
+          "tool",
+          "comparisonPath",
+          "meetsGoal",
+          "baselineGuidanceStrategy",
+          "guidedGuidanceStrategy",
+          "guidedFewerFirstAttemptBlockingFindings",
+          "guidedReachedAcceptableNoLater",
+          "guidedRubricBetterDimensions",
+          "heuristics"
+        ],
         "properties": {
           "surfaceId": {
             "type": "string",
@@ -36,6 +47,14 @@
           "meetsGoal": {
             "type": "boolean"
           },
+          "baselineGuidanceStrategy": {
+            "type": "string",
+            "enum": ["prompt-summary", "json-primary", "unguided"]
+          },
+          "guidedGuidanceStrategy": {
+            "type": "string",
+            "enum": ["prompt-summary", "json-primary", "unguided"]
+          },
           "guidedFewerFirstAttemptBlockingFindings": {
             "type": "boolean"
           },
@@ -48,6 +67,9 @@
               "type": "string",
               "enum": ["structure", "components", "boundary", "visual", "responsiveness"]
             }
+          },
+          "heuristics": {
+            "$ref": "#/$defs/comparisonHeuristicDelta"
           }
         }
       }
@@ -89,7 +111,16 @@
     "overall": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["surfaceCount", "surfacesMeetingGoal", "guidedFewerFirstAttemptBlockingFindings", "guidedReachedAcceptableNoLater", "acceptedSuggestionCount", "rejectedSuggestionCount", "proposedSuggestionCount"],
+      "required": [
+        "surfaceCount",
+        "surfacesMeetingGoal",
+        "guidedFewerFirstAttemptBlockingFindings",
+        "guidedReachedAcceptableNoLater",
+        "acceptedSuggestionCount",
+        "rejectedSuggestionCount",
+        "proposedSuggestionCount",
+        "heuristics"
+      ],
       "properties": {
         "surfaceCount": {
           "type": "number",
@@ -118,6 +149,117 @@
         "proposedSuggestionCount": {
           "type": "number",
           "minimum": 0
+        },
+        "heuristics": {
+          "$ref": "#/$defs/benchmarkHeuristicsSummary"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "comparisonHeuristicDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unresolvedAcceptedSuggestionRate",
+        "noChangesAfterEditFailureCount",
+        "recoverableToolErrorCount",
+        "touchedFilesPerResolvedFinding",
+        "repeatedFindingCarryoverCount",
+        "rerunsToAcceptableOutcome"
+      ],
+      "properties": {
+        "unresolvedAcceptedSuggestionRate": {
+          "type": ["number", "null"]
+        },
+        "noChangesAfterEditFailureCount": {
+          "type": "number"
+        },
+        "recoverableToolErrorCount": {
+          "type": "number"
+        },
+        "touchedFilesPerResolvedFinding": {
+          "type": ["number", "null"]
+        },
+        "repeatedFindingCarryoverCount": {
+          "type": "number"
+        },
+        "rerunsToAcceptableOutcome": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "benchmarkAverageDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unresolvedAcceptedSuggestionRate",
+        "noChangesAfterEditFailureCount",
+        "recoverableToolErrorCount",
+        "touchedFilesPerResolvedFinding",
+        "repeatedFindingCarryoverCount",
+        "rerunsToAcceptableOutcome"
+      ],
+      "properties": {
+        "unresolvedAcceptedSuggestionRate": {
+          "type": ["number", "null"]
+        },
+        "noChangesAfterEditFailureCount": {
+          "type": ["number", "null"]
+        },
+        "recoverableToolErrorCount": {
+          "type": ["number", "null"]
+        },
+        "touchedFilesPerResolvedFinding": {
+          "type": ["number", "null"]
+        },
+        "repeatedFindingCarryoverCount": {
+          "type": ["number", "null"]
+        },
+        "rerunsToAcceptableOutcome": {
+          "type": ["number", "null"]
+        }
+      }
+    },
+    "benchmarkHeuristicsSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lowerUnresolvedAcceptedSuggestionRate",
+        "lowerNoChangesAfterEditFailureCount",
+        "lowerRecoverableToolErrorCount",
+        "lowerTouchedFilesPerResolvedFinding",
+        "lowerRepeatedFindingCarryoverCount",
+        "lowerRerunsToAcceptableOutcome",
+        "averageDelta"
+      ],
+      "properties": {
+        "lowerUnresolvedAcceptedSuggestionRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lowerNoChangesAfterEditFailureCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lowerRecoverableToolErrorCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lowerTouchedFilesPerResolvedFinding": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lowerRepeatedFindingCarryoverCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lowerRerunsToAcceptableOutcome": {
+          "type": "number",
+          "minimum": 0
+        },
+        "averageDelta": {
+          "$ref": "#/$defs/benchmarkAverageDelta"
         }
       }
     }

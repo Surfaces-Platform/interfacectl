@@ -4,11 +4,11 @@
   "title": "GenerationSessionComparison",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "surfaceId", "tool", "brief", "baseline", "guided", "delta", "checks", "paths"],
+  "required": ["schemaVersion", "surfaceId", "tool", "brief", "baseline", "guided", "delta", "heuristics", "checks", "paths"],
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 2
+      "const": 3
     },
     "surfaceId": {
       "type": "string",
@@ -115,6 +115,9 @@
         }
       }
     },
+    "heuristics": {
+      "$ref": "#/$defs/comparisonHeuristics"
+    },
     "checks": {
       "type": "object",
       "additionalProperties": false,
@@ -158,6 +161,95 @@
     }
   },
   "$defs": {
+    "assessmentHeuristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unresolvedAcceptedSuggestionCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unresolvedAcceptedSuggestionRate": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "noChangesAfterEditFailureCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recoverableToolErrorCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "touchedFilesPerResolvedFinding": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "sessionHeuristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latestAttempt", "repeatedFindingCarryoverCount", "rerunsToAcceptableOutcome"],
+      "properties": {
+        "latestAttempt": {
+          "$ref": "#/$defs/assessmentHeuristics"
+        },
+        "repeatedFindingCarryoverCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rerunsToAcceptableOutcome": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "comparisonHeuristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "guided", "delta"],
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/sessionHeuristics"
+        },
+        "guided": {
+          "$ref": "#/$defs/sessionHeuristics"
+        },
+        "delta": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unresolvedAcceptedSuggestionRate",
+            "noChangesAfterEditFailureCount",
+            "recoverableToolErrorCount",
+            "touchedFilesPerResolvedFinding",
+            "repeatedFindingCarryoverCount",
+            "rerunsToAcceptableOutcome"
+          ],
+          "properties": {
+            "unresolvedAcceptedSuggestionRate": {
+              "type": ["number", "null"]
+            },
+            "noChangesAfterEditFailureCount": {
+              "type": "number"
+            },
+            "recoverableToolErrorCount": {
+              "type": "number"
+            },
+            "touchedFilesPerResolvedFinding": {
+              "type": ["number", "null"]
+            },
+            "repeatedFindingCarryoverCount": {
+              "type": "number"
+            },
+            "rerunsToAcceptableOutcome": {
+              "type": ["number", "null"]
+            }
+          }
+        }
+      }
+    },
     "assessment": {
       "type": "object",
       "additionalProperties": false,
@@ -193,6 +285,9 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "heuristics": {
+          "$ref": "#/$defs/assessmentHeuristics"
         }
       }
     },
@@ -243,7 +338,7 @@
     "sessionSnapshot": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sessionId", "sessionDir", "guidanceMode", "attemptCount", "firstAcceptableAttempt", "latestOutcome", "firstAttempt", "latestAttempt", "recurringFindingCodes", "recurringRepairCodes"],
+      "required": ["sessionId", "sessionDir", "guidanceStrategy", "attemptCount", "firstAcceptableAttempt", "latestOutcome", "firstAttempt", "latestAttempt", "recurringFindingCodes", "recurringRepairCodes", "heuristics"],
       "properties": {
         "sessionId": {
           "type": "string",
@@ -253,9 +348,9 @@
           "type": "string",
           "minLength": 1
         },
-        "guidanceMode": {
+        "guidanceStrategy": {
           "type": "string",
-          "enum": ["prepared", "unguided"]
+          "enum": ["prompt-summary", "json-primary", "unguided"]
         },
         "attemptCount": {
           "type": "number",
@@ -277,50 +372,59 @@
         "recurringFindingCodes": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["code", "count"],
-            "properties": {
-              "code": {
-                "type": "string",
-                "minLength": 1
-              },
-              "count": {
-                "type": "number",
-                "minimum": 2
-              }
-            }
+            "$ref": "#/$defs/recurringCount"
           }
         },
         "recurringRepairCodes": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["code", "count", "priority", "category", "actionType"],
-            "properties": {
-              "code": {
-                "type": "string",
-                "minLength": 1
-              },
-              "count": {
-                "type": "number",
-                "minimum": 2
-              },
-              "priority": {
-                "type": "string",
-                "minLength": 1
-              },
-              "category": {
-                "type": "string",
-                "minLength": 1
-              },
-              "actionType": {
-                "type": "string",
-                "minLength": 1
-              }
-            }
+            "$ref": "#/$defs/recurringRepair"
           }
+        },
+        "heuristics": {
+          "$ref": "#/$defs/sessionHeuristics"
+        }
+      }
+    },
+    "recurringCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "count"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "number",
+          "minimum": 2
+        }
+      }
+    },
+    "recurringRepair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "count", "priority", "category", "actionType"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "number",
+          "minimum": 2
+        },
+        "priority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionType": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
