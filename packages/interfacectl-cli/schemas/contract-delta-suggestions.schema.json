@@ -4,11 +4,11 @@
   "title": "ContractDeltaSuggestionsArtifact",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "surfaceId", "sessionId", "tool", "guidanceMode", "generatedAt", "contract", "session", "suggestions"],
+  "required": ["schemaVersion", "surfaceId", "sessionId", "tool", "guidanceStrategy", "generatedAt", "contract", "session", "suggestions"],
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 1
+      "const": 2
     },
     "surfaceId": {
       "type": "string",
@@ -22,9 +22,9 @@
       "type": "string",
       "enum": ["codex", "cursor", "local-llm"]
     },
-    "guidanceMode": {
+    "guidanceStrategy": {
       "type": "string",
-      "enum": ["prepared", "unguided"]
+      "enum": ["prompt-summary", "json-primary", "unguided"]
     },
     "generatedAt": {
       "type": "string",

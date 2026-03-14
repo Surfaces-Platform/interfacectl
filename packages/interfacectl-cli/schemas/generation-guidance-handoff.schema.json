@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-guidance-handoff.schema.json",
+  "title": "GenerationGuidanceHandoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "surfaceId",
+    "sessionId",
+    "tool",
+    "guidanceStrategy",
+    "generatedAt",
+    "brief",
+    "session",
+    "runtimeGuidance",
+    "promptSummary",
+    "jsonPrimary"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "surfaceId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool": {
+      "type": "string",
+      "enum": ["codex", "cursor", "local-llm"]
+    },
+    "guidanceStrategy": {
+      "type": "string",
+      "enum": ["prompt-summary", "json-primary", "unguided"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "brief": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256", "text"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionPath", "preparedInputPath", "contractPath", "repairMapPath"],
+      "properties": {
+        "sessionPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "preparedInputPath": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "contractPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repairMapPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "runtimeGuidance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingCodes", "matchedRepairCodes", "acceptedSuggestions", "designerNotes"],
+      "properties": {
+        "findingCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "matchedRepairCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "acceptedSuggestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["findingCode", "findingMessage", "summary", "suggestedPath"],
+            "properties": {
+              "findingCode": {
+                "type": "string",
+                "minLength": 1
+              },
+              "findingMessage": {
+                "type": "string",
+                "minLength": 1
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1
+              },
+              "suggestedPath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "designerNotes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "promptSummary": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["effectiveContractSummary", "preparedGuidanceSummary"],
+          "properties": {
+            "effectiveContractSummary": {
+              "type": "string"
+            },
+            "preparedGuidanceSummary": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "jsonPrimary": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["surface", "contract", "summary", "generation", "constraints", "sections", "components", "repairMap", "matchedRepairs"],
+          "properties": {
+            "surface": {
+              "type": "object"
+            },
+            "contract": {
+              "type": "object"
+            },
+            "summary": {
+              "type": "object"
+            },
+            "generation": {
+              "type": "object"
+            },
+            "constraints": {
+              "type": "object"
+            },
+            "sections": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "repairMap": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "matchedRepairs": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

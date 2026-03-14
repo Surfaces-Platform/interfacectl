@@ -6,12 +6,12 @@ Use this flow when a local agent or hosted generator needs contract-aware guidan
 
 1. Compile the contract into a generation bundle.
 2. For local agents, resolve the bundle into one agent-ready payload with `prepare-generation`.
-3. Freeze one tracked session with `init-generation-session` when you want iteration evidence or a guided-vs-unguided benchmark.
+3. Freeze one tracked session with `init-generation-session` when you want iteration evidence or a strategy benchmark.
 4. Generate or edit UI.
 5. Run `record-generation-attempt` for each attempt.
 6. Optionally run `review-generation-attempt` when a `warn` result is explicitly acceptable.
 7. Run `summarize-generation-session` to aggregate progress.
-8. Use `compare-generation-sessions`, `suggest-contract-deltas`, and `summarize-generation-benchmark` when you are proving guided-vs-unguided outcomes.
+8. Use `compare-generation-sessions`, `suggest-contract-deltas`, and `summarize-generation-benchmark` when you are proving one guidance strategy against another.
 9. Use `validate-generation` directly when you need an ad hoc post-generation check without a tracked session.
 
 ## Step 1: compile the bundle
@@ -82,7 +82,7 @@ interfacectl init-generation-session \
   --bundle-root ./artifacts/generation-bundles/surfaces-web \
   --surface surfaces-web \
   --workspace-root . \
-  --guidance-mode prepared \
+  --guidance-strategy prompt-summary \
   --brief-file ./artifacts/generation-briefs/surfaces-web.md
 
 interfacectl record-generation-attempt \
@@ -100,15 +100,15 @@ interfacectl summarize-generation-session \
 
 This loop freezes the bundle revision, records each assessment, and emits canonical run artifacts for downstream consumers.
 
-For an A/B proof loop, run one session with `--guidance-mode unguided` and the same `--brief-file`, run another with `--guidance-mode prepared`, then compare them:
+For an A/B proof loop, run two sessions with the same `--brief-file`, then compare the strategies you want to evaluate. For example, compare `prompt-summary` against `json-primary`:
 
 ```bash
 interfacectl compare-generation-sessions \
-  --baseline-session-dir ./artifacts/generation-sessions/surfaces-web/baseline-unguided \
-  --guided-session-dir ./artifacts/generation-sessions/surfaces-web/guided-prepared
+  --baseline-session-dir ./artifacts/generation-sessions/surfaces-web/prompt-summary \
+  --guided-session-dir ./artifacts/generation-sessions/surfaces-web/json-primary
 
 interfacectl suggest-contract-deltas \
-  --session-dir ./artifacts/generation-sessions/surfaces-web/guided-prepared
+  --session-dir ./artifacts/generation-sessions/surfaces-web/json-primary
 ```
 
 ## HTTP mode

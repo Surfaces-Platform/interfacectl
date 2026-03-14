@@ -36,6 +36,32 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "heuristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unresolvedAcceptedSuggestionCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unresolvedAcceptedSuggestionRate": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "noChangesAfterEditFailureCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recoverableToolErrorCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "touchedFilesPerResolvedFinding": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
     }
   }
 }

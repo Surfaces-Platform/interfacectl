@@ -17,7 +17,7 @@ For workspace agents:
 
 1. Run `interfacectl compile --contract <path> --out <bundleDir>`.
 2. Run `interfacectl prepare-generation --bundle-root <bundleDir> --surface <id>`.
-3. Optionally run `interfacectl init-generation-session --bundle-root <bundleDir> --surface <id> --workspace-root <path> --guidance-mode prepared --brief-file <path>` when you want tracked iteration evidence or a benchmark-ready guided session.
+3. Optionally run `interfacectl init-generation-session --bundle-root <bundleDir> --surface <id> --workspace-root <path> --guidance-strategy <prompt-summary|json-primary|unguided> --brief-file <path>` when you want tracked iteration evidence or a benchmark-ready session.
 4. Feed the resulting prepared JSON into the agent.
 5. Generate only inside the surface-owned boundary.
 6. Either run `interfacectl validate-generation --mode workspace` directly, or run `interfacectl record-generation-attempt` for a tracked session.
@@ -80,7 +80,7 @@ When you need auditable iteration history, use the canonical session commands ra
 3. `interfacectl review-generation-attempt` when a warning is explicitly acceptable
 4. `interfacectl summarize-generation-session`
 
-For the guided-vs-unguided proof loop, compare two sessions that froze the same `--brief-file`:
+For the strategy-benchmark loop, compare two sessions that froze the same `--brief-file`, such as `prompt-summary` vs `json-primary` or `unguided` vs a guided strategy:
 
 1. `interfacectl compare-generation-sessions`
 2. `interfacectl suggest-contract-deltas`

@@ -20,7 +20,7 @@ import { stringifyDeterministicJson, writeDeterministicJsonSync } from "../utils
 type SessionTool = "codex" | "cursor" | "local-llm";
 type AssessmentGrade = "strong" | "partial" | "weak";
 type ValidateStatus = "pass" | "warn" | "block";
-type GuidanceMode = "prepared" | "unguided";
+type GuidanceStrategy = "prompt-summary" | "json-primary" | "unguided";
 type SessionSuccessRule = "pass" | "pass-or-reviewed-warn";
 type AttemptReviewStatus = "accepted" | "rejected";
 type AttemptOutcome = ValidateStatus | "accepted-warn";
@@ -35,8 +35,18 @@ export interface InitGenerationSessionCommandOptions {
   tool?: string;
   sessionId?: string;
   artifactsRoot?: string;
+  guidanceStrategy?: string;
   guidanceMode?: string;
   briefFile?: string;
+}
+
+export interface PrepareGenerationHandoffCommandOptions {
+  sessionDir?: string;
+  guidanceStrategy?: string;
+  acceptedSuggestionsFile?: string;
+  designerNotesFile?: string;
+  findingCodes?: string;
+  outPath?: string;
 }
 
 export interface RecordGenerationAttemptCommandOptions {
@@ -93,6 +103,7 @@ interface GenerationAssessment {
   responsiveness: AssessmentGrade;
   notes: string;
   touchedFiles?: string[];
+  heuristics?: GenerationAssessmentHeuristics;
 }
 
 interface GenerationBrief {
@@ -101,11 +112,11 @@ interface GenerationBrief {
 }
 
 interface GenerationSession {
-  schemaVersion: 2;
+  schemaVersion: 3;
   surfaceId: string;
   sessionId: string;
   tool: SessionTool;
-  guidanceMode: GuidanceMode;
+  guidanceStrategy: GuidanceStrategy;
   workspaceRoot: string;
   sourceBundleRoot: string;
   sessionDir: string;
@@ -113,6 +124,9 @@ interface GenerationSession {
   preparedInputPath: string | null;
   contractPath: string;
   repairMapPath: string;
+  guidanceArtifacts: {
+    baseHandoffPath: string | null;
+  };
   startedAt: string;
   brief?: GenerationBrief;
   successRule: {
@@ -149,12 +163,12 @@ interface GenerationAttemptPreview {
 }
 
 interface GenerationSessionAttemptMetadata {
-  schemaVersion: 2;
+  schemaVersion: 3;
   surfaceId: string;
   sessionId: string;
   attemptNumber: number;
   tool: SessionTool;
-  guidanceMode: GuidanceMode;
+  guidanceStrategy: GuidanceStrategy;
   createdAt: string;
   validateStatus: ValidateStatus;
   validateExitCode: number;
@@ -162,6 +176,7 @@ interface GenerationSessionAttemptMetadata {
   assessmentPath: string;
   validatePath: string;
   touchedFiles: string[];
+  guidanceHandoffPath: string | null;
   contractRun: {
     deduped: boolean;
     runId: string;
@@ -172,11 +187,11 @@ interface GenerationSessionAttemptMetadata {
 }
 
 interface GenerationSessionSummary {
-  schemaVersion: 3;
+  schemaVersion: 4;
   surfaceId: string;
   sessionId: string;
   tool: SessionTool;
-  guidanceMode: GuidanceMode;
+  guidanceStrategy: GuidanceStrategy;
   attemptCount: number;
   firstPassAttempt: number | null;
   firstAcceptableAttempt: number | null;
@@ -192,6 +207,7 @@ interface GenerationSessionSummary {
   }>;
   latestAssessment: GenerationAssessment | null;
   latestReview: GenerationAttemptReview | null;
+  heuristics: GenerationSessionHeuristics;
   brief?: GenerationBrief;
   successRule: {
     finalStatus: SessionSuccessRule;
@@ -200,6 +216,7 @@ interface GenerationSessionSummary {
     sessionPath: string;
     bundleRoot: string;
     preparedInputPath: string | null;
+    guidanceHandoffPath: string | null;
   };
   attempts: Array<{
     attemptNumber: number;
@@ -226,7 +243,7 @@ interface GenerationSessionSummary {
 interface SessionComparisonSnapshot {
   sessionId: string;
   sessionDir: string;
-  guidanceMode: GuidanceMode;
+  guidanceStrategy: GuidanceStrategy;
   attemptCount: number;
   firstAcceptableAttempt: number | null;
   latestOutcome: AttemptOutcome;
@@ -240,6 +257,7 @@ interface SessionComparisonSnapshot {
     category: string;
     actionType: string;
   }>;
+  heuristics: GenerationSessionHeuristics;
 }
 
 interface ComparisonAttemptSnapshot {
@@ -262,7 +280,7 @@ interface ComparisonAttemptSnapshot {
 }
 
 interface GenerationSessionComparison {
-  schemaVersion: 2;
+  schemaVersion: 3;
   surfaceId: string;
   tool: SessionTool;
   brief: {
@@ -286,12 +304,13 @@ interface GenerationSessionComparison {
       guided: number | null;
       delta: number | null;
     };
-    rubric: Record<AssessmentDimension, {
+      rubric: Record<AssessmentDimension, {
       baseline: AssessmentGrade;
       guided: AssessmentGrade;
       delta: number;
     }>;
   };
+  heuristics: GenerationComparisonHeuristics;
   checks: {
     guidedFewerFirstAttemptBlockingFindings: boolean;
     guidedReachedAcceptableNoLater: boolean;
@@ -331,11 +350,11 @@ interface ContractDeltaSuggestion {
 }
 
 interface ContractDeltaSuggestionsArtifact {
-  schemaVersion: 1;
+  schemaVersion: 2;
   surfaceId: string;
   sessionId: string;
   tool: SessionTool;
-  guidanceMode: GuidanceMode;
+  guidanceStrategy: GuidanceStrategy;
   generatedAt: string;
   contract: {
     path: string;
@@ -349,16 +368,19 @@ interface ContractDeltaSuggestionsArtifact {
 }
 
 interface GenerationBenchmarkReport {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
   comparisons: Array<{
     surfaceId: string;
     tool: SessionTool;
     comparisonPath: string;
     meetsGoal: boolean;
+    baselineGuidanceStrategy: GuidanceStrategy;
+    guidedGuidanceStrategy: GuidanceStrategy;
     guidedFewerFirstAttemptBlockingFindings: boolean;
     guidedReachedAcceptableNoLater: boolean;
     guidedRubricBetterDimensions: AssessmentDimension[];
+    heuristics: GenerationComparisonHeuristics["delta"];
   }>;
   suggestions: Array<{
     surfaceId: string;
@@ -376,7 +398,99 @@ interface GenerationBenchmarkReport {
     acceptedSuggestionCount: number;
     rejectedSuggestionCount: number;
     proposedSuggestionCount: number;
+    heuristics: GenerationBenchmarkHeuristicsSummary;
   };
+}
+
+interface GenerationAssessmentHeuristics {
+  unresolvedAcceptedSuggestionCount?: number;
+  unresolvedAcceptedSuggestionRate?: number | null;
+  noChangesAfterEditFailureCount?: number;
+  recoverableToolErrorCount?: number;
+  touchedFilesPerResolvedFinding?: number | null;
+}
+
+interface GenerationSessionHeuristics {
+  latestAttempt: GenerationAssessmentHeuristics;
+  repeatedFindingCarryoverCount: number;
+  rerunsToAcceptableOutcome: number | null;
+}
+
+interface GenerationComparisonHeuristics {
+  baseline: GenerationSessionHeuristics;
+  guided: GenerationSessionHeuristics;
+  delta: {
+    unresolvedAcceptedSuggestionRate: number | null;
+    noChangesAfterEditFailureCount: number;
+    recoverableToolErrorCount: number;
+    touchedFilesPerResolvedFinding: number | null;
+    repeatedFindingCarryoverCount: number;
+    rerunsToAcceptableOutcome: number | null;
+  };
+}
+
+interface GenerationBenchmarkHeuristicsSummary {
+  lowerUnresolvedAcceptedSuggestionRate: number;
+  lowerNoChangesAfterEditFailureCount: number;
+  lowerRecoverableToolErrorCount: number;
+  lowerTouchedFilesPerResolvedFinding: number;
+  lowerRepeatedFindingCarryoverCount: number;
+  lowerRerunsToAcceptableOutcome: number;
+  averageDelta: {
+    unresolvedAcceptedSuggestionRate: number | null;
+    noChangesAfterEditFailureCount: number | null;
+    recoverableToolErrorCount: number | null;
+    touchedFilesPerResolvedFinding: number | null;
+    repeatedFindingCarryoverCount: number | null;
+    rerunsToAcceptableOutcome: number | null;
+  };
+}
+
+interface RuntimeAcceptedSuggestion {
+  findingCode: string;
+  findingMessage: string;
+  summary: string;
+  suggestedPath: string;
+  rationale?: string;
+}
+
+interface GenerationGuidanceHandoff {
+  schemaVersion: 1;
+  surfaceId: string;
+  sessionId: string;
+  tool: SessionTool;
+  guidanceStrategy: GuidanceStrategy;
+  generatedAt: string;
+  brief: ({
+    text: string;
+  } & GenerationBrief) | null;
+  session: {
+    sessionPath: string;
+    preparedInputPath: string | null;
+    contractPath: string;
+    repairMapPath: string;
+  };
+  runtimeGuidance: {
+    findingCodes: string[];
+    matchedRepairCodes: string[];
+    acceptedSuggestions: RuntimeAcceptedSuggestion[];
+    designerNotes: string[];
+  };
+  promptSummary: {
+    effectiveContractSummary: string;
+    preparedGuidanceSummary: string;
+  } | null;
+  jsonPrimary: {
+    surface: Record<string, unknown>;
+    contract: Record<string, unknown>;
+    summary: Record<string, unknown>;
+    generation: Record<string, unknown>;
+    constraints: Record<string, unknown>;
+    sections: Array<Record<string, unknown>>;
+    components: Array<Record<string, unknown>>;
+    repairMap: Array<Record<string, unknown>>;
+    matchedRepairs: Array<Record<string, unknown>>;
+  } | null;
 }
 
 interface LoadedAttempt {
@@ -395,7 +509,7 @@ interface LoadedAttempt {
 
 const VALID_TOOLS = new Set<SessionTool>(["codex", "cursor", "local-llm"]);
 const VALID_GRADES = new Set<AssessmentGrade>(["strong", "partial", "weak"]);
-const VALID_GUIDANCE_MODES = new Set<GuidanceMode>(["prepared", "unguided"]);
+const VALID_GUIDANCE_STRATEGIES = new Set<GuidanceStrategy>(["prompt-summary", "json-primary", "unguided"]);
 const VALID_REVIEW_STATUSES = new Set<AttemptReviewStatus>(["accepted", "rejected"]);
 const VALID_SUGGESTION_STATUSES = new Set<SuggestionStatus>(["proposed", "accepted", "rejected"]);
 const VALID_SUCCESS_RULES = new Set<SessionSuccessRule>(["pass", "pass-or-reviewed-warn"]);
@@ -476,14 +590,15 @@ function ensureSessionTool(tool?: string): SessionTool {
   return normalized as SessionTool;
 }
 
-function ensureGuidanceMode(guidanceMode?: string): GuidanceMode {
-  const normalized = typeof guidanceMode === "string" ? guidanceMode.trim().toLowerCase() : "prepared";
-  if (!VALID_GUIDANCE_MODES.has(normalized as GuidanceMode)) {
+function ensureGuidanceStrategy(guidanceStrategy?: string): GuidanceStrategy {
+  const normalized = typeof guidanceStrategy === "string" ? guidanceStrategy.trim().toLowerCase() : "prompt-summary";
+  const mapped = normalized === "prepared" ? "prompt-summary" : normalized;
+  if (!VALID_GUIDANCE_STRATEGIES.has(mapped as GuidanceStrategy)) {
     throw new SessionInputError(
-      `Invalid --guidance-mode value "${guidanceMode ?? ""}". Expected prepared|unguided.`,
+      `Invalid guidance strategy "${guidanceStrategy ?? ""}". Expected prompt-summary|json-primary|unguided.`,
     );
   }
-  return normalized as GuidanceMode;
+  return mapped as GuidanceStrategy;
 }
 
 function buildDefaultSessionId(): string {
@@ -503,6 +618,7 @@ function getSessionPaths(sessionDir: string) {
     sessionPath: path.join(sessionDir, "session.json"),
     bundleRoot: path.join(sessionDir, "bundle"),
     preparedInputPath: path.join(sessionDir, "prepared-input.json"),
+    guidanceHandoffPath: path.join(sessionDir, "guidance-handoff.json"),
     attemptsDir: path.join(sessionDir, "attempts"),
     summaryJsonPath: path.join(sessionDir, "summary.json"),
     summaryMarkdownPath: path.join(sessionDir, "summary.md"),
@@ -559,6 +675,36 @@ function normalizeAssessment(
     )].sort((left, right) => left.localeCompare(right));
   }
 
+  let heuristics: GenerationAssessmentHeuristics | undefined;
+  if (payload.heuristics !== undefined) {
+    const candidate = asRecord(payload.heuristics);
+    heuristics = {};
+    const numericField = (key: keyof GenerationAssessmentHeuristics, allowNull = false) => {
+      const value = candidate[key];
+      if (value === undefined) {
+        return;
+      }
+      if (value === null && allowNull) {
+        (heuristics as Record<string, number | null | undefined>)[key] = null;
+        return;
+      }
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new SessionInputError(`Assessment heuristic "${String(key)}" must be a finite number${allowNull ? " or null" : ""}: ${filePath}.`);
+      }
+      (heuristics as Record<string, number | null | undefined>)[key] = value;
+    };
+
+    numericField("unresolvedAcceptedSuggestionCount");
+    numericField("unresolvedAcceptedSuggestionRate", true);
+    numericField("noChangesAfterEditFailureCount");
+    numericField("recoverableToolErrorCount");
+    numericField("touchedFilesPerResolvedFinding", true);
+
+    if (Object.keys(heuristics).length === 0) {
+      heuristics = undefined;
+    }
+  }
+
   return {
     structure: grade("structure"),
     components: grade("components"),
@@ -567,6 +713,7 @@ function normalizeAssessment(
     responsiveness: grade("responsiveness"),
     notes,
     ...(touchedFiles && touchedFiles.length > 0 ? { touchedFiles } : {}),
+    ...(heuristics ? { heuristics } : {}),
   };
 }
 
@@ -714,12 +861,14 @@ function loadSession(sessionDirInput: string): { session: GenerationSession; pat
 
   const payload = readJsonFile<JsonRecord>(paths.sessionPath, "generation session");
   const schemaVersion = Number(payload.schemaVersion ?? 1);
-  if (schemaVersion !== 1 && schemaVersion !== 2) {
+  if (schemaVersion !== 1 && schemaVersion !== 2 && schemaVersion !== 3) {
     throw new SessionInputError(`Unsupported generation session schemaVersion "${String(payload.schemaVersion ?? "unknown")}".`);
   }
 
   const tool = ensureSessionTool(asString(payload.tool));
-  const guidanceMode = ensureGuidanceMode(asString(payload.guidanceMode) ?? "prepared");
+  const guidanceStrategy = ensureGuidanceStrategy(
+    asString(payload.guidanceStrategy) ?? asString(payload.guidanceMode) ?? "prompt-summary",
+  );
   const finalStatus = asString(asRecord(payload.successRule).finalStatus) ?? "pass";
   if (!VALID_SUCCESS_RULES.has(finalStatus as SessionSuccessRule)) {
     throw new SessionInputError(`Unsupported session successRule.finalStatus "${finalStatus}".`);
@@ -728,12 +877,13 @@ function loadSession(sessionDirInput: string): { session: GenerationSession; pat
   const briefRecord = asRecord(payload.brief);
   const briefPath = asString(briefRecord.path);
   const briefSha256 = asString(briefRecord.sha256);
+  const guidanceArtifacts = asRecord(payload.guidanceArtifacts);
   const session: GenerationSession = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     surfaceId: asString(payload.surfaceId) ?? "",
     sessionId: asString(payload.sessionId) ?? "",
     tool,
-    guidanceMode,
+    guidanceStrategy,
     workspaceRoot: asString(payload.workspaceRoot) ?? "",
     sourceBundleRoot: asString(payload.sourceBundleRoot) ?? "",
     sessionDir: asString(payload.sessionDir) ?? sessionDir,
@@ -741,6 +891,13 @@ function loadSession(sessionDirInput: string): { session: GenerationSession; pat
     preparedInputPath: typeof payload.preparedInputPath === "string" ? payload.preparedInputPath : null,
     contractPath: asString(payload.contractPath) ?? "",
     repairMapPath: asString(payload.repairMapPath) ?? "",
+    guidanceArtifacts: {
+      baseHandoffPath: typeof guidanceArtifacts.baseHandoffPath === "string"
+        ? guidanceArtifacts.baseHandoffPath
+        : fs.existsSync(paths.guidanceHandoffPath)
+          ? paths.guidanceHandoffPath
+          : null,
+    },
     startedAt: asString(payload.startedAt) ?? "",
     ...(briefPath && briefSha256 ? { brief: { path: briefPath, sha256: briefSha256 } } : {}),
     successRule: {
@@ -748,7 +905,15 @@ function loadSession(sessionDirInput: string): { session: GenerationSession; pat
     },
   };
 
-  if (!session.surfaceId || !session.sessionId || !session.workspaceRoot || !session.bundleRoot || !session.contractPath || !session.repairMapPath || !session.startedAt) {
+  if (
+    !session.surfaceId
+    || !session.sessionId
+    || !session.workspaceRoot
+    || !session.bundleRoot
+    || !session.contractPath
+    || !session.repairMapPath
+    || !session.startedAt
+  ) {
     throw new SessionInputError(`Generation session is missing required fields: ${paths.sessionPath}.`);
   }
 
@@ -858,6 +1023,42 @@ function buildRecurringCounts(values: string[]) {
     .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
 }
 
+function repeatedFindingCarryoverCount(recurringFindingCodes: Array<{ code: string; count: number }>): number {
+  return recurringFindingCodes.reduce((total, entry) => total + Math.max(0, entry.count - 1), 0);
+}
+
+function rerunsToAcceptableOutcome(firstAcceptableAttempt: number | null): number | null {
+  if (firstAcceptableAttempt === null) {
+    return null;
+  }
+  return Math.max(0, firstAcceptableAttempt - 1);
+}
+
+function numericHeuristicDelta(
+  baseline: number | null | undefined,
+  guided: number | null | undefined,
+): number | null {
+  if (baseline === null || baseline === undefined || guided === null || guided === undefined) {
+    return null;
+  }
+  return guided - baseline;
+}
+
+function countHeuristicImprovement(values: Array<number | null | undefined>): number {
+  return values.reduce<number>(
+    (total, value) => total + (typeof value === "number" && value < 0 ? 1 : 0),
+    0,
+  );
+}
+
+function averageNullable(values: Array<number | null | undefined>): number | null {
+  const filtered = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (filtered.length === 0) {
+    return null;
+  }
+  return Math.round((filtered.reduce((sum, value) => sum + value, 0) / filtered.length) * 1000) / 1000;
+}
+
 function renderSummaryMarkdown(summary: GenerationSessionSummary): string {
   const lines = [
     "# Generation Session Summary",
@@ -865,7 +1066,7 @@ function renderSummaryMarkdown(summary: GenerationSessionSummary): string {
     `Surface: ${summary.surfaceId}`,
     `Session: ${summary.sessionId}`,
     `Tool: ${summary.tool}`,
-    `Guidance mode: ${summary.guidanceMode}`,
+    `Guidance strategy: ${summary.guidanceStrategy}`,
     `Latest status: ${summary.latestStatus}`,
     `Latest outcome: ${summary.latestOutcome}`,
     `Attempts: ${summary.attemptCount}`,
@@ -903,10 +1104,29 @@ function renderSummaryMarkdown(summary: GenerationSessionSummary): string {
   if (summary.latestAssessment?.touchedFiles?.length) {
     lines.push(`- touched files: ${summary.latestAssessment.touchedFiles.join(", ")}`);
   }
+  if (summary.latestAssessment?.heuristics) {
+    if (typeof summary.latestAssessment.heuristics.unresolvedAcceptedSuggestionRate === "number") {
+      lines.push(`- unresolved accepted suggestion rate: ${summary.latestAssessment.heuristics.unresolvedAcceptedSuggestionRate}`);
+    }
+    if (typeof summary.latestAssessment.heuristics.noChangesAfterEditFailureCount === "number") {
+      lines.push(`- noChanges-after-edit failures: ${summary.latestAssessment.heuristics.noChangesAfterEditFailureCount}`);
+    }
+    if (typeof summary.latestAssessment.heuristics.recoverableToolErrorCount === "number") {
+      lines.push(`- recoverable tool errors: ${summary.latestAssessment.heuristics.recoverableToolErrorCount}`);
+    }
+    if (typeof summary.latestAssessment.heuristics.touchedFilesPerResolvedFinding === "number") {
+      lines.push(`- touched files per resolved finding: ${summary.latestAssessment.heuristics.touchedFilesPerResolvedFinding}`);
+    }
+  }
   if (summary.latestReview) {
     lines.push(`- latest review: ${summary.latestReview.status} (${summary.latestReview.findingCodes.join(", ")})`);
     lines.push(`- review rationale: ${summary.latestReview.rationale}`);
   }
+
+  lines.push("", "## Heuristics");
+  lines.push(`- repeated finding carryover count: ${summary.heuristics.repeatedFindingCarryoverCount}`);
+  lines.push(`- reruns to acceptable outcome: ${summary.heuristics.rerunsToAcceptableOutcome ?? "n/a"}`);
+  lines.push(`- base guidance handoff: ${summary.paths.guidanceHandoffPath ?? "none"}`);
 
   return `${lines.join("\n")}\n`;
 }
@@ -1023,13 +1243,18 @@ function buildGenerationSessionSummary(sessionDirInput: string) {
     parseFindingCodes(latestAttempt.validate),
     session.successRule.finalStatus,
   );
+  const heuristics: GenerationSessionHeuristics = {
+    latestAttempt: latestAssessment.heuristics ?? {},
+    repeatedFindingCarryoverCount: repeatedFindingCarryoverCount(recurringFindingCodes),
+    rerunsToAcceptableOutcome: rerunsToAcceptableOutcome(firstAcceptableAttempt),
+  };
 
   const summary: GenerationSessionSummary = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     surfaceId: session.surfaceId,
     sessionId: session.sessionId,
     tool: session.tool,
-    guidanceMode: session.guidanceMode,
+    guidanceStrategy: session.guidanceStrategy,
     attemptCount: attempts.length,
     firstPassAttempt,
     firstAcceptableAttempt,
@@ -1039,12 +1264,14 @@ function buildGenerationSessionSummary(sessionDirInput: string) {
     recurringRepairCodes,
     latestAssessment,
     latestReview: latestAttempt.review,
+    heuristics,
     ...(session.brief ? { brief: session.brief } : {}),
     successRule: session.successRule,
     paths: {
       sessionPath: paths.sessionPath,
       bundleRoot: session.bundleRoot,
       preparedInputPath: session.preparedInputPath,
+      guidanceHandoffPath: session.guidanceArtifacts.baseHandoffPath,
     },
     attempts: attempts.map((attempt) => {
       const status = attempt.validate.status;
@@ -1133,19 +1360,19 @@ function renderComparisonMarkdown(comparison: GenerationSessionComparison): stri
     "",
     `Surface: ${comparison.surfaceId}`,
     `Tool: ${comparison.tool}`,
-    `Baseline session: ${comparison.baseline.sessionId}`,
-    `Guided session: ${comparison.guided.sessionId}`,
+    `Baseline session: ${comparison.baseline.sessionId} (${comparison.baseline.guidanceStrategy})`,
+    `Candidate session: ${comparison.guided.sessionId} (${comparison.guided.guidanceStrategy})`,
     `Meets goal: ${comparison.checks.meetsGoal ? "yes" : "no"}`,
     "",
     "## First attempt",
     `- baseline outcome: ${comparison.baseline.firstAttempt.outcome}`,
-    `- guided outcome: ${comparison.guided.firstAttempt.outcome}`,
+    `- candidate outcome: ${comparison.guided.firstAttempt.outcome}`,
     `- blocking finding delta: ${comparison.delta.firstAttemptBlockingFindingCountDelta}`,
     `- warning finding delta: ${comparison.delta.firstAttemptWarningFindingCountDelta}`,
     "",
     "## Convergence",
     `- baseline first acceptable attempt: ${comparison.baseline.firstAcceptableAttempt ?? "not reached"}`,
-    `- guided first acceptable attempt: ${comparison.guided.firstAcceptableAttempt ?? "not reached"}`,
+    `- candidate first acceptable attempt: ${comparison.guided.firstAcceptableAttempt ?? "not reached"}`,
     `- attempts-to-acceptable delta: ${comparison.delta.attemptsToAcceptableOutcome.delta ?? "n/a"}`,
     "",
     "## Rubric delta",
@@ -1159,9 +1386,17 @@ function renderComparisonMarkdown(comparison: GenerationSessionComparison): stri
   if (comparison.checks.guidedRubricBetterDimensions.length > 0) {
     lines.push(
       "",
-      `Guided improved dimensions: ${comparison.checks.guidedRubricBetterDimensions.join(", ")}`,
+      `Candidate improved dimensions: ${comparison.checks.guidedRubricBetterDimensions.join(", ")}`,
     );
   }
+
+  lines.push("", "## Heuristics");
+  lines.push(`- unresolved accepted suggestion rate delta: ${comparison.heuristics.delta.unresolvedAcceptedSuggestionRate ?? "n/a"}`);
+  lines.push(`- noChanges-after-edit failure delta: ${comparison.heuristics.delta.noChangesAfterEditFailureCount}`);
+  lines.push(`- recoverable tool error delta: ${comparison.heuristics.delta.recoverableToolErrorCount}`);
+  lines.push(`- touched files per resolved finding delta: ${comparison.heuristics.delta.touchedFilesPerResolvedFinding ?? "n/a"}`);
+  lines.push(`- repeated finding carryover delta: ${comparison.heuristics.delta.repeatedFindingCarryoverCount}`);
+  lines.push(`- reruns to acceptable delta: ${comparison.heuristics.delta.rerunsToAcceptableOutcome ?? "n/a"}`);
 
   return `${lines.join("\n")}\n`;
 }
@@ -1173,7 +1408,7 @@ function renderSuggestionsMarkdown(artifact: ContractDeltaSuggestionsArtifact): 
     `Surface: ${artifact.surfaceId}`,
     `Session: ${artifact.sessionId}`,
     `Tool: ${artifact.tool}`,
-    `Guidance mode: ${artifact.guidanceMode}`,
+    `Guidance strategy: ${artifact.guidanceStrategy}`,
     "",
   ];
 
@@ -1207,15 +1442,15 @@ function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport): strin
     `Generated at: ${report.generatedAt}`,
     `Surfaces: ${report.overall.surfaceCount}`,
     `Surfaces meeting goal: ${report.overall.surfacesMeetingGoal}`,
-    `Guided fewer first-attempt blocking findings: ${report.overall.guidedFewerFirstAttemptBlockingFindings}`,
-    `Guided reached acceptable no later: ${report.overall.guidedReachedAcceptableNoLater}`,
+    `Candidate fewer first-attempt blocking findings: ${report.overall.guidedFewerFirstAttemptBlockingFindings}`,
+    `Candidate reached acceptable no later: ${report.overall.guidedReachedAcceptableNoLater}`,
     "",
     "## Comparisons",
   ];
 
   for (const comparison of report.comparisons) {
     lines.push(
-      `- ${comparison.surfaceId}: meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`,
+      `- ${comparison.surfaceId}: baseline=${comparison.baselineGuidanceStrategy}, candidate=${comparison.guidedGuidanceStrategy}, meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`,
     );
   }
 
@@ -1225,6 +1460,14 @@ function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport): strin
       `- ${suggestion.surfaceId}: proposed=${suggestion.proposedCount}, accepted=${suggestion.acceptedCount}, rejected=${suggestion.rejectedCount}`,
     );
   }
+
+  lines.push("", "## Heuristic improvements");
+  lines.push(`- lower unresolved accepted suggestion rate: ${report.overall.heuristics.lowerUnresolvedAcceptedSuggestionRate}`);
+  lines.push(`- lower noChanges-after-edit failures: ${report.overall.heuristics.lowerNoChangesAfterEditFailureCount}`);
+  lines.push(`- lower recoverable tool errors: ${report.overall.heuristics.lowerRecoverableToolErrorCount}`);
+  lines.push(`- lower touched files per resolved finding: ${report.overall.heuristics.lowerTouchedFilesPerResolvedFinding}`);
+  lines.push(`- lower repeated finding carryover count: ${report.overall.heuristics.lowerRepeatedFindingCarryoverCount}`);
+  lines.push(`- lower reruns to acceptable outcome: ${report.overall.heuristics.lowerRerunsToAcceptableOutcome}`);
 
   return `${lines.join("\n")}\n`;
 }
@@ -1262,6 +1505,284 @@ function defaultBenchmarkReportDir(comparisonPaths: string[]): string {
   );
 }
 
+function extractRepairEntries(repairMap: unknown): JsonRecord[] {
+  if (Array.isArray(repairMap)) {
+    return repairMap.filter((entry): entry is JsonRecord => isRecord(entry));
+  }
+  const record = asRecord(repairMap);
+  const repairs = Array.isArray(record.repairs) ? record.repairs : [];
+  return repairs.filter((entry): entry is JsonRecord => isRecord(entry));
+}
+
+function summarizeContractForSurface(contractPath: string, surfaceId: string): string {
+  const payload = readJsonFile<JsonRecord>(contractPath, "generation session contract");
+  const surfaces = Array.isArray(payload.surfaces) ? payload.surfaces.filter((entry): entry is JsonRecord => isRecord(entry)) : [];
+  const surface = surfaces.find((entry) => asString(entry.id) === surfaceId) ?? surfaces[0] ?? {};
+  const sections = Array.isArray(payload.sections) ? payload.sections.filter((entry): entry is JsonRecord => isRecord(entry)) : [];
+  const color = asRecord(payload.color);
+  const layout = asRecord(surface.layout);
+  const requiredSections = asStringArray(surface.requiredSections ?? sections.map((entry) => entry.id));
+  const allowedFonts = asStringArray(surface.allowedFonts);
+  const allowedColors = asStringArray(color.allowedValues);
+  const maxContentWidth = typeof layout.maxContentWidth === "number" ? layout.maxContentWidth : null;
+
+  return [
+    `${asString(payload.contractId) ?? surfaceId} v${asString(payload.version) ?? "0.0.0"}`,
+    asString(payload.description) ?? "Working contract for generation guidance.",
+    `Required sections: ${requiredSections.join(", ") || "none recorded"}`,
+    `Fonts: ${allowedFonts.join(", ") || "none recorded"}`,
+    `Max content width: ${maxContentWidth ?? "not specified"}`,
+    `Color policy: ${asString(color.policy) ?? "off"}`,
+    `Allowed colors: ${allowedColors.join(", ") || "none recorded"}`,
+  ].join("\n");
+}
+
+function buildPreparedPromptSummary(preparedPayload: ReturnType<typeof buildPreparedGenerationPayload>): string {
+  const generation = asRecord(preparedPayload.generation);
+  const structure = asRecord(generation.structure);
+  const layout = asRecord(generation.layout);
+  const visual = asRecord(generation.visual);
+  const guidance = asRecord(generation.guidance);
+  const constraints = asRecord(preparedPayload.constraints);
+  const color = asRecord(constraints.color);
+  const motion = asRecord(constraints.motion);
+  const sections = Array.isArray(preparedPayload.sections) ? preparedPayload.sections : [];
+  const repairs = extractRepairEntries(preparedPayload.repairMap);
+  const requiredSections = asStringArray(structure.requiredSectionIds);
+  const focusOrder = asStringArray(guidance.generationFocusOrder);
+  const allowedFonts = asStringArray(visual.allowedFonts);
+  const requiredContainers = asStringArray(layout.requiredContainers);
+  const topRepairs = repairs
+    .slice(0, 5)
+    .map((entry) => {
+      const code = asString(entry.code) ?? "unknown";
+      const summary = asString(entry.summary) ?? "";
+      return summary ? `${code}: ${summary}` : code;
+    });
+
+  return [
+    `Contract: ${asString(preparedPayload.contract.id) ?? "unknown"} v${asString(preparedPayload.contract.version) ?? "0.0.0"}`,
+    `Focus order: ${focusOrder.join(", ") || "none"}`,
+    `Required sections: ${requiredSections.join(", ") || "none"}`,
+    `Section count: ${sections.length}`,
+    `Allowed fonts: ${allowedFonts.join(", ") || "none"}`,
+    `Max content width: ${typeof layout.maxContentWidth === "number" ? `${layout.maxContentWidth}px` : "unspecified"}`,
+    `Required containers: ${requiredContainers.join(", ") || "none"}`,
+    `Color policy: ${asString(color.policy) ?? "off"}`,
+    `Motion durations: ${
+      Array.isArray(motion.allowedDurationsMs)
+        ? motion.allowedDurationsMs.map((value) => `${String(value)}ms`).join(", ")
+        : "none"
+    }`,
+    `Top repair priorities: ${topRepairs.join(", ") || "none"}`,
+  ].join("\n");
+}
+
+function selectRelevantComponents(preparedPayload: ReturnType<typeof buildPreparedGenerationPayload>): Array<Record<string, unknown>> {
+  const sections = Array.isArray(preparedPayload.sections)
+    ? preparedPayload.sections.filter((entry): entry is JsonRecord => isRecord(entry))
+    : [];
+  const components = Array.isArray(preparedPayload.components)
+    ? preparedPayload.components.filter((entry): entry is JsonRecord => isRecord(entry))
+    : [];
+  const referencedIds = new Set<string>();
+
+  for (const section of sections) {
+    const anatomy = asRecord(section.anatomy);
+    const defaultComponentId = asString(anatomy.defaultComponentId);
+    if (defaultComponentId) {
+      referencedIds.add(defaultComponentId);
+    }
+    for (const componentId of asStringArray(anatomy.allowedComponentIds)) {
+      referencedIds.add(componentId);
+    }
+    const slots = Array.isArray(anatomy.slots) ? anatomy.slots : [];
+    for (const slot of slots) {
+      const slotRecord = asRecord(slot);
+      for (const componentId of asStringArray(slotRecord.acceptsComponentIds)) {
+        referencedIds.add(componentId);
+      }
+    }
+  }
+
+  if (referencedIds.size === 0) {
+    return components.slice(0, 12);
+  }
+  return components.filter((component) => referencedIds.has(asString(component.id) ?? ""));
+}
+
+function loadPreparedPayloadForSession(session: GenerationSession): ReturnType<typeof buildPreparedGenerationPayload> {
+  if (session.preparedInputPath && fs.existsSync(session.preparedInputPath)) {
+    return readJsonFile<ReturnType<typeof buildPreparedGenerationPayload>>(session.preparedInputPath, "prepared generation payload");
+  }
+  const bundle = loadCompiledSurfaceBundle(session.bundleRoot, session.surfaceId, process.cwd());
+  return buildPreparedGenerationPayload(bundle);
+}
+
+function loadRuntimeAcceptedSuggestions(filePath?: string): RuntimeAcceptedSuggestion[] {
+  if (!filePath) {
+    return [];
+  }
+  const resolvedPath = path.resolve(filePath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new SessionInputError(`Accepted suggestions file not found at ${resolvedPath}.`);
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(fs.readFileSync(resolvedPath, "utf8")) as unknown;
+  } catch (error) {
+    throw new SessionInputError(
+      `Accepted suggestions file is not valid JSON: ${resolvedPath} (${error instanceof Error ? error.message : String(error)}).`,
+    );
+  }
+  const payloadRecord = asRecord(payload);
+  const suggestions: unknown[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payloadRecord.suggestions)
+      ? payloadRecord.suggestions
+      : [];
+  return suggestions
+    .filter((entry): entry is JsonRecord => isRecord(entry))
+    .map((entry) => {
+      const findingCode = asString(entry.findingCode);
+      const findingMessage = asString(entry.findingMessage);
+      const summary = asString(entry.summary);
+      const suggestedPath = asString(entry.suggestedPath);
+      const rationale = asString(entry.rationale);
+      if (!findingCode || !findingMessage || !summary || !suggestedPath) {
+        throw new SessionInputError(`Accepted suggestion entries must include findingCode, findingMessage, summary, and suggestedPath: ${resolvedPath}.`);
+      }
+      return {
+        findingCode,
+        findingMessage,
+        summary,
+        suggestedPath,
+        ...(rationale ? { rationale } : {}),
+      };
+    });
+}
+
+function loadRuntimeDesignerNotes(filePath?: string): string[] {
+  if (!filePath) {
+    return [];
+  }
+  const resolvedPath = path.resolve(filePath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new SessionInputError(`Designer notes file not found at ${resolvedPath}.`);
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(fs.readFileSync(resolvedPath, "utf8")) as unknown;
+  } catch (error) {
+    throw new SessionInputError(
+      `Designer notes file is not valid JSON: ${resolvedPath} (${error instanceof Error ? error.message : String(error)}).`,
+    );
+  }
+  const payloadRecord = asRecord(payload);
+  const rawNotes: unknown[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payloadRecord.designerNotes)
+      ? payloadRecord.designerNotes
+      : Array.isArray(payloadRecord.notes)
+        ? payloadRecord.notes
+        : [];
+  return [...new Set(
+    rawNotes
+      .map((entry) => {
+        if (typeof entry === "string") {
+          return entry.trim();
+        }
+        if (isRecord(entry)) {
+          return asString(entry.content) ?? "";
+        }
+        return "";
+      })
+      .filter(Boolean),
+  )];
+}
+
+function parseRuntimeFindingCodes(value?: string): string[] {
+  if (!value) {
+    return [];
+  }
+  return [...new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  )].sort((left, right) => left.localeCompare(right));
+}
+
+function buildGuidanceHandoff(
+  session: GenerationSession,
+  paths: ReturnType<typeof getSessionPaths>,
+  guidanceStrategy: GuidanceStrategy,
+  options: {
+    acceptedSuggestions?: RuntimeAcceptedSuggestion[];
+    designerNotes?: string[];
+    findingCodes?: string[];
+  } = {},
+): GenerationGuidanceHandoff {
+  const acceptedSuggestions = options.acceptedSuggestions ?? [];
+  const designerNotes = options.designerNotes ?? [];
+  const findingCodes = [...new Set([
+    ...(options.findingCodes ?? []),
+    ...acceptedSuggestions.map((entry) => entry.findingCode),
+  ])].sort((left, right) => left.localeCompare(right));
+  const preparedPayload = guidanceStrategy === "unguided" ? null : loadPreparedPayloadForSession(session);
+  const repairMap = preparedPayload ? extractRepairEntries(preparedPayload.repairMap) : [];
+  const matchedRepairs = repairMap.filter((entry) => findingCodes.includes(asString(entry.code) ?? ""));
+  const brief = session.brief && fs.existsSync(session.brief.path)
+    ? {
+        ...session.brief,
+        text: fs.readFileSync(session.brief.path, "utf8").trim(),
+      }
+    : null;
+
+  return {
+    schemaVersion: 1,
+    surfaceId: session.surfaceId,
+    sessionId: session.sessionId,
+    tool: session.tool,
+    guidanceStrategy,
+    generatedAt: session.startedAt,
+    brief,
+    session: {
+      sessionPath: paths.sessionPath,
+      preparedInputPath: session.preparedInputPath,
+      contractPath: session.contractPath,
+      repairMapPath: session.repairMapPath,
+    },
+    runtimeGuidance: {
+      findingCodes,
+      matchedRepairCodes: matchedRepairs.map((entry) => asString(entry.code) ?? "").filter(Boolean),
+      acceptedSuggestions,
+      designerNotes,
+    },
+    promptSummary: guidanceStrategy === "prompt-summary"
+      ? {
+          effectiveContractSummary: summarizeContractForSurface(session.contractPath, session.surfaceId),
+          preparedGuidanceSummary: buildPreparedPromptSummary(preparedPayload!),
+        }
+      : null,
+    jsonPrimary: guidanceStrategy === "json-primary"
+      ? {
+          surface: asRecord(preparedPayload!.surface),
+          contract: asRecord(preparedPayload!.contract),
+          summary: asRecord(preparedPayload!.summary),
+          generation: asRecord(preparedPayload!.generation),
+          constraints: asRecord(preparedPayload!.constraints),
+          sections: Array.isArray(preparedPayload!.sections)
+            ? preparedPayload!.sections.filter((entry): entry is JsonRecord => isRecord(entry))
+            : [],
+          components: selectRelevantComponents(preparedPayload!),
+          repairMap,
+          matchedRepairs,
+        }
+      : null,
+  };
+}
+
 function parseCsvPaths(value?: string): string[] {
   if (!value) return [];
   return [...new Set(
@@ -1285,12 +1806,6 @@ function buildComparisonArtifact(
   }
   if (baselineBuilt.session.tool !== guidedBuilt.session.tool) {
     throw new SessionInputError("Baseline and guided sessions must use the same tool.");
-  }
-  if (baselineBuilt.session.guidanceMode !== "unguided") {
-    throw new SessionInputError("Baseline session must use guidanceMode=unguided.");
-  }
-  if (guidedBuilt.session.guidanceMode !== "prepared") {
-    throw new SessionInputError("Guided session must use guidanceMode=prepared.");
   }
   if (!baselineBuilt.session.brief || !guidedBuilt.session.brief) {
     throw new SessionInputError("Both sessions must freeze the same implementation brief before comparison.");
@@ -1343,9 +1858,36 @@ function buildComparisonArtifact(
       guidedBuilt.summary.firstAcceptableAttempt <= baselineBuilt.summary.firstAcceptableAttempt;
   const guidedFewerFirstAttemptBlockingFindings =
     guidedFirstAttempt.blockingFindingCount < baselineFirstAttempt.blockingFindingCount;
+  const heuristics: GenerationSessionComparison["heuristics"] = {
+    baseline: baselineBuilt.summary.heuristics,
+    guided: guidedBuilt.summary.heuristics,
+    delta: {
+      unresolvedAcceptedSuggestionRate: numericHeuristicDelta(
+        baselineBuilt.summary.heuristics.latestAttempt.unresolvedAcceptedSuggestionRate,
+        guidedBuilt.summary.heuristics.latestAttempt.unresolvedAcceptedSuggestionRate,
+      ),
+      noChangesAfterEditFailureCount:
+        (guidedBuilt.summary.heuristics.latestAttempt.noChangesAfterEditFailureCount ?? 0) -
+        (baselineBuilt.summary.heuristics.latestAttempt.noChangesAfterEditFailureCount ?? 0),
+      recoverableToolErrorCount:
+        (guidedBuilt.summary.heuristics.latestAttempt.recoverableToolErrorCount ?? 0) -
+        (baselineBuilt.summary.heuristics.latestAttempt.recoverableToolErrorCount ?? 0),
+      touchedFilesPerResolvedFinding: numericHeuristicDelta(
+        baselineBuilt.summary.heuristics.latestAttempt.touchedFilesPerResolvedFinding,
+        guidedBuilt.summary.heuristics.latestAttempt.touchedFilesPerResolvedFinding,
+      ),
+      repeatedFindingCarryoverCount:
+        guidedBuilt.summary.heuristics.repeatedFindingCarryoverCount -
+        baselineBuilt.summary.heuristics.repeatedFindingCarryoverCount,
+      rerunsToAcceptableOutcome: numericHeuristicDelta(
+        baselineBuilt.summary.heuristics.rerunsToAcceptableOutcome,
+        guidedBuilt.summary.heuristics.rerunsToAcceptableOutcome,
+      ),
+    },
+  };
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     surfaceId: baselineBuilt.session.surfaceId,
     tool: baselineBuilt.session.tool,
     brief: {
@@ -1356,7 +1898,7 @@ function buildComparisonArtifact(
     baseline: {
       sessionId: baselineBuilt.session.sessionId,
       sessionDir: baselineBuilt.session.sessionDir,
-      guidanceMode: baselineBuilt.session.guidanceMode,
+      guidanceStrategy: baselineBuilt.session.guidanceStrategy,
       attemptCount: baselineBuilt.summary.attemptCount,
       firstAcceptableAttempt: baselineBuilt.summary.firstAcceptableAttempt,
       latestOutcome: baselineBuilt.summary.latestOutcome,
@@ -1364,11 +1906,12 @@ function buildComparisonArtifact(
       latestAttempt: baselineLatestAttempt,
       recurringFindingCodes: baselineBuilt.summary.recurringFindingCodes,
       recurringRepairCodes: baselineBuilt.summary.recurringRepairCodes,
+      heuristics: baselineBuilt.summary.heuristics,
     },
     guided: {
       sessionId: guidedBuilt.session.sessionId,
       sessionDir: guidedBuilt.session.sessionDir,
-      guidanceMode: guidedBuilt.session.guidanceMode,
+      guidanceStrategy: guidedBuilt.session.guidanceStrategy,
       attemptCount: guidedBuilt.summary.attemptCount,
       firstAcceptableAttempt: guidedBuilt.summary.firstAcceptableAttempt,
       latestOutcome: guidedBuilt.summary.latestOutcome,
@@ -1376,6 +1919,7 @@ function buildComparisonArtifact(
       latestAttempt: guidedLatestAttempt,
       recurringFindingCodes: guidedBuilt.summary.recurringFindingCodes,
       recurringRepairCodes: guidedBuilt.summary.recurringRepairCodes,
+      heuristics: guidedBuilt.summary.heuristics,
     },
     delta: {
       firstAttemptVerdict: {
@@ -1399,6 +1943,7 @@ function buildComparisonArtifact(
       },
       rubric,
     },
+    heuristics,
     checks: {
       guidedFewerFirstAttemptBlockingFindings,
       guidedReachedAcceptableNoLater,
@@ -1485,8 +2030,8 @@ function getSuggestionSortKey(left: ContractDeltaSuggestion, right: ContractDelt
 
 function buildSuggestionArtifact(sessionDir: string): ContractDeltaSuggestionsArtifact {
   const built = buildGenerationSessionSummary(sessionDir);
-  if (built.session.guidanceMode !== "prepared") {
-    throw new SessionInputError("Contract delta suggestions require a guided prepared session.");
+  if (built.session.guidanceStrategy === "unguided") {
+    throw new SessionInputError("Contract delta suggestions require a guided session.");
   }
 
   const repairMapDoc = readJsonFile<JsonRecord>(built.session.repairMapPath, "repair map");
@@ -1560,11 +2105,11 @@ function buildSuggestionArtifact(sessionDir: string): ContractDeltaSuggestionsAr
   }).sort(getSuggestionSortKey);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     surfaceId: built.session.surfaceId,
     sessionId: built.session.sessionId,
     tool: built.session.tool,
-    guidanceMode: built.session.guidanceMode,
+    guidanceStrategy: built.session.guidanceStrategy,
     generatedAt:
       asString(latestAttempt.metadata.createdAt) ??
       asString(latestAttempt.validate.provenance && asRecord(latestAttempt.validate.provenance).evaluatedAt) ??
@@ -1631,7 +2176,7 @@ export async function runInitGenerationSessionCommand(
     }
 
     const tool = ensureSessionTool(options.tool);
-    const guidanceMode = ensureGuidanceMode(options.guidanceMode);
+    const guidanceStrategy = ensureGuidanceStrategy(options.guidanceStrategy ?? options.guidanceMode);
     const workspaceRoot = path.resolve(options.workspaceRoot);
     if (!fs.existsSync(workspaceRoot) || !fs.statSync(workspaceRoot).isDirectory()) {
       throw new SessionInputError(`Workspace root directory not found at ${workspaceRoot}.`);
@@ -1652,18 +2197,18 @@ export async function runInitGenerationSessionCommand(
 
     const sessionBundle = loadCompiledSurfaceBundle(paths.bundleRoot, options.surfaceId, process.cwd());
     let preparedInputPath: string | null = null;
-    if (guidanceMode === "prepared") {
+    if (guidanceStrategy !== "unguided") {
       const preparedPayload = buildPreparedGenerationPayload(sessionBundle);
       writeDeterministicJsonSync(paths.preparedInputPath, preparedPayload);
       preparedInputPath = paths.preparedInputPath;
     }
 
     const session: GenerationSession = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       surfaceId: options.surfaceId,
       sessionId,
       tool,
-      guidanceMode,
+      guidanceStrategy,
       workspaceRoot,
       sourceBundleRoot: loadedBundle.root,
       sessionDir: paths.sessionDir,
@@ -1671,16 +2216,86 @@ export async function runInitGenerationSessionCommand(
       preparedInputPath,
       contractPath: sessionBundle.contract.path,
       repairMapPath: sessionBundle.surface.repairMap.path,
+      guidanceArtifacts: {
+        baseHandoffPath: paths.guidanceHandoffPath,
+      },
       startedAt: new Date().toISOString(),
       ...(options.briefFile ? { brief: freezeBriefFile(paths.sessionDir, options.briefFile) } : {}),
       successRule: {
         finalStatus: "pass-or-reviewed-warn",
       },
     };
+    const handoff = buildGuidanceHandoff(session, paths, guidanceStrategy);
+    writeDeterministicJsonSync(paths.guidanceHandoffPath, handoff);
     writeDeterministicJsonSync(paths.sessionPath, session);
 
     process.stdout.write(
-      `${JSON.stringify({ ok: true, session, paths }, null, 2)}\n`,
+      `${JSON.stringify({ ok: true, session, handoff, paths }, null, 2)}\n`,
+    );
+    return 0;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
+}
+
+export async function runPrepareGenerationHandoffCommand(
+  options: PrepareGenerationHandoffCommandOptions,
+): Promise<number> {
+  try {
+    if (!options.sessionDir) {
+      throw new SessionInputError("--session-dir is required.");
+    }
+
+    const { session, paths } = loadSession(options.sessionDir);
+    const guidanceStrategy = ensureGuidanceStrategy(options.guidanceStrategy ?? session.guidanceStrategy);
+    let preparedInputPath = session.preparedInputPath;
+    if (guidanceStrategy !== "unguided" && !preparedInputPath) {
+      const bundle = loadCompiledSurfaceBundle(session.bundleRoot, session.surfaceId, process.cwd());
+      const preparedPayload = buildPreparedGenerationPayload(bundle);
+      writeDeterministicJsonSync(paths.preparedInputPath, preparedPayload);
+      preparedInputPath = paths.preparedInputPath;
+    }
+
+    const sessionForHandoff: GenerationSession = {
+      ...session,
+      guidanceStrategy,
+      preparedInputPath,
+      guidanceArtifacts: {
+        baseHandoffPath: options.outPath ? path.resolve(options.outPath) : paths.guidanceHandoffPath,
+      },
+    };
+    const handoff = buildGuidanceHandoff(sessionForHandoff, paths, guidanceStrategy, {
+      acceptedSuggestions: loadRuntimeAcceptedSuggestions(options.acceptedSuggestionsFile),
+      designerNotes: loadRuntimeDesignerNotes(options.designerNotesFile),
+      findingCodes: parseRuntimeFindingCodes(options.findingCodes),
+    });
+    const handoffPath = sessionForHandoff.guidanceArtifacts.baseHandoffPath ?? paths.guidanceHandoffPath;
+    writeDeterministicJsonSync(handoffPath, handoff);
+
+    const updatedSession: GenerationSession = {
+      ...sessionForHandoff,
+    };
+    writeDeterministicJsonSync(paths.sessionPath, updatedSession);
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          handoff,
+          session: updatedSession,
+          paths: {
+            handoffPath,
+            sessionPath: paths.sessionPath,
+          },
+        },
+        null,
+        2,
+      )}\n`,
     );
     return 0;
   } catch (error) {
@@ -1745,12 +2360,12 @@ export async function runRecordGenerationAttemptCommand(
     });
 
     const metadata: GenerationSessionAttemptMetadata = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       surfaceId: session.surfaceId,
       sessionId: session.sessionId,
       attemptNumber,
       tool: session.tool,
-      guidanceMode: session.guidanceMode,
+      guidanceStrategy: session.guidanceStrategy,
       createdAt: new Date().toISOString(),
       validateStatus: response.status,
       validateExitCode: response.status === "block" ? 30 : 0,
@@ -1758,6 +2373,7 @@ export async function runRecordGenerationAttemptCommand(
       assessmentPath: attemptPaths.assessmentPath,
       validatePath: attemptPaths.validatePath,
       touchedFiles: assessment.touchedFiles ?? [],
+      guidanceHandoffPath: session.guidanceArtifacts.baseHandoffPath,
       contractRun,
     };
     writeDeterministicJsonSync(attemptPaths.metadataPath, metadata);
@@ -2191,16 +2807,19 @@ export async function runSummarizeGenerationBenchmarkCommand(
     }));
 
     const report: GenerationBenchmarkReport = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       comparisons: comparisons.map(({ path: comparisonPath, value }) => ({
         surfaceId: value.surfaceId,
         tool: value.tool,
         comparisonPath,
         meetsGoal: value.checks.meetsGoal,
+        baselineGuidanceStrategy: value.baseline.guidanceStrategy,
+        guidedGuidanceStrategy: value.guided.guidanceStrategy,
         guidedFewerFirstAttemptBlockingFindings: value.checks.guidedFewerFirstAttemptBlockingFindings,
         guidedReachedAcceptableNoLater: value.checks.guidedReachedAcceptableNoLater,
         guidedRubricBetterDimensions: value.checks.guidedRubricBetterDimensions,
+        heuristics: value.heuristics.delta,
       })),
       suggestions: suggestions.map(({ path: suggestionsPath, value }) => ({
         surfaceId: value.surfaceId,
@@ -2231,6 +2850,46 @@ export async function runSummarizeGenerationBenchmarkCommand(
           (total, entry) => total + entry.value.suggestions.filter((suggestion) => suggestion.status === "proposed").length,
           0,
         ),
+        heuristics: {
+          lowerUnresolvedAcceptedSuggestionRate: countHeuristicImprovement(
+            comparisons.map(({ value }) => value.heuristics.delta.unresolvedAcceptedSuggestionRate),
+          ),
+          lowerNoChangesAfterEditFailureCount: comparisons.filter(
+            ({ value }) => value.heuristics.delta.noChangesAfterEditFailureCount < 0,
+          ).length,
+          lowerRecoverableToolErrorCount: comparisons.filter(
+            ({ value }) => value.heuristics.delta.recoverableToolErrorCount < 0,
+          ).length,
+          lowerTouchedFilesPerResolvedFinding: countHeuristicImprovement(
+            comparisons.map(({ value }) => value.heuristics.delta.touchedFilesPerResolvedFinding),
+          ),
+          lowerRepeatedFindingCarryoverCount: comparisons.filter(
+            ({ value }) => value.heuristics.delta.repeatedFindingCarryoverCount < 0,
+          ).length,
+          lowerRerunsToAcceptableOutcome: countHeuristicImprovement(
+            comparisons.map(({ value }) => value.heuristics.delta.rerunsToAcceptableOutcome),
+          ),
+          averageDelta: {
+            unresolvedAcceptedSuggestionRate: averageNullable(
+              comparisons.map(({ value }) => value.heuristics.delta.unresolvedAcceptedSuggestionRate),
+            ),
+            noChangesAfterEditFailureCount: averageNullable(
+              comparisons.map(({ value }) => value.heuristics.delta.noChangesAfterEditFailureCount),
+            ),
+            recoverableToolErrorCount: averageNullable(
+              comparisons.map(({ value }) => value.heuristics.delta.recoverableToolErrorCount),
+            ),
+            touchedFilesPerResolvedFinding: averageNullable(
+              comparisons.map(({ value }) => value.heuristics.delta.touchedFilesPerResolvedFinding),
+            ),
+            repeatedFindingCarryoverCount: averageNullable(
+              comparisons.map(({ value }) => value.heuristics.delta.repeatedFindingCarryoverCount),
+            ),
+            rerunsToAcceptableOutcome: averageNullable(
+              comparisons.map(({ value }) => value.heuristics.delta.rerunsToAcceptableOutcome),
+            ),
+          },
+        },
       },
     };
 

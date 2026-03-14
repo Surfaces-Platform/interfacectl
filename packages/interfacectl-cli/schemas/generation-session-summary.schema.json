@@ -9,7 +9,7 @@
     "surfaceId",
     "sessionId",
     "tool",
-    "guidanceMode",
+    "guidanceStrategy",
     "attemptCount",
     "firstPassAttempt",
     "firstAcceptableAttempt",
@@ -19,6 +19,7 @@
     "recurringRepairCodes",
     "latestAssessment",
     "latestReview",
+    "heuristics",
     "successRule",
     "paths",
     "attempts"
@@ -26,7 +27,7 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 3
+      "const": 4
     },
     "surfaceId": {
       "type": "string",
@@ -40,9 +41,9 @@
       "type": "string",
       "enum": ["codex", "cursor", "local-llm"]
     },
-    "guidanceMode": {
+    "guidanceStrategy": {
       "type": "string",
-      "enum": ["prepared", "unguided"]
+      "enum": ["prompt-summary", "json-primary", "unguided"]
     },
     "attemptCount": {
       "type": "number",
@@ -65,49 +66,13 @@
     "recurringFindingCodes": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["code", "count"],
-        "properties": {
-          "code": {
-            "type": "string",
-            "minLength": 1
-          },
-          "count": {
-            "type": "number",
-            "minimum": 2
-          }
-        }
+        "$ref": "#/$defs/recurringCount"
       }
     },
     "recurringRepairCodes": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["code", "count", "priority", "category", "actionType"],
-        "properties": {
-          "code": {
-            "type": "string",
-            "minLength": 1
-          },
-          "count": {
-            "type": "number",
-            "minimum": 2
-          },
-          "priority": {
-            "type": "string",
-            "minLength": 1
-          },
-          "category": {
-            "type": "string",
-            "minLength": 1
-          },
-          "actionType": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
+        "$ref": "#/$defs/recurringRepair"
       }
     },
     "latestAssessment": {
@@ -116,42 +81,7 @@
           "type": "null"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["structure", "components", "boundary", "visual", "responsiveness", "notes"],
-          "properties": {
-            "structure": {
-              "type": "string",
-              "enum": ["strong", "partial", "weak"]
-            },
-            "components": {
-              "type": "string",
-              "enum": ["strong", "partial", "weak"]
-            },
-            "boundary": {
-              "type": "string",
-              "enum": ["strong", "partial", "weak"]
-            },
-            "visual": {
-              "type": "string",
-              "enum": ["strong", "partial", "weak"]
-            },
-            "responsiveness": {
-              "type": "string",
-              "enum": ["strong", "partial", "weak"]
-            },
-            "notes": {
-              "type": "string",
-              "minLength": 1
-            },
-            "touchedFiles": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            }
-          }
+          "$ref": "#/$defs/assessment"
         }
       ]
     },
@@ -161,79 +91,23 @@
           "type": "null"
         },
         {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["schemaVersion", "surfaceId", "sessionId", "attemptNumber", "status", "findingCodes", "rationale", "reviewedAt"],
-          "properties": {
-            "schemaVersion": {
-              "type": "number",
-              "const": 1
-            },
-            "surfaceId": {
-              "type": "string",
-              "minLength": 1
-            },
-            "sessionId": {
-              "type": "string",
-              "minLength": 1
-            },
-            "attemptNumber": {
-              "type": "number",
-              "minimum": 1
-            },
-            "status": {
-              "type": "string",
-              "enum": ["accepted", "rejected"]
-            },
-            "findingCodes": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "rationale": {
-              "type": "string",
-              "minLength": 1
-            },
-            "reviewedAt": {
-              "type": "string",
-              "format": "date-time"
-            }
-          }
+          "$ref": "#/$defs/review"
         }
       ]
     },
+    "heuristics": {
+      "$ref": "#/$defs/sessionHeuristics"
+    },
     "brief": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "sha256"],
-      "properties": {
-        "path": {
-          "type": "string",
-          "minLength": 1
-        },
-        "sha256": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
+      "$ref": "#/$defs/brief"
     },
     "successRule": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["finalStatus"],
-      "properties": {
-        "finalStatus": {
-          "type": "string",
-          "const": "pass-or-reviewed-warn"
-        }
-      }
+      "$ref": "#/$defs/successRule"
     },
     "paths": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sessionPath", "bundleRoot", "preparedInputPath"],
+      "required": ["sessionPath", "bundleRoot", "preparedInputPath", "guidanceHandoffPath"],
       "properties": {
         "sessionPath": {
           "type": "string",
@@ -244,6 +118,10 @@
           "minLength": 1
         },
         "preparedInputPath": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "guidanceHandoffPath": {
           "type": ["string", "null"],
           "minLength": 1
         }
@@ -316,6 +194,201 @@
     }
   },
   "$defs": {
+    "brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "successRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finalStatus"],
+      "properties": {
+        "finalStatus": {
+          "type": "string",
+          "const": "pass-or-reviewed-warn"
+        }
+      }
+    },
+    "assessmentHeuristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unresolvedAcceptedSuggestionCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unresolvedAcceptedSuggestionRate": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "noChangesAfterEditFailureCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recoverableToolErrorCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "touchedFilesPerResolvedFinding": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structure", "components", "boundary", "visual", "responsiveness", "notes"],
+      "properties": {
+        "structure": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "components": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "boundary": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "visual": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "responsiveness": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "touchedFiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "heuristics": {
+          "$ref": "#/$defs/assessmentHeuristics"
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "surfaceId", "sessionId", "attemptNumber", "status", "findingCodes", "rationale", "reviewedAt"],
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "surfaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attemptNumber": {
+          "type": "number",
+          "minimum": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["accepted", "rejected"]
+        },
+        "findingCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "recurringCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "count"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "number",
+          "minimum": 2
+        }
+      }
+    },
+    "recurringRepair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "count", "priority", "category", "actionType"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "count": {
+          "type": "number",
+          "minimum": 2
+        },
+        "priority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionType": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sessionHeuristics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latestAttempt", "repeatedFindingCarryoverCount", "rerunsToAcceptableOutcome"],
+      "properties": {
+        "latestAttempt": {
+          "$ref": "#/$defs/assessmentHeuristics"
+        },
+        "repeatedFindingCarryoverCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rerunsToAcceptableOutcome": {
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      }
+    },
     "previewRef": {
       "type": "object",
       "additionalProperties": false,

@@ -5,8 +5,17 @@ export interface InitGenerationSessionCommandOptions {
     tool?: string;
     sessionId?: string;
     artifactsRoot?: string;
+    guidanceStrategy?: string;
     guidanceMode?: string;
     briefFile?: string;
+}
+export interface PrepareGenerationHandoffCommandOptions {
+    sessionDir?: string;
+    guidanceStrategy?: string;
+    acceptedSuggestionsFile?: string;
+    designerNotesFile?: string;
+    findingCodes?: string;
+    outPath?: string;
 }
 export interface RecordGenerationAttemptCommandOptions {
     sessionDir?: string;
@@ -47,6 +56,7 @@ export interface SummarizeGenerationBenchmarkCommandOptions {
     outDir?: string;
 }
 export declare function runInitGenerationSessionCommand(options: InitGenerationSessionCommandOptions): Promise<number>;
+export declare function runPrepareGenerationHandoffCommand(options: PrepareGenerationHandoffCommandOptions): Promise<number>;
 export declare function runRecordGenerationAttemptCommand(options: RecordGenerationAttemptCommandOptions): Promise<number>;
 export declare function runCaptureGenerationPreviewCommand(options: CaptureGenerationPreviewCommandOptions): Promise<number>;
 export declare function runReviewGenerationAttemptCommand(options: ReviewGenerationAttemptCommandOptions): Promise<number>;

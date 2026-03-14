@@ -199,7 +199,7 @@ interfacectl summarize-generation-session --session-dir <path>
 
 ### `compare-generation-sessions`
 
-Compares one unguided baseline session against one guided prepared session for the same brief and writes deterministic comparison artifacts.
+Compares two tracked generation sessions for the same brief and writes deterministic comparison artifacts.
 
 ```bash
 interfacectl compare-generation-sessions --baseline-session-dir <path> --guided-session-dir <path> [--out-dir <path>]

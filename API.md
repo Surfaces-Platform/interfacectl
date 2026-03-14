@@ -733,7 +733,7 @@ interfacectl summarize-generation-session --session-dir <path>
 
 ### `compare-generation-sessions`
 
-Compares one unguided baseline session against one prepared guided session for the same implementation brief.
+Compares two tracked generation sessions for the same implementation brief.
 
 **Synopsis:**
 ```bash
@@ -742,7 +742,7 @@ interfacectl compare-generation-sessions --baseline-session-dir <path> --guided-
 
 **Description:**
 - Requires both sessions to target the same surface, use the same tool, and freeze the same brief file.
-- Requires `guidanceMode=unguided` for the baseline session and `guidanceMode=prepared` for the guided session.
+- Works with any valid guidance-strategy pair; the output records each session’s concrete strategy.
 - Computes first-attempt finding deltas, attempts-to-acceptable-outcome delta, rubric deltas, and goal checks.
 - Writes `comparison.json` and `comparison.md`.
 - Canonical schema lives at `packages/interfacectl-cli/schemas/generation-session-comparison.schema.json`.
@@ -809,7 +809,7 @@ interfacectl summarize-generation-benchmark --comparisons <path[,path...]> [--su
 ```
 
 **Description:**
-- Summarizes whether guided sessions reduced first-attempt blocking findings, reached acceptable outcomes no later, and improved rubric dimensions.
+- Summarizes whether the compared candidate sessions reduced first-attempt blocking findings, reached acceptable outcomes no later, and improved rubric dimensions.
 - Aggregates accepted/rejected/proposed suggestion counts across surfaces.
 - Writes `benchmark-report.json` and `benchmark-report.md`.
 - Canonical schema lives at `packages/interfacectl-cli/schemas/generation-benchmark-report.schema.json`.
