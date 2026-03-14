@@ -1,5 +1,6 @@
 import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-session.js";
 import { clearAuthProfiles, getAuthStorageMode, inspectAuthProfile, isLegacyAuthProfile, isProfileExpired, isProfileReplayReady, listAuthProfiles, saveReplayAuthProfile, } from "../utils/auth-profiles.js";
+import { normalizeRemoteUrlInput } from "../utils/onboarding.js";
 function buildProfileStatus(profile) {
     if (!profile) {
         return "missing";
@@ -54,7 +55,7 @@ export async function runAuthCaptureCommand(options) {
         return 1;
     }
     try {
-        const requestedUrl = new URL(options.url);
+        const requestedUrl = new URL(normalizeRemoteUrlInput(options.url));
         const captured = await captureBrowserStorageState({
             url: requestedUrl.toString(),
         });
@@ -105,7 +106,8 @@ export async function runAuthTestCommand(options) {
         console.error("Missing --profile for auth test.");
         return 1;
     }
-    const domain = options.url ? new URL(options.url).hostname : options.domain;
+    const normalizedUrl = options.url ? normalizeRemoteUrlInput(options.url) : undefined;
+    const domain = normalizedUrl ? new URL(normalizedUrl).hostname : options.domain;
     if (!domain) {
         if (options.format === "json") {
             console.log(JSON.stringify({ ok: false, error: "Provide --domain or --url for auth test." }, null, 2));
@@ -158,8 +160,9 @@ export async function runAuthTestCommand(options) {
         return 0;
     }
     try {
+        const targetUrl = normalizedUrl ?? normalizeRemoteUrlInput(options.url);
         const observation = await observeRemotePage({
-            url: options.url,
+            url: targetUrl,
             storageState: inspection.storageState,
         });
         const ok = new URL(observation.finalUrl).hostname === inspection.profile.domain &&

@@ -8,7 +8,12 @@ import {
   type AnalysisSourceMode,
   type WebSurfaceKind,
 } from "../utils/first-run-analysis.js";
-import { suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName } from "../utils/onboarding.js";
+import {
+  normalizeRemoteUrlInput,
+  suggestSurfaceIdFromPath,
+  suggestSurfaceIdFromUrl,
+  suggestSurfaceName,
+} from "../utils/onboarding.js";
 import { redactSensitiveText } from "../utils/redaction.js";
 
 type ExtractMode = AnalysisSourceMode;
@@ -64,6 +69,9 @@ export async function runAnalyzeCommand(options: AnalyzeCommandOptions): Promise
 
   try {
     const sourceMode = inferSourceMode(options);
+    const normalizedUrl = sourceMode === "remote-url" && options.url
+      ? normalizeRemoteUrlInput(options.url)
+      : undefined;
     if (sourceMode === "remote-url" && !options.url) {
       throw new Error("Missing required --url for remote-url analysis.");
     }
@@ -81,8 +89,8 @@ export async function runAnalyzeCommand(options: AnalyzeCommandOptions): Promise
     const surfaceSuggestion =
       options.surface ??
       (
-        sourceMode === "remote-url" && options.url
-          ? suggestSurfaceIdFromUrl(options.url)
+        sourceMode === "remote-url" && normalizedUrl
+          ? suggestSurfaceIdFromUrl(normalizedUrl)
           : suggestSurfaceIdFromPath(options.appRoot ?? "surface")
       );
     const surfaceId = normalizeSurfaceId(surfaceSuggestion);
@@ -91,8 +99,8 @@ export async function runAnalyzeCommand(options: AnalyzeCommandOptions): Promise
     let authMode: "none" | "browser-session" = "none";
     let authProfileName: string | undefined;
     let authStorageState: string | undefined;
-    if (sourceMode === "remote-url" && options.authProfile && options.url) {
-      const url = new URL(options.url);
+    if (sourceMode === "remote-url" && options.authProfile && normalizedUrl) {
+      const url = new URL(normalizedUrl);
       const inspection = await inspectAuthProfile(options.authProfile, url.hostname);
       if (inspection.status !== "ready" || !inspection.profile || !inspection.storageState) {
         const reason = inspection.status === "missing"
@@ -115,7 +123,7 @@ export async function runAnalyzeCommand(options: AnalyzeCommandOptions): Promise
       surfaceName,
       sourceMode,
       appRoot: options.appRoot,
-      url: options.url,
+      url: normalizedUrl,
       surfaceKindOverride: options.surfaceKind,
       authMode,
       authProfileName,
@@ -132,7 +140,7 @@ export async function runAnalyzeCommand(options: AnalyzeCommandOptions): Promise
     );
     if (result.analysis.sourceHealth.status !== "ok") {
       console.log(
-        `Source access: ${result.analysis.sourceHealth.status} (${result.analysis.sourceHealth.confidence}) at ${result.analysis.sourceHealth.finalUrl ?? options.url}`,
+        `Source access: ${result.analysis.sourceHealth.status} (${result.analysis.sourceHealth.confidence}) at ${result.analysis.sourceHealth.finalUrl ?? normalizedUrl}`,
       );
     }
     if (result.analysis.classification.requiresConfirmation && !options.surfaceKind) {

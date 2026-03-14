@@ -10,6 +10,7 @@ import {
   listAuthProfiles,
   saveReplayAuthProfile,
 } from "../utils/auth-profiles.js";
+import { normalizeRemoteUrlInput } from "../utils/onboarding.js";
 
 export interface AuthCommandOptions {
   profile?: string;
@@ -79,7 +80,7 @@ export async function runAuthCaptureCommand(options: AuthCommandOptions): Promis
   }
 
   try {
-    const requestedUrl = new URL(options.url);
+    const requestedUrl = new URL(normalizeRemoteUrlInput(options.url));
     const captured = await captureBrowserStorageState({
       url: requestedUrl.toString(),
     });
@@ -142,7 +143,8 @@ export async function runAuthTestCommand(options: AuthCommandOptions): Promise<n
     return 1;
   }
 
-  const domain = options.url ? new URL(options.url).hostname : options.domain;
+  const normalizedUrl = options.url ? normalizeRemoteUrlInput(options.url) : undefined;
+  const domain = normalizedUrl ? new URL(normalizedUrl).hostname : options.domain;
   if (!domain) {
     if (options.format === "json") {
       console.log(
@@ -216,8 +218,9 @@ export async function runAuthTestCommand(options: AuthCommandOptions): Promise<n
   }
 
   try {
+    const targetUrl = normalizedUrl ?? normalizeRemoteUrlInput(options.url);
     const observation = await observeRemotePage({
-      url: options.url,
+      url: targetUrl,
       storageState: inspection.storageState,
     });
     const ok =

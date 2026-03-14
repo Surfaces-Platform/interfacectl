@@ -8,7 +8,7 @@ import { runValidateExtractedCommand } from "./validate-extracted.js";
 import { getAuthStorageMode, inspectAuthProfile, saveReplayAuthProfile, } from "../utils/auth-profiles.js";
 import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-session.js";
 import { analyzeSurface, stringifyStableArtifact, } from "../utils/first-run-analysis.js";
-import { emitOnboardingRunArtifact, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "../utils/onboarding.js";
+import { emitOnboardingRunArtifact, normalizeRemoteUrlInput, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "../utils/onboarding.js";
 import { inferSourceMode, normalizeSurfaceId, promptGateResolution, promptInteractiveInitInputs, promptSurfaceKindConfirmation, promptWriteConfirmation, } from "../utils/init-interactive.js";
 import { redactSensitiveText } from "../utils/redaction.js";
 const DEFAULT_OUT_DIR = "contracts/generated";
@@ -74,7 +74,7 @@ async function resolveInputs(options) {
     const surfaceName = options.surfaceName ?? suggestSurfaceName(surfaceId);
     return {
         sourceMode,
-        url: options.url ? new URL(options.url).toString() : undefined,
+        url: options.url ? normalizeRemoteUrlInput(options.url) : undefined,
         appRoot: options.appRoot,
         surfaceId,
         surfaceName,

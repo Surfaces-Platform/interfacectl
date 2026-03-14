@@ -6,6 +6,7 @@ import type {
   WebSurfaceKind,
 } from "./first-run-analysis.js";
 import {
+  normalizeRemoteUrlInput,
   suggestSurfaceIdFromPath,
   suggestSurfaceIdFromUrl,
   suggestSurfaceName,
@@ -86,7 +87,7 @@ export async function promptInteractiveInitInputs(
     const sourceMode: ExtractMode = rawMode === "remote-url" ? "remote-url" : "local-root";
 
     const url = sourceMode === "remote-url"
-      ? new URL(options.url ?? (await rl.question("Surface URL: ")).trim()).toString()
+      ? normalizeRemoteUrlInput(options.url ?? (await rl.question("Surface URL: ")).trim())
       : options.url?.trim() || undefined;
     const appRoot = sourceMode === "local-root"
       ? (options.appRoot ?? (await rl.question("Local app root: "))).trim()
