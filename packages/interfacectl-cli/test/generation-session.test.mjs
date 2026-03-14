@@ -239,7 +239,7 @@ test("generation session commands freeze bundle input, record attempts, and emit
         "--workspace-root",
         workspaceRoot,
         "--tool",
-        "codex",
+        "local-llm",
         "--session",
         "demo-session",
       ],
