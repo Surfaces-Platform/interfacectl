@@ -37,6 +37,41 @@ async function runCli(args, cwd = __dirname) {
   };
 }
 
+function parseJsonFromOutput(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Expected JSON output but received an empty string");
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const lines = trimmed.split(/\r?\n/).filter(Boolean);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      try {
+        return JSON.parse(lines[index]);
+      } catch {
+        // Keep scanning until we find the trailing JSON payload.
+      }
+    }
+
+    for (let index = 0; index < trimmed.length; index += 1) {
+      const char = trimmed[index];
+      if (char !== "{" && char !== "[") {
+        continue;
+      }
+
+      try {
+        return JSON.parse(trimmed.slice(index));
+      } catch {
+        // Keep scanning until we find a complete JSON payload.
+      }
+    }
+  }
+
+  throw new Error(`Unable to parse JSON output: ${trimmed}`);
+}
+
 async function writeJson(filePath, value) {
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
   await fsp.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
@@ -153,7 +188,7 @@ test("prepare-runtime: emits resolved runtime payload with governance and enforc
     );
 
     assert.equal(result.exitCode, 0, result.stderr);
-    const payload = JSON.parse(result.stdout);
+    const payload = parseJsonFromOutput(result.stdout);
 
     assert.equal(payload.surface.surfaceId, "demo-surface");
     assert.equal(payload.bundle.sourcePaths.runtime, path.join(bundleRoot, "surfaces", "demo-surface", "runtime.json"));
@@ -192,7 +227,7 @@ test("prepare-runtime: fails with adapter error when runtime bundle is missing",
     );
 
     assert.equal(result.exitCode, 10, result.stderr);
-    const payload = JSON.parse(result.stderr);
+    const payload = parseJsonFromOutput(result.stderr);
     assert.equal(payload.code, "adapter.bundle.runtime-missing");
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true });
