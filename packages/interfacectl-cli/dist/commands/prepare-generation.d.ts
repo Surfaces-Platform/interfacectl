@@ -14,6 +14,7 @@ interface SummaryRepairItem {
 export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBundle): {
     evidenceRefs: any[];
     authoring?: JsonRecord | undefined;
+    runtime?: JsonRecord | undefined;
     surface: {
         surfaceId: string;
         displayName: string;
@@ -25,6 +26,7 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
         manifestPath: string;
         sourcePaths: {
             authoring?: string | undefined;
+            runtime?: string | undefined;
             contract: string;
             generation: string;
             sections: string;
@@ -55,6 +57,8 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
         structure: JsonRecord;
         layout: JsonRecord;
         visual: JsonRecord;
+        governance: JsonRecord;
+        adaptation: JsonRecord;
         guidance: JsonRecord;
     };
     sections: any[];
@@ -65,6 +69,7 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
 export declare function loadPreparedGenerationPayload(bundleRoot: string, surfaceId: string, cwd?: string): {
     evidenceRefs: any[];
     authoring?: JsonRecord | undefined;
+    runtime?: JsonRecord | undefined;
     surface: {
         surfaceId: string;
         displayName: string;
@@ -76,6 +81,7 @@ export declare function loadPreparedGenerationPayload(bundleRoot: string, surfac
         manifestPath: string;
         sourcePaths: {
             authoring?: string | undefined;
+            runtime?: string | undefined;
             contract: string;
             generation: string;
             sections: string;
@@ -106,6 +112,8 @@ export declare function loadPreparedGenerationPayload(bundleRoot: string, surfac
         structure: JsonRecord;
         layout: JsonRecord;
         visual: JsonRecord;
+        governance: JsonRecord;
+        adaptation: JsonRecord;
         guidance: JsonRecord;
     };
     sections: any[];

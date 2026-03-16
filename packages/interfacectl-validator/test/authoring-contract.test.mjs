@@ -27,6 +27,45 @@ test("validateContractStructure accepts generic authoring metadata for a web sur
   assert.equal(result.ok, true);
 });
 
+test("validateContractStructure accepts governance and runtime metadata for a web surface", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].owner = "designers@example.com";
+  contract.surfaces[0].governance = {
+    status: "review",
+    roles: {
+      designers: ["designers@example.com"],
+      engineers: ["eng@example.com"],
+    },
+    approvals: [
+      {
+        role: "designer",
+        owner: "designers@example.com",
+        status: "approved",
+        timestamp: "2026-03-16T10:00:00Z",
+      },
+    ],
+  };
+  contract.surfaces[0].runtime = {
+    policy: "strict",
+    mutationEnvelope: {
+      mode: "slot-bound",
+      scopes: ["content", "components"],
+      allowedActions: ["update-copy", "swap-variant"],
+      allowedSections: ["page.intro"],
+    },
+    contexts: [
+      {
+        id: "launch",
+        when: "route == '/'",
+        requiredSections: ["page.intro"],
+      },
+    ],
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true);
+});
+
 test("validateContractStructure rejects section anatomy references to unknown components", async () => {
   const schema = getBundledContractSchema();
   const contract = await loadFixture();
@@ -73,6 +112,23 @@ test("validateContractStructure rejects invalid viewport ranges", async () => {
   assert.ok(
     result.errors.some((error) => error.includes("/surfaces/reference-target-web/viewports/mobile")),
     `expected viewport range validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure rejects runtime metadata that references unknown sections", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    mutationEnvelope: {
+      mode: "content-only",
+      allowedSections: ["missing.section"],
+    },
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/reference-target-web/runtime/mutationEnvelope/allowedSections/missing.section")),
+    `expected runtime section reference validation error, got ${JSON.stringify(result.errors)}`,
   );
 });
 

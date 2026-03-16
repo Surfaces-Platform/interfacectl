@@ -25,9 +25,11 @@ export function validateContractStructure(contractData, schema) {
     }
     const marketingReferenceErrors = validateMarketingProfileReferences(contractData);
     const authoringReferenceErrors = validateAuthoringMetadata(contractData);
+    const governanceReferenceErrors = validateGovernanceMetadata(contractData);
     const validationErrors = [
         ...marketingReferenceErrors,
         ...authoringReferenceErrors,
+        ...governanceReferenceErrors,
     ];
     if (validationErrors.length > 0) {
         return {
@@ -106,6 +108,38 @@ function validateAuthoringMetadata(contract) {
         validateSectionAuthoring(section, componentIds, componentsById, declaredViewportIds, errors);
     }
     return errors;
+}
+function validateGovernanceMetadata(contract) {
+    const errors = [];
+    const sectionIds = new Set(contract.sections.map((section) => section.id));
+    for (const surface of contract.surfaces) {
+        const mutationEnvelope = surface.runtime?.mutationEnvelope;
+        validateSurfaceSectionReferences(mutationEnvelope?.allowedSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/mutationEnvelope/allowedSections`, errors);
+        validateSurfaceSectionReferences(mutationEnvelope?.prohibitedSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/mutationEnvelope/prohibitedSections`, errors);
+        const allowedSections = new Set(mutationEnvelope?.allowedSections ?? []);
+        for (const sectionId of mutationEnvelope?.prohibitedSections ?? []) {
+            if (allowedSections.has(sectionId)) {
+                errors.push(`/surfaces/${surface.id}/runtime/mutationEnvelope section "${sectionId}" cannot be both allowed and prohibited`);
+            }
+        }
+        const contextIds = new Set();
+        for (const context of surface.runtime?.contexts ?? []) {
+            if (contextIds.has(context.id)) {
+                errors.push(`/surfaces/${surface.id}/runtime/contexts/${context.id} must use a unique context id within the surface`);
+            }
+            contextIds.add(context.id);
+            validateSurfaceSectionReferences(context.requiredSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/contexts/${context.id}/requiredSections`, errors);
+            validateSurfaceSectionReferences(context.prohibitedSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/contexts/${context.id}/prohibitedSections`, errors);
+        }
+    }
+    return errors;
+}
+function validateSurfaceSectionReferences(refs, sectionIds, pathPrefix, errors) {
+    for (const ref of refs) {
+        if (!sectionIds.has(ref)) {
+            errors.push(`${pathPrefix}/${ref} must reference a declared section id`);
+        }
+    }
 }
 function validateComponentAuthoring(component, componentIds, errors) {
     const slotIds = new Set();

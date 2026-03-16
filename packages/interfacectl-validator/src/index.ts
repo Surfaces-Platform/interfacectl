@@ -62,9 +62,13 @@ export function validateContractStructure(
   const authoringReferenceErrors = validateAuthoringMetadata(
     contractData as InterfaceContract,
   );
+  const governanceReferenceErrors = validateGovernanceMetadata(
+    contractData as InterfaceContract,
+  );
   const validationErrors = [
     ...marketingReferenceErrors,
     ...authoringReferenceErrors,
+    ...governanceReferenceErrors,
   ];
   if (validationErrors.length > 0) {
     return {
@@ -191,6 +195,73 @@ function validateAuthoringMetadata(contract: InterfaceContract): string[] {
   }
 
   return errors;
+}
+
+function validateGovernanceMetadata(contract: InterfaceContract): string[] {
+  const errors: string[] = [];
+  const sectionIds = new Set(contract.sections.map((section) => section.id));
+
+  for (const surface of contract.surfaces) {
+    const mutationEnvelope = surface.runtime?.mutationEnvelope;
+    validateSurfaceSectionReferences(
+      mutationEnvelope?.allowedSections ?? [],
+      sectionIds,
+      `/surfaces/${surface.id}/runtime/mutationEnvelope/allowedSections`,
+      errors,
+    );
+    validateSurfaceSectionReferences(
+      mutationEnvelope?.prohibitedSections ?? [],
+      sectionIds,
+      `/surfaces/${surface.id}/runtime/mutationEnvelope/prohibitedSections`,
+      errors,
+    );
+
+    const allowedSections = new Set(mutationEnvelope?.allowedSections ?? []);
+    for (const sectionId of mutationEnvelope?.prohibitedSections ?? []) {
+      if (allowedSections.has(sectionId)) {
+        errors.push(
+          `/surfaces/${surface.id}/runtime/mutationEnvelope section "${sectionId}" cannot be both allowed and prohibited`,
+        );
+      }
+    }
+
+    const contextIds = new Set<string>();
+    for (const context of surface.runtime?.contexts ?? []) {
+      if (contextIds.has(context.id)) {
+        errors.push(
+          `/surfaces/${surface.id}/runtime/contexts/${context.id} must use a unique context id within the surface`,
+        );
+      }
+      contextIds.add(context.id);
+      validateSurfaceSectionReferences(
+        context.requiredSections ?? [],
+        sectionIds,
+        `/surfaces/${surface.id}/runtime/contexts/${context.id}/requiredSections`,
+        errors,
+      );
+      validateSurfaceSectionReferences(
+        context.prohibitedSections ?? [],
+        sectionIds,
+        `/surfaces/${surface.id}/runtime/contexts/${context.id}/prohibitedSections`,
+        errors,
+      );
+    }
+  }
+
+  return errors;
+}
+
+function validateSurfaceSectionReferences(
+  refs: string[],
+  sectionIds: ReadonlySet<string>,
+  pathPrefix: string,
+  errors: string[],
+): void {
+  for (const ref of refs) {
+    if (!sectionIds.has(ref)) {
+      errors.push(`${pathPrefix}/${ref} must reference a declared section id`);
+    }
+  }
 }
 
 function validateComponentAuthoring(
@@ -1627,6 +1698,18 @@ export type {
   SurfaceAuthoring,
   SurfaceAuthoringStyling,
   SurfaceAuthoringLibraries,
+  SurfacePhase0,
+  SurfaceGovernanceRoles,
+  SurfaceApprovalRole,
+  SurfaceApprovalStatus,
+  SurfaceApprovalRecord,
+  SurfaceGovernance,
+  SurfaceMutationMode,
+  SurfaceMutationScope,
+  SurfaceMutationAction,
+  SurfaceMutationEnvelope,
+  SurfaceRuntimeContextRule,
+  SurfaceRuntimePolicy,
   ContractSurface,
   ContractSection,
   ContractConstraints,

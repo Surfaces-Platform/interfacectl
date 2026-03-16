@@ -158,6 +158,55 @@ export interface SurfaceAuthoring {
     preferredLibraries?: SurfaceAuthoringLibraries;
     sourcePriority: AuthoringSource[];
 }
+export interface SurfacePhase0 {
+    authPosture?: "public" | "auth-aware" | "auth-first";
+    requiresShell?: boolean;
+    expectsAuthRoutes?: boolean;
+    expectsDesignSystem?: boolean;
+}
+export interface SurfaceGovernanceRoles {
+    designers?: string[];
+    engineers?: string[];
+    approvers?: string[];
+}
+export type SurfaceApprovalRole = "designer" | "engineering" | "product" | "qa" | "operations" | "other";
+export type SurfaceApprovalStatus = "pending" | "approved" | "rejected";
+export interface SurfaceApprovalRecord {
+    role: SurfaceApprovalRole;
+    owner: string;
+    status: SurfaceApprovalStatus;
+    note?: string;
+    timestamp?: string;
+}
+export interface SurfaceGovernance {
+    status?: "draft" | "review" | "approved" | "published";
+    roles?: SurfaceGovernanceRoles;
+    approvals?: SurfaceApprovalRecord[];
+}
+export type SurfaceMutationMode = "locked" | "content-only" | "slot-bound" | "layout-tuning" | "section-assembly" | "freeform";
+export type SurfaceMutationScope = "content" | "components" | "layout" | "sections" | "interactions";
+export type SurfaceMutationAction = SectionAllowedOperation | "add-section" | "remove-section" | "reorder-sections" | "swap-component";
+export interface SurfaceMutationEnvelope {
+    mode: SurfaceMutationMode;
+    scopes?: SurfaceMutationScope[];
+    allowedActions?: SurfaceMutationAction[];
+    allowedSections?: string[];
+    prohibitedSections?: string[];
+}
+export interface SurfaceRuntimeContextRule {
+    id: string;
+    when: string;
+    policy?: "off" | "warn" | "strict";
+    requiredSections?: string[];
+    prohibitedSections?: string[];
+    allowedLayoutIntents?: ResponsiveLayoutIntent[];
+    notes?: string;
+}
+export interface SurfaceRuntimePolicy {
+    policy?: "off" | "warn" | "strict";
+    mutationEnvelope?: SurfaceMutationEnvelope;
+    contexts?: SurfaceRuntimeContextRule[];
+}
 export interface ContractSurface {
     id: string;
     displayName: string;
@@ -175,10 +224,15 @@ export interface ContractSurface {
     };
     icons?: IconPolicy;
     flows?: FlowPolicy;
+    phase0?: SurfacePhase0;
+    domain?: string;
+    owner?: string;
     mustNotEmit?: string[];
     shellOwnedPrimitiveAllowSources?: string[];
     viewports?: ViewportProfile[];
     authoring?: SurfaceAuthoring;
+    governance?: SurfaceGovernance;
+    runtime?: SurfaceRuntimePolicy;
 }
 export interface ContractSection {
     id: string;

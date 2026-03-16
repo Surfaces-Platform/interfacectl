@@ -136,6 +136,159 @@ function uniqueStrings(values: Array<string | undefined | null>): string[] {
   return result;
 }
 
+type PolicyLevel = "off" | "warn" | "strict";
+
+function getPolicyRank(policy: PolicyLevel | undefined): number {
+  switch (policy) {
+    case "strict":
+      return 2;
+    case "warn":
+      return 1;
+    case "off":
+    default:
+      return 0;
+  }
+}
+
+function maxPolicy(...policies: Array<PolicyLevel | undefined>): PolicyLevel {
+  let strongest: PolicyLevel = "off";
+  for (const policy of policies) {
+    if (getPolicyRank(policy) > getPolicyRank(strongest)) {
+      strongest = policy ?? "off";
+    }
+  }
+  return strongest;
+}
+
+function buildGovernancePayload(surface: ContractSurface) {
+  return {
+    owner: surface.owner ?? null,
+    domain: surface.domain ?? null,
+    phase0: surface.phase0 ?? null,
+    status: surface.governance?.status ?? "draft",
+    roles: surface.governance?.roles ?? {},
+    approvals: surface.governance?.approvals ?? [],
+  };
+}
+
+function inferMutationMode(surface: ContractSurface, sections: ContractSection[]) {
+  const explicitMode = surface.runtime?.mutationEnvelope?.mode;
+  if (explicitMode) return explicitMode;
+
+  const sectionModes = uniqueStrings(
+    sections.map((section) => section.editPolicy?.mode),
+  );
+  const allowedOperations = uniqueStrings(
+    sections.flatMap((section) => section.editPolicy?.allowedOperations ?? []),
+  );
+
+  if (sectionModes.length > 0 && sectionModes.every((mode) => mode === "locked")) {
+    return "locked";
+  }
+  if (sectionModes.includes("freeform")) {
+    return "freeform";
+  }
+  if (allowedOperations.includes("adjust-layout")) {
+    return "layout-tuning";
+  }
+  if (sectionModes.includes("slot-bound")) {
+    return "slot-bound";
+  }
+  return "content-only";
+}
+
+function inferMutationScopes(actions: string[]) {
+  return uniqueStrings(
+    actions.flatMap((action) => {
+      switch (action) {
+        case "update-copy":
+        case "change-media":
+        case "bind-data":
+          return ["content"];
+        case "swap-variant":
+        case "swap-component":
+          return ["components"];
+        case "adjust-layout":
+          return ["layout"];
+        case "add-section":
+        case "remove-section":
+        case "reorder-sections":
+          return ["sections"];
+        case "wire-interaction":
+          return ["interactions"];
+        case "reorder-items":
+          return ["content", "layout"];
+        default:
+          return [];
+      }
+    }),
+  );
+}
+
+function buildMutationEnvelope(
+  surface: ContractSurface,
+  sections: ContractSection[],
+) {
+  const explicit = surface.runtime?.mutationEnvelope;
+  const inferredActions = uniqueStrings(
+    sections.flatMap((section) => section.editPolicy?.allowedOperations ?? []),
+  );
+  const allowedActions = uniqueStrings([
+    ...(explicit?.allowedActions ?? []),
+    ...(explicit?.allowedActions ? [] : inferredActions),
+    inferredActions.length === 0 ? "update-copy" : undefined,
+  ]);
+  const scopes = uniqueStrings([
+    ...(explicit?.scopes ?? []),
+    ...(explicit?.scopes ? [] : inferMutationScopes(allowedActions)),
+  ]);
+
+  return {
+    mode: inferMutationMode(surface, sections),
+    ...(scopes.length > 0 ? { scopes } : {}),
+    ...(allowedActions.length > 0 ? { allowedActions } : {}),
+    ...(explicit?.allowedSections ? { allowedSections: explicit.allowedSections } : {}),
+    ...(explicit?.prohibitedSections ? { prohibitedSections: explicit.prohibitedSections } : {}),
+  };
+}
+
+function buildPolicySeverities(
+  contract: InterfaceContract,
+  surface: ContractSurface,
+): Record<string, PolicyLevel> {
+  const boundary = surface.mustNotEmit?.length || contract.shell?.owns?.length
+    ? "strict"
+    : "off";
+  const structure = maxPolicy(
+    surface.requiredSections.length > 0 ? "strict" : "off",
+    surface.layout.landingPattern?.policy,
+  );
+  const layout = maxPolicy(
+    surface.layout.pageFrame?.enforcement,
+    surface.layout.chromePolicy?.policy,
+    surface.layout.landingPattern?.policy,
+    surface.layout.landingPattern?.marketingLayoutPolicy,
+  );
+  const visual = maxPolicy(
+    contract.color.policy,
+    surface.icons?.policy,
+    contract.tokens?.typography?.policy,
+    contract.tokens?.motion?.policy,
+    surface.marketingTypographyPolicy,
+  );
+  const interaction = surface.flows?.policy ?? "off";
+  const runtime = maxPolicy(surface.runtime?.policy, boundary, structure, layout, visual, interaction);
+
+  return {
+    boundary,
+    structure,
+    layout,
+    visual,
+    interaction,
+    runtime,
+  };
+}
+
 function collectComponentIdsFromSlots(slots: ContractSlot[] | undefined): string[] {
   if (!slots) return [];
   return slots.flatMap((slot) => slot.acceptsComponents ?? []);
@@ -399,6 +552,12 @@ function buildGenerationPayload(
   const requiredSections = surface.requiredSections;
   const landingPattern = surface.layout.landingPattern;
   const observationRefs = buildObservationRefs(contract);
+  const governance = buildGovernancePayload(surface);
+  const adaptation = {
+    policy: surface.runtime?.policy ?? buildPolicySeverities(contract, surface).runtime,
+    mutationEnvelope: buildMutationEnvelope(surface, sections),
+    contextIds: (surface.runtime?.contexts ?? []).map((context) => context.id),
+  };
 
   return {
     identity: {
@@ -456,6 +615,8 @@ function buildGenerationPayload(
         tokenPolicyCategories: Object.keys(contract.tokens ?? {}),
       },
     },
+    governance,
+    adaptation,
     guidance: buildGuidance(contract, surface, sections),
     refs: {
       contract: "../../contract/normalized.json",
@@ -464,6 +625,7 @@ function buildGenerationPayload(
       constraints: "./constraints.json",
       ...(surface.authoring ? { authoring: "./authoring.json" } : {}),
       repairMap: "./repair-map.json",
+      runtime: "./runtime.json",
       ...(observationRefs.length > 0 ? { evidence: observationRefs } : {}),
     },
   };
@@ -659,6 +821,66 @@ function buildRepairMapPayload(
   };
 }
 
+function buildRuntimePayload(
+  contract: InterfaceContract,
+  surface: ContractSurface,
+  sections: ContractSection[],
+  components: ContractComponent[],
+) {
+  const policySeverities = buildPolicySeverities(contract, surface);
+  const mutationEnvelope = buildMutationEnvelope(surface, sections);
+
+  return {
+    provenance: makeBundleProvenance(contract, surface.id),
+    identity: {
+      surfaceId: surface.id,
+      displayName: surface.displayName,
+      type: surface.type,
+    },
+    governance: buildGovernancePayload(surface),
+    runtime: {
+      policy: surface.runtime?.policy ?? policySeverities.runtime,
+      policySeverities,
+      mutationEnvelope,
+      contexts: surface.runtime?.contexts ?? [],
+      boundary: {
+        shellOwns: contract.shell?.owns ?? [],
+        contentSlot: contract.shell?.contentSlot ?? null,
+        mustNotEmit: surface.mustNotEmit ?? [],
+        allowSources: surface.shellOwnedPrimitiveAllowSources ?? [],
+      },
+      structure: {
+        requiredSections: surface.requiredSections,
+        allowedSections: sections.map((section) => section.id),
+        allowedComponents: components.map((component) => component.id),
+      },
+      layout: {
+        maxContentWidth: surface.layout.maxContentWidth,
+        requiredContainers: surface.layout.requiredContainers ?? [],
+        ...(surface.layout.pageFrame ? { pageFrame: surface.layout.pageFrame } : {}),
+        ...(surface.layout.chromePolicy ? { chromePolicy: surface.layout.chromePolicy } : {}),
+        ...(surface.layout.landingPattern ? { landingPattern: surface.layout.landingPattern } : {}),
+        ...(surface.viewports ? { viewports: surface.viewports } : {}),
+      },
+      visual: {
+        allowedFonts: surface.allowedFonts,
+        color: contract.color,
+        motion: contract.constraints.motion,
+        ...(contract.tokens ? { tokens: contract.tokens } : {}),
+        ...(surface.icons ? { icons: surface.icons } : {}),
+      },
+      ...(surface.flows ? { interaction: { flows: surface.flows } } : {}),
+    },
+    refs: {
+      contract: "../../contract/normalized.json",
+      sections: "./sections.json",
+      components: "./components.json",
+      constraints: "./constraints.json",
+      repairMap: "./repair-map.json",
+    },
+  };
+}
+
 function buildSurfaceBundleFiles(
   contract: InterfaceContract,
   surface: ContractSurface,
@@ -672,6 +894,7 @@ function buildSurfaceBundleFiles(
   const componentsPayload = buildComponentsPayload(contract, surface, components);
   const repairMapPayload = buildRepairMapPayload(contract, surface, sections);
   const authoringPayload = buildAuthoringPayload(contract, surface);
+  const runtimePayload = buildRuntimePayload(contract, surface, sections, components);
 
   const files: BundleFile[] = [
     {
@@ -693,6 +916,10 @@ function buildSurfaceBundleFiles(
     {
       path: `${surfaceDir}/repair-map.json`,
       content: stringifyDeterministic(repairMapPayload),
+    },
+    {
+      path: `${surfaceDir}/runtime.json`,
+      content: stringifyDeterministic(runtimePayload),
     },
   ];
 
