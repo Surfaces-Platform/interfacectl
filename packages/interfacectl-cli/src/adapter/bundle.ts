@@ -33,6 +33,7 @@ export interface LoadedCompiledSurfaceBundle {
     components: LoadedJsonFile;
     constraints: LoadedJsonFile;
     repairMap: LoadedJsonFile;
+    runtime?: LoadedJsonFile;
     authoring?: LoadedJsonFile;
   };
 }
@@ -176,6 +177,19 @@ export function loadCompiledSurfaceBundle(
     };
   }
 
+  let runtime: LoadedJsonFile | undefined;
+  const runtimeRef =
+    typeof refs.runtime === "string" && refs.runtime.trim().length > 0
+      ? refs.runtime
+      : "./runtime.json";
+  const runtimePath = path.resolve(path.dirname(generationPath), runtimeRef);
+  if (fs.existsSync(runtimePath) && fs.statSync(runtimePath).isFile()) {
+    runtime = {
+      path: runtimePath,
+      value: readJsonFile(runtimePath, "Runtime bundle"),
+    };
+  }
+
   const generationProvenance = isRecord(generation.value.provenance)
     ? generation.value.provenance
     : undefined;
@@ -210,6 +224,7 @@ export function loadCompiledSurfaceBundle(
       components,
       constraints,
       repairMap,
+      ...(runtime ? { runtime } : {}),
       ...(authoring ? { authoring } : {}),
     },
   };

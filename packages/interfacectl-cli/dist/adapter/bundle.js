@@ -116,6 +116,17 @@ export function loadCompiledSurfaceBundle(bundleRootInput, surfaceId, cwd) {
             value: readJsonFile(authoringPath, "Authoring bundle"),
         };
     }
+    let runtime;
+    const runtimeRef = typeof refs.runtime === "string" && refs.runtime.trim().length > 0
+        ? refs.runtime
+        : "./runtime.json";
+    const runtimePath = path.resolve(path.dirname(generationPath), runtimeRef);
+    if (fs.existsSync(runtimePath) && fs.statSync(runtimePath).isFile()) {
+        runtime = {
+            path: runtimePath,
+            value: readJsonFile(runtimePath, "Runtime bundle"),
+        };
+    }
     const generationProvenance = isRecord(generation.value.provenance)
         ? generation.value.provenance
         : undefined;
@@ -147,6 +158,7 @@ export function loadCompiledSurfaceBundle(bundleRootInput, surfaceId, cwd) {
             components,
             constraints,
             repairMap,
+            ...(runtime ? { runtime } : {}),
             ...(authoring ? { authoring } : {}),
         },
     };

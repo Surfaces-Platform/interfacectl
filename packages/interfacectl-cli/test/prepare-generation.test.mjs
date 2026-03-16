@@ -61,11 +61,36 @@ function buildContract(overrides = {}) {
         displayName: "Demo Surface",
         type: "web",
         requiredSections: ["main.hero"],
+        owner: "designers@example.com",
         mustNotEmit: ["header"],
         allowedFonts: ["Demo Sans", "sans-serif", "var(--font-demo)"],
         layout: {
           maxContentWidth: 960,
           requiredContainers: ["contract-container"],
+        },
+        governance: {
+          status: "review",
+          roles: {
+            designers: ["designers@example.com"],
+            engineers: ["eng@example.com"],
+          },
+        },
+        runtime: {
+          policy: "strict",
+          mutationEnvelope: {
+            mode: "slot-bound",
+            scopes: ["content", "components"],
+            allowedActions: ["update-copy", "swap-variant"],
+            allowedSections: ["main.hero"],
+          },
+          contexts: [
+            {
+              id: "launch",
+              when: "route == '/'",
+              policy: "warn",
+              requiredSections: ["main.hero"],
+            },
+          ],
         },
         authoring: {
           framework: "next",
@@ -165,6 +190,7 @@ test("prepare-generation: emits resolved payload with summary, provenance, autho
     assert.equal(payload.bundle.version, "2.0");
     assert.equal(payload.bundle.manifestPath, path.join(bundleRoot, "manifest.json"));
     assert.equal(payload.bundle.sourcePaths.contract, path.join(bundleRoot, "contract", "normalized.json"));
+    assert.equal(payload.bundle.sourcePaths.runtime, path.join(bundleRoot, "surfaces", "demo-surface", "runtime.json"));
     assert.equal(payload.contract.id, "prepare-demo");
     assert.equal(payload.contract.version, "1.0.0");
     assert.equal(payload.contract.normalizedPath, path.join(bundleRoot, "contract", "normalized.json"));
@@ -172,10 +198,13 @@ test("prepare-generation: emits resolved payload with summary, provenance, autho
     assert.ok(payload.summary.text.includes("Focus on"), "summary should include human-readable text");
     assert.ok(Array.isArray(payload.summary.checklist));
     assert.deepEqual(payload.generation.boundary.shellOwns, ["header", "footer"]);
+    assert.equal(payload.generation.governance.owner, "designers@example.com");
+    assert.equal(payload.generation.adaptation.mutationEnvelope.mode, "slot-bound");
     assert.equal(payload.sections.length, 1);
     assert.equal(payload.components.length, 1);
     assert.equal(payload.constraints.color.policy, "warn");
     assert.equal(payload.repairMap[0].code, "shell.primitive.disallowed");
+    assert.equal(payload.runtime.policy, "strict");
     assert.equal(payload.authoring.framework, "next");
     assert.deepEqual(payload.evidenceRefs, [{ kind: "contract-field", path: "/x_extracted" }]);
     const schemaValidation = validatePreparedGenerationOutput(payload);
@@ -221,6 +250,7 @@ test("prepare-generation: --out writes the payload file and suppresses stdout", 
     const written = JSON.parse(await fsp.readFile(outPath, "utf8"));
     assert.equal(written.surface.surfaceId, "demo-surface");
     assert.equal(written.bundle.sourcePaths.generation, path.join(bundleRoot, "surfaces", "demo-surface", "generation.json"));
+    assert.equal(written.bundle.sourcePaths.runtime, path.join(bundleRoot, "surfaces", "demo-surface", "runtime.json"));
     const schemaValidation = validatePreparedGenerationOutput(written);
     assert.equal(
       schemaValidation.ok,

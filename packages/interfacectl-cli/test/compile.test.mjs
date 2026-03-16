@@ -71,7 +71,7 @@ test("compile: structure - required files exist and no extra files", async () =>
     assert.equal(manifest.contractId, "demo-ui");
     assert.equal(manifest.contractVersion, "1.0.0");
     assert.ok(Array.isArray(manifest.files));
-    assert.ok(manifest.files.length >= 6);
+    assert.ok(manifest.files.length >= 7);
 
     const paths = manifest.files.map((f) => f.path);
     assert.ok(paths.includes("contract/normalized.json"), "bundle must include contract/normalized.json");
@@ -80,6 +80,7 @@ test("compile: structure - required files exist and no extra files", async () =>
     assert.ok(paths.includes("surfaces/demo-surface/components.json"), "bundle must include components.json");
     assert.ok(paths.includes("surfaces/demo-surface/constraints.json"), "bundle must include constraints.json");
     assert.ok(paths.includes("surfaces/demo-surface/repair-map.json"), "bundle must include repair-map.json");
+    assert.ok(paths.includes("surfaces/demo-surface/runtime.json"), "bundle must include runtime.json");
     assert.ok(!paths.includes("surfaces/demo-surface/authoring.json"), "authoring.json should be omitted when authoring is absent");
 
     for (const entry of manifest.files) {
@@ -100,7 +101,7 @@ test("compile: structure - required files exist and no extra files", async () =>
     const surfaceFiles = await readdir(surfaceDir);
     assert.deepEqual(
       surfaceFiles.sort(),
-      ["components.json", "constraints.json", "generation.json", "repair-map.json", "sections.json"],
+      ["components.json", "constraints.json", "generation.json", "repair-map.json", "runtime.json", "sections.json"],
       "surface bundle should only include the expected generation files for the base fixture",
     );
   } finally {
@@ -141,7 +142,7 @@ test("compile: golden - generated generation bundle files match expected", async
     const generatedContract = await readJson(path.join(outDir, "contract", "normalized.json"));
     assert.deepEqual(generatedContract, expectedContract, "contract/normalized.json must match expected");
 
-    for (const filename of ["generation.json", "sections.json", "components.json", "constraints.json", "repair-map.json"]) {
+    for (const filename of ["generation.json", "sections.json", "components.json", "constraints.json", "repair-map.json", "runtime.json"]) {
       const expected = await readJson(path.join(expectedDir, "surfaces", "demo-surface", filename));
       const generated = await readJson(path.join(outDir, "surfaces", "demo-surface", filename));
       assert.deepEqual(generated, expected, `${filename} must match expected`);
@@ -172,6 +173,7 @@ test("compile: includes component catalog refs, authoring hints, and observation
               type: "web",
               requiredSections: ["main.hero"],
               allowedFonts: ["Inter", "var(--font-body)"],
+              owner: "designers@example.com",
               marketingTypographyProfile: "marketing-core",
               marketingTypographyPolicy: "warn",
               layout: {
@@ -185,6 +187,40 @@ test("compile: includes component catalog refs, authoring hints, and observation
                   marketingLayoutProfile: "marketing-landing",
                   marketingLayoutPolicy: "warn",
                 },
+              },
+              governance: {
+                status: "review",
+                roles: {
+                  designers: ["designers@example.com"],
+                  engineers: ["eng@example.com"],
+                  approvers: ["design-approver@example.com"],
+                },
+                approvals: [
+                  {
+                    role: "designer",
+                    owner: "design-approver@example.com",
+                    status: "approved",
+                    timestamp: "2026-03-16T09:00:00Z",
+                  },
+                ],
+              },
+              runtime: {
+                policy: "strict",
+                mutationEnvelope: {
+                  mode: "slot-bound",
+                  scopes: ["content", "components"],
+                  allowedActions: ["update-copy", "swap-variant"],
+                  allowedSections: ["main.hero", "main.cta"],
+                },
+                contexts: [
+                  {
+                    id: "pricing-campaign",
+                    when: "route == '/pricing'",
+                    policy: "warn",
+                    requiredSections: ["main.cta"],
+                    allowedLayoutIntents: ["columns"],
+                  },
+                ],
               },
               authoring: {
                 framework: "next",
@@ -312,9 +348,21 @@ test("compile: includes component catalog refs, authoring hints, and observation
 
     const generation = await readJson(path.join(outDir, "surfaces", "demo-surface", "generation.json"));
     assert.equal(generation.refs.authoring, "./authoring.json");
+    assert.equal(generation.refs.runtime, "./runtime.json");
     assert.deepEqual(generation.refs.evidence, [{ kind: "contract-field", path: "/x_extracted" }]);
     assert.equal("x_extracted" in generation, false, "generation payload must not inline x_extracted evidence");
     assert.equal("observations" in generation, false, "generation payload must not inline observation evidence");
+    assert.equal(generation.governance.owner, "designers@example.com");
+    assert.equal(generation.governance.status, "review");
+    assert.equal(generation.adaptation.mutationEnvelope.mode, "slot-bound");
+    assert.deepEqual(generation.adaptation.contextIds, ["pricing-campaign"]);
+
+    const runtime = await readJson(path.join(outDir, "surfaces", "demo-surface", "runtime.json"));
+    assert.equal(runtime.runtime.policy, "strict");
+    assert.equal(runtime.governance.owner, "designers@example.com");
+    assert.equal(runtime.runtime.policySeverities.runtime, "strict");
+    assert.deepEqual(runtime.runtime.mutationEnvelope.allowedSections, ["main.hero", "main.cta"]);
+    assert.deepEqual(runtime.runtime.structure.allowedComponents, ["hero-banner", "cta-group"]);
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }

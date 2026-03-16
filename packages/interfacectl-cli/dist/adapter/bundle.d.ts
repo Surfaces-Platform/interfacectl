@@ -26,6 +26,7 @@ export interface LoadedCompiledSurfaceBundle {
         components: LoadedJsonFile;
         constraints: LoadedJsonFile;
         repairMap: LoadedJsonFile;
+        runtime?: LoadedJsonFile;
         authoring?: LoadedJsonFile;
     };
 }

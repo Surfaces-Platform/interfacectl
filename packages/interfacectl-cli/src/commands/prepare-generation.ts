@@ -80,6 +80,8 @@ function buildSummary(bundle: LoadedCompiledSurfaceBundle) {
   const generation = asRecord(bundle.surface.generation.value);
   const boundary = asRecord(generation.boundary);
   const structure = asRecord(generation.structure);
+  const adaptation = asRecord(generation.adaptation);
+  const mutationEnvelope = asRecord(adaptation.mutationEnvelope);
   const guidance = asRecord(generation.guidance);
   const repairs = getRepairSummary(bundle.surface.repairMap.value);
 
@@ -113,6 +115,14 @@ function buildSummary(bundle: LoadedCompiledSurfaceBundle) {
       detail: `Focus order: ${focusOrder.join(" -> ")}.`,
     });
   }
+  const mutationMode = asString(mutationEnvelope.mode);
+  if (mutationMode) {
+    checklist.push({
+      id: "mutation-envelope",
+      label: "Stay within the mutation envelope",
+      detail: `Allowed mutation mode: ${mutationMode}.`,
+    });
+  }
   if (repairs.length > 0) {
     checklist.push({
       id: "repair-priorities",
@@ -133,6 +143,9 @@ function buildSummary(bundle: LoadedCompiledSurfaceBundle) {
   }
   if (prohibitedRoles.length > 0) {
     textParts.push(`avoid shell-owned roles ${prohibitedRoles.join(", ")}`);
+  }
+  if (mutationMode) {
+    textParts.push(`stay within ${mutationMode} mutation scope`);
   }
   if (repairs.length > 0) {
     textParts.push(`prioritize repairs ${repairs.slice(0, 3).map((repair) => repair.code).join(", ")}`);
@@ -156,6 +169,9 @@ export function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBund
   const componentsDoc = asRecord(bundle.surface.components.value);
   const constraintsDoc = asRecord(bundle.surface.constraints.value);
   const repairMapDoc = asRecord(bundle.surface.repairMap.value);
+  const runtimeDoc = bundle.surface.runtime
+    ? asRecord(bundle.surface.runtime.value)
+    : undefined;
   const authoringDoc = bundle.surface.authoring
     ? asRecord(bundle.surface.authoring.value)
     : undefined;
@@ -177,6 +193,7 @@ export function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBund
         components: bundle.surface.components.path,
         constraints: bundle.surface.constraints.path,
         repairMap: bundle.surface.repairMap.path,
+        ...(bundle.surface.runtime ? { runtime: bundle.surface.runtime.path } : {}),
         ...(bundle.surface.authoring ? { authoring: bundle.surface.authoring.path } : {}),
       },
     },
@@ -191,12 +208,17 @@ export function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBund
       structure: asRecord(generation.structure),
       layout: asRecord(generation.layout),
       visual: asRecord(generation.visual),
+      governance: asRecord(generation.governance),
+      adaptation: asRecord(generation.adaptation),
       guidance: asRecord(generation.guidance),
     },
     sections: Array.isArray(sectionsDoc.sections) ? sectionsDoc.sections : [],
     components: Array.isArray(componentsDoc.components) ? componentsDoc.components : [],
     constraints: asRecord(constraintsDoc.constraints),
     repairMap: Array.isArray(repairMapDoc.repairs) ? repairMapDoc.repairs : [],
+    ...(runtimeDoc && isRecord(runtimeDoc.runtime)
+      ? { runtime: runtimeDoc.runtime }
+      : {}),
     ...(authoringDoc && isRecord(authoringDoc.authoring)
       ? { authoring: authoringDoc.authoring }
       : {}),

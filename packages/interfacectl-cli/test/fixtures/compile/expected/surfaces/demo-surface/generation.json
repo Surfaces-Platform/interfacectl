@@ -1,9 +1,30 @@
 {
+  "adaptation": {
+    "contextIds": [],
+    "mutationEnvelope": {
+      "allowedActions": [
+        "update-copy"
+      ],
+      "mode": "content-only",
+      "scopes": [
+        "content"
+      ]
+    },
+    "policy": "strict"
+  },
   "boundary": {
     "allowSources": [],
     "contentSlot": null,
     "mustNotEmit": [],
     "shellOwns": []
+  },
+  "governance": {
+    "approvals": [],
+    "domain": null,
+    "owner": null,
+    "phase0": null,
+    "roles": {},
+    "status": "draft"
   },
   "guidance": {
     "boundaryRules": [
@@ -74,6 +95,7 @@
     "constraints": "./constraints.json",
     "contract": "../../contract/normalized.json",
     "repairMap": "./repair-map.json",
+    "runtime": "./runtime.json",
     "sections": "./sections.json"
   },
   "structure": {

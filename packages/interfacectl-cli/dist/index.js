@@ -10,6 +10,7 @@ import { runMigrateColorPolicyCommand } from "./commands/migrate-color-policy.js
 import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
 import { runDescribeCommand } from "./commands/describe.js";
 import { runPrepareGenerationCommand } from "./commands/prepare-generation.js";
+import { runPrepareRuntimeCommand } from "./commands/prepare-runtime.js";
 import { runValidateGenerationCommand } from "./commands/validate-generation.js";
 import { runServeGenerationAdapterCommand } from "./commands/serve-generation-adapter.js";
 import { runEmitRunArtifactCommand } from "./commands/emit-run-artifact.js";
@@ -202,6 +203,19 @@ program
     .option("--out <path>", "Write the prepared JSON payload to the provided file")
     .action(async (options) => {
     process.exitCode = await runPrepareGenerationCommand({
+        bundleRoot: options.bundleRoot,
+        surfaceId: options.surface,
+        outPath: options.out,
+    });
+});
+program
+    .command("prepare-runtime")
+    .description("Resolve a compiled runtime bundle into one adapter-ready JSON payload")
+    .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
+    .requiredOption("--surface <id>", "Surface identifier")
+    .option("--out <path>", "Write the prepared JSON payload to the provided file")
+    .action(async (options) => {
+    process.exitCode = await runPrepareRuntimeCommand({
         bundleRoot: options.bundleRoot,
         surfaceId: options.surface,
         outPath: options.out,

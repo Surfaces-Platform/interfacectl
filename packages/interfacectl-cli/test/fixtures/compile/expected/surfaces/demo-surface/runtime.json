@@ -1,0 +1,87 @@
+{
+  "governance": {
+    "approvals": [],
+    "domain": null,
+    "owner": null,
+    "phase0": null,
+    "roles": {},
+    "status": "draft"
+  },
+  "identity": {
+    "displayName": "Demo Surface",
+    "surfaceId": "demo-surface",
+    "type": "web"
+  },
+  "provenance": {
+    "bundleVersion": "2.0",
+    "contractId": "demo-ui",
+    "contractVersion": "1.0.0",
+    "surfaceId": "demo-surface"
+  },
+  "refs": {
+    "components": "./components.json",
+    "constraints": "./constraints.json",
+    "contract": "../../contract/normalized.json",
+    "repairMap": "./repair-map.json",
+    "sections": "./sections.json"
+  },
+  "runtime": {
+    "boundary": {
+      "allowSources": [],
+      "contentSlot": null,
+      "mustNotEmit": [],
+      "shellOwns": []
+    },
+    "contexts": [],
+    "layout": {
+      "maxContentWidth": 960,
+      "requiredContainers": []
+    },
+    "mutationEnvelope": {
+      "allowedActions": [
+        "update-copy"
+      ],
+      "mode": "content-only",
+      "scopes": [
+        "content"
+      ]
+    },
+    "policy": "strict",
+    "policySeverities": {
+      "boundary": "off",
+      "interaction": "off",
+      "layout": "off",
+      "runtime": "strict",
+      "structure": "strict",
+      "visual": "off"
+    },
+    "structure": {
+      "allowedComponents": [],
+      "allowedSections": [
+        "main.hero"
+      ],
+      "requiredSections": [
+        "main.hero"
+      ]
+    },
+    "visual": {
+      "allowedFonts": [
+        "Demo Sans",
+        "sans-serif",
+        "var(--font-demo)"
+      ],
+      "color": {
+        "allowedValues": [],
+        "policy": "off"
+      },
+      "motion": {
+        "allowedDurationsMs": [
+          120
+        ],
+        "allowedTimingFunctions": [
+          "linear"
+        ]
+      }
+    }
+  }
+}

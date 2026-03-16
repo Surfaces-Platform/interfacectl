@@ -252,6 +252,12 @@
         },
         "authoring": {
           "$ref": "#/$defs/surfaceAuthoring"
+        },
+        "governance": {
+          "$ref": "#/$defs/surfaceGovernance"
+        },
+        "runtime": {
+          "$ref": "#/$defs/surfaceRuntime"
         }
       },
       "allOf": [
@@ -867,6 +873,259 @@
             "minLength": 1
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "surfaceGovernance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "review",
+            "approved",
+            "published"
+          ]
+        },
+        "roles": {
+          "$ref": "#/$defs/surfaceGovernanceRoles"
+        },
+        "approvals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceApproval"
+          }
+        }
+      }
+    },
+    "surfaceGovernanceRoles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "designers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "engineers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "approvers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "surfaceApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "owner",
+        "status"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "designer",
+            "engineering",
+            "product",
+            "qa",
+            "operations",
+            "other"
+          ]
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "approved",
+            "rejected"
+          ]
+        },
+        "note": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "surfaceRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "mutationEnvelope": {
+          "$ref": "#/$defs/surfaceMutationEnvelope"
+        },
+        "contexts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceRuntimeContext"
+          }
+        }
+      }
+    },
+    "surfaceMutationEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "locked",
+            "content-only",
+            "slot-bound",
+            "layout-tuning",
+            "section-assembly",
+            "freeform"
+          ]
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceMutationScope"
+          },
+          "uniqueItems": true
+        },
+        "allowedActions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/surfaceMutationAction"
+          },
+          "uniqueItems": true
+        },
+        "allowedSections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "prohibitedSections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "surfaceMutationScope": {
+      "type": "string",
+      "enum": [
+        "content",
+        "components",
+        "layout",
+        "sections",
+        "interactions"
+      ]
+    },
+    "surfaceMutationAction": {
+      "type": "string",
+      "enum": [
+        "update-copy",
+        "swap-variant",
+        "reorder-items",
+        "change-media",
+        "adjust-layout",
+        "bind-data",
+        "wire-interaction",
+        "add-section",
+        "remove-section",
+        "reorder-sections",
+        "swap-component"
+      ]
+    },
+    "surfaceRuntimeContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "when"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "when": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "requiredSections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "prohibitedSections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "allowedLayoutIntents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "stack",
+              "columns",
+              "auto-fit-grid",
+              "sidebar-main",
+              "single-column-form"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string"
         }
       }
     },
