@@ -54,6 +54,19 @@ function parseJsonFromOutput(raw) {
         // Keep scanning until we find the trailing JSON payload.
       }
     }
+
+    for (let index = 0; index < trimmed.length; index += 1) {
+      const char = trimmed[index];
+      if (char !== "{" && char !== "[") {
+        continue;
+      }
+
+      try {
+        return JSON.parse(trimmed.slice(index));
+      } catch {
+        // Keep scanning until we find a complete JSON payload.
+      }
+    }
   }
 
   throw new Error(`Unable to parse JSON output: ${trimmed}`);
