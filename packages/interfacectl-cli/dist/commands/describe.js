@@ -268,11 +268,24 @@ export async function runDescribeCommand(options) {
         console.error(`Error: ${flowDescriptorResult.error}`);
         return 1;
     }
-    const descriptors = descriptorResult.descriptors.map((descriptor) => ({
-        ...descriptor,
-        flows: flowDescriptorResult.flowsBySurface.get(descriptor.surfaceId),
-        flowDescriptorPath: flowDescriptorResult.paths.get(descriptor.surfaceId),
-    }));
+    const descriptors = descriptorResult.descriptors.map((descriptor) => {
+        const artifactFlows = flowDescriptorResult.flowsBySurface.get(descriptor.surfaceId);
+        const flowDescriptorPath = flowDescriptorResult.paths.get(descriptor.surfaceId);
+        return {
+            ...descriptor,
+            ...(artifactFlows
+                ? {
+                    flows: artifactFlows,
+                    flowObservation: {
+                        source: "flow-descriptor-artifact",
+                        observedFlowCount: artifactFlows.length,
+                        ...(flowDescriptorPath ? { location: flowDescriptorPath } : {}),
+                    },
+                }
+                : {}),
+            ...(flowDescriptorPath ? { flowDescriptorPath } : {}),
+        };
+    });
     const serialized = `${JSON.stringify(descriptors, null, 2)}\n`;
     await writeFileWithParents(outPath, serialized);
     return 0;

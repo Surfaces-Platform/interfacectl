@@ -33,6 +33,7 @@ program
     .option("--root <path>", "Project root (defaults to current working directory)")
     .option("--workspace-root <path>", "Workspace root (defaults to current working directory)")
     .option("--surface <id...>", "Limit validation to the provided surface identifiers")
+    .option("--remote-url <url>", "Augment validation with browser-observed target metrics from the provided URL")
     .option("--json", "Emit machine-readable JSON instead of human-readable text output")
     .option("--format <format>", "Output format (text|json)")
     .option("--out <path>", "Write output to the provided file path instead of stdout")
@@ -65,6 +66,7 @@ program
         schemaPath: options.schema,
         workspaceRoot,
         surfaceFilters: options.surface ?? [],
+        remoteUrl: options.remoteUrl,
         outputFormat,
         outputPath: options.out,
         configPath: requestedConfig,

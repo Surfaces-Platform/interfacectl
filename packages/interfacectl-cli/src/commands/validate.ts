@@ -15,6 +15,10 @@ import {
   collectSurfaceDescriptors,
   type DescriptorIssue,
 } from "../descriptors/static-analysis.js";
+import {
+  observeRemotePage,
+  type RemoteBrowserObservation,
+} from "../utils/browser-session.js";
 import { getExitCodeVersion, type ExitCodeVersion } from "../utils/exit-codes.js";
 import {
   classifyViolationType,
@@ -63,6 +67,7 @@ export interface ValidateCommandOptions {
   schemaPath?: string;
   workspaceRoot?: string;
   surfaceFilters?: string[];
+  remoteUrl?: string;
   descriptorOverrides?: SurfaceDescriptor[];
   outputFormat?: OutputFormat;
   outputPath?: string;
@@ -333,16 +338,55 @@ export async function runValidateCommand(
 
     descriptorsWithFlowArtifacts = structuralDescriptorResult.descriptors.map(
       (descriptor) => {
+        const artifactFlows = flowDescriptorResult.flowsBySurface.get(
+          descriptor.surfaceId,
+        );
         const flowDescriptorPath = flowDescriptorResult.paths.get(
           descriptor.surfaceId,
         );
         return {
           ...descriptor,
-          flows: flowDescriptorResult.flowsBySurface.get(descriptor.surfaceId),
-          flowDescriptorPath,
+          ...(artifactFlows
+            ? {
+                flows: artifactFlows,
+                flowObservation: {
+                  source: "flow-descriptor-artifact" as const,
+                  observedFlowCount: artifactFlows.length,
+                  ...(flowDescriptorPath ? { location: flowDescriptorPath } : {}),
+                },
+              }
+            : {}),
+          ...(flowDescriptorPath ? { flowDescriptorPath } : {}),
         };
       },
     );
+  }
+
+  if (options.remoteUrl) {
+    const remoteObservationResult = await augmentDescriptorsWithRemoteObservation({
+      remoteUrl: options.remoteUrl,
+      contract,
+      descriptors: descriptorsWithFlowArtifacts,
+      surfaceFilters,
+    });
+    if (!remoteObservationResult.ok) {
+      const message = remoteObservationResult.message;
+      if (!isJson) {
+        printHeader(pc.red("✖ Remote observation failed"), textReporter);
+        textReporter.error(pc.red(message));
+      }
+      findings.push({
+        code: remoteObservationResult.code,
+        severity: "error",
+        category: "E0",
+        message,
+        surface: remoteObservationResult.surfaceId,
+        location: remoteObservationResult.location,
+      });
+      const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
+      return finalize(e0ExitCode, contract.version ?? initialContractVersion);
+    }
+    descriptorsWithFlowArtifacts = remoteObservationResult.descriptors;
   }
 
   const summary = evaluateContractCompliance(
@@ -461,6 +505,210 @@ function issueToFinding(
   };
 }
 
+async function augmentDescriptorsWithRemoteObservation(input: {
+  remoteUrl: string;
+  contract: InterfaceContract;
+  descriptors: SurfaceDescriptor[];
+  surfaceFilters: Set<string>;
+}): Promise<
+  | { ok: true; descriptors: SurfaceDescriptor[] }
+  | { ok: false; code: string; message: string; surfaceId?: string; location?: string }
+> {
+  if (input.descriptors.length === 0) {
+    return {
+      ok: false,
+      code: "remote-observation.surface-missing",
+      message: "Remote observation requires exactly one validated surface, but none were resolved.",
+    };
+  }
+
+  if (input.descriptors.length > 1) {
+    return {
+      ok: false,
+      code: "remote-observation.surface-ambiguous",
+      message:
+        input.surfaceFilters.size > 0
+          ? `Remote observation requires exactly one validated surface, but ${input.descriptors.length} matched the provided filters.`
+          : `Remote observation requires exactly one validated surface, but ${input.descriptors.length} surfaces were selected. Use --surface to narrow the target.`,
+    };
+  }
+
+  try {
+    const observation = await observeRemotePage({
+      url: input.remoteUrl,
+    });
+
+    if (observation.sourceHealth.status !== "ok") {
+      return {
+        ok: false,
+        code: "remote-observation.source-unavailable",
+        message:
+          `Remote observation resolved to a ${observation.sourceHealth.status} page at ${observation.finalUrl}. ` +
+          "Provide an accessible URL before using --remote-url validation.",
+        surfaceId: input.descriptors[0]?.surfaceId,
+        location: observation.finalUrl,
+      };
+    }
+
+    const descriptor = input.descriptors[0]!;
+    const surface = input.contract.surfaces.find(
+      (candidate) => candidate.id === descriptor.surfaceId,
+    );
+    const targetAcquisitionEnabled = Boolean(
+      surface?.layout.targetAcquisition &&
+        surface.layout.targetAcquisition.policy !== "off",
+    );
+    const feedbackRecoveryEnabled = Boolean(
+      surface?.runtime?.feedbackRecovery &&
+        surface.runtime.feedbackRecovery.policy !== "off",
+    );
+    const flowPolicyEnabled = Boolean(
+      surface?.flows &&
+        surface.flows.policy !== "off",
+    );
+    const remoteTargets = mapRemoteObservationTargets(observation);
+    const remoteFlows = mapRemoteObservationFlows(observation);
+    const remoteAsyncStates = mapRemoteObservationAsyncStates(observation);
+    const interactiveTargets =
+      targetAcquisitionEnabled &&
+      remoteTargets.collection.source !== "contract-scoped"
+        ? []
+        : remoteTargets.targets;
+    const shouldFallbackToFlowArtifact =
+      descriptor.flowObservation?.source === "flow-descriptor-artifact";
+    return {
+      ok: true,
+      descriptors: [
+        {
+          ...descriptor,
+          ...(flowPolicyEnabled
+            ? remoteFlows.collection.source === "contract-scoped"
+              ? {
+                  flows: remoteFlows.flows,
+                  flowObservation: remoteFlows.collection,
+                }
+              : shouldFallbackToFlowArtifact
+                ? {}
+                : {
+                    flows: [],
+                    flowObservation: remoteFlows.collection,
+                  }
+            : {}),
+          interactiveTargets,
+          interactiveTargetObservation: remoteTargets.collection,
+          ...(feedbackRecoveryEnabled
+            ? {
+                asyncStates: remoteAsyncStates.states,
+                asyncStateObservation: remoteAsyncStates.collection,
+              }
+            : {}),
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      code: "remote-observation.failed",
+      message:
+        error instanceof Error ? error.message : String(error),
+      surfaceId: input.descriptors[0]?.surfaceId,
+      location: input.remoteUrl,
+    };
+  }
+}
+
+function mapRemoteObservationTargets(
+  observation: RemoteBrowserObservation,
+): {
+  targets: NonNullable<SurfaceDescriptor["interactiveTargets"]>;
+  collection: NonNullable<SurfaceDescriptor["interactiveTargetObservation"]>;
+} {
+  const observedTargets = observation.renderedStyles.interactiveTargets.map((target) => ({
+    id: target.id,
+    role: target.role,
+    source: observation.finalUrl,
+    ...(target.selector ? { selector: target.selector } : {}),
+    boundingBox: {
+      x: target.boundingBox.x,
+      y: target.boundingBox.y,
+      width: target.boundingBox.width,
+      height: target.boundingBox.height,
+    },
+    hitAreaPx: target.hitAreaPx,
+    nearestNeighborGapPx: target.nearestNeighborGapPx,
+    ...(target.nearestNeighborClassification
+      ? { nearestNeighborClassification: target.nearestNeighborClassification }
+      : {}),
+    edgeInsetPx: target.edgeInsetPx,
+    classification: target.classification,
+  }));
+  return {
+    targets: observedTargets,
+    collection: {
+      source: observation.renderedStyles.interactiveTargetCollection.source,
+      allVisibleCount: observation.renderedStyles.interactiveTargetCollection.allVisibleCount,
+      contractScopedCount: observation.renderedStyles.interactiveTargetCollection.contractScopedCount,
+      location: observation.finalUrl,
+    },
+  };
+}
+
+function mapRemoteObservationFlows(
+  observation: RemoteBrowserObservation,
+): {
+  flows: NonNullable<SurfaceDescriptor["flows"]>;
+  collection: NonNullable<SurfaceDescriptor["flowObservation"]>;
+} {
+  const flows = observation.renderedStyles.flows.map((flow) => ({
+    flowId: flow.flowId,
+    steps: flow.steps.map((step) => ({
+      id: step.id,
+      ...(step.terminal ? { terminal: true } : {}),
+    })),
+    transitions: flow.transitions.map((transition) => ({
+      from: transition.from,
+      to: transition.to,
+    })),
+    source: observation.finalUrl,
+  }));
+
+  return {
+    flows,
+    collection: {
+      source: observation.renderedStyles.flowCollection.source,
+      observedFlowCount: observation.renderedStyles.flowCollection.observedFlowCount,
+      location: observation.finalUrl,
+    },
+  };
+}
+
+function mapRemoteObservationAsyncStates(
+  observation: RemoteBrowserObservation,
+): {
+  states: NonNullable<SurfaceDescriptor["asyncStates"]>;
+  collection: NonNullable<SurfaceDescriptor["asyncStateObservation"]>;
+} {
+  const states = observation.renderedStyles.asyncStates.map((state) => ({
+    id: state.id,
+    kind: state.kind,
+    source: observation.finalUrl,
+    contextId: state.id,
+    sectionIds: state.sectionIds,
+    recoveryActions: state.recoveryActions,
+    preserveLastGoodContent: state.preserveLastGoodContent,
+    blockedActions: state.blockedActions,
+  }));
+
+  return {
+    states,
+    collection: {
+      source: observation.renderedStyles.asyncStateCollection.source,
+      observedStateCount: observation.renderedStyles.asyncStateCollection.observedStateCount,
+      location: observation.finalUrl,
+    },
+  };
+}
+
 function mapViolationsToFindings(
   summary: ValidationSummary,
 ): JsonFinding[] {
@@ -502,12 +750,23 @@ function mapViolationsToFindings(
     "marketing-typography-role-token": "marketing.typography.role-token",
     "motion-duration-not-allowed": "motion.duration",
     "motion-timing-not-allowed": "motion.timing",
+    "target-hit-area-too-small": "target.hit-area-too-small",
+    "target-gap-too-tight": "target.gap-too-tight",
+    "target-edge-inset-too-small": "target.edge-inset-too-small",
+    "destructive-target-too-close": "target.destructive-too-close",
+    "target-unobservable": "target.unobservable",
+    "feedback-state-missing": "feedback.state-missing",
+    "feedback-recovery-action-missing": "feedback.recovery-action-missing",
+    "feedback-pending-action-not-blocked": "feedback.pending-action-not-blocked",
+    "feedback-last-good-content-missing": "feedback.last-good-content-missing",
+    "feedback-unobservable": "feedback.unobservable",
     "descriptor-flows-missing": "descriptor.flows.missing",
     "flow-required-missing": "flow.required.missing",
     "flow-steps-min": "flow.steps.min",
     "flow-steps-required": "flow.steps.required",
     "flow-transition-required": "flow.transition.required",
     "flow-terminal-invalid": "flow.terminal.invalid",
+    "flow-unobservable": "flow.unobservable",
     "shell-owned-primitive-emitted": "shell.primitive.disallowed",
   };
 
@@ -657,6 +916,16 @@ function mapViolationsToFindings(
           }
           break;
         }
+        case "flow-unobservable": {
+          finding.expected = Array.isArray(details.requiredMetrics)
+            ? details.requiredMetrics
+            : ["contractScopedFlows"];
+          finding.found = details.missingMetrics;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
         case "layout-width-undetermined": {
           finding.expected = details.expectedMaxWidth;
           finding.found = null;
@@ -665,6 +934,110 @@ function mapViolationsToFindings(
         case "layout-width-exceeded": {
           finding.expected = details.allowedWidth;
           finding.found = details.reportedWidth;
+          break;
+        }
+        case "target-hit-area-too-small": {
+          finding.expected = details.minHitAreaPx;
+          finding.found = {
+            width: details.width,
+            height: details.height,
+            targetId: details.targetId,
+          };
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "target-gap-too-tight": {
+          finding.expected = details.minGapPx;
+          finding.found = {
+            nearestNeighborGapPx: details.nearestNeighborGapPx,
+            targetId: details.targetId,
+          };
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "target-edge-inset-too-small": {
+          finding.expected = details.minEdgeInsetPx;
+          finding.found = {
+            edgeInsetPx: details.edgeInsetPx,
+            targetId: details.targetId,
+          };
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "destructive-target-too-close": {
+          finding.expected = details.destructiveGapPx;
+          finding.found = {
+            nearestNeighborGapPx: details.nearestNeighborGapPx,
+            targetId: details.targetId,
+            nearestNeighborClassification: details.nearestNeighborClassification,
+          };
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "target-unobservable": {
+          finding.expected = Array.isArray(details.requiredMetrics)
+            ? details.requiredMetrics
+            : ["boundingBox", "edgeInsetPx"];
+          finding.found = details.missingMetrics;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "feedback-state-missing": {
+          finding.expected = details.kind;
+          finding.found = null;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "feedback-recovery-action-missing": {
+          finding.expected = details.expectedRecoveryActions;
+          finding.found = details.missingRecoveryActions;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "feedback-pending-action-not-blocked": {
+          finding.expected = details.expectedBlockedActions;
+          finding.found = details.missingBlockedActions;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "feedback-last-good-content-missing": {
+          finding.expected = {
+            preserveLastGoodContent: details.preserveLastGoodContentRequired,
+            preserveSections: details.expectedPreserveSections,
+          };
+          finding.found = {
+            preserveLastGoodContent: details.preserveLastGoodContentObserved,
+            missingPreserveSections: details.missingPreserveSections,
+          };
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
+          break;
+        }
+        case "feedback-unobservable": {
+          finding.expected = Array.isArray(details.requiredMetrics)
+            ? details.requiredMetrics
+            : ["contractScopedAsyncStates"];
+          finding.found = details.missingMetrics;
+          if (details.policy === "warn") {
+            finding.severity = "warning";
+          }
           break;
         }
         case "layout-container-missing": {

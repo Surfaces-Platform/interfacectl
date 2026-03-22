@@ -69,6 +69,10 @@ program
     "Limit validation to the provided surface identifiers",
   )
   .option(
+    "--remote-url <url>",
+    "Augment validation with browser-observed target metrics from the provided URL",
+  )
+  .option(
     "--json",
     "Emit machine-readable JSON instead of human-readable text output",
   )
@@ -119,6 +123,7 @@ program
       schemaPath: options.schema,
       workspaceRoot,
       surfaceFilters: options.surface ?? [],
+      remoteUrl: options.remoteUrl,
       outputFormat,
       outputPath: options.out,
       configPath: requestedConfig,

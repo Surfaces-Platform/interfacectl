@@ -11,6 +11,26 @@ const SECTION_DIVIDER_MODE_ATTRIBUTE_REGEX = /data-contract-section-divider-mode
 const SECTION_SPACING_PROFILE_ATTRIBUTE_REGEX = /data-contract-section-spacing-profile\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const TYPOGRAPHY_PROFILE_ATTRIBUTE_REGEX = /data-contract-typography-profile\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
 const COPY_ROLE_ATTRIBUTE_REGEX = /data-contract-copy-role\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/g;
+const TARGET_ID_ATTRIBUTE_REGEX = /data-contract-target\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const INTERACTION_ID_ATTRIBUTE_REGEX = /data-contract-interaction\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const COMPONENT_ID_ATTRIBUTE_REGEX = /data-contract-component\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const ACTION_RISK_ATTRIBUTE_REGEX = /data-contract-action-risk\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const ACTION_KIND_ATTRIBUTE_REGEX = /data-contract-action-kind\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const TARGET_GAP_ATTRIBUTE_REGEX = /data-contract-target-gap\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*}|{([0-9.]+)})/;
+const TARGET_EDGE_INSET_ATTRIBUTE_REGEX = /data-contract-target-edge-inset\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*}|{([0-9.]+)})/;
+const TARGET_VIEWPORT_ATTRIBUTE_REGEX = /data-contract-viewport\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const TARGET_CONTEXT_ATTRIBUTE_REGEX = /data-contract-context\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const TARGET_NEIGHBOR_KIND_ATTRIBUTE_REGEX = /data-contract-nearest-kind\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const STATE_KIND_ATTRIBUTE_REGEX = /data-contract-state-kind\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const STATE_ID_ATTRIBUTE_REGEX = /data-contract-state-id\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const FLOW_ID_ATTRIBUTE_REGEX = /data-contract-flow-id\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const FLOW_STEP_ATTRIBUTE_REGEX = /data-contract-flow-step\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const FLOW_TRANSITION_TO_ATTRIBUTE_REGEX = /data-contract-flow-transition-to\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const FLOW_TERMINAL_ATTRIBUTE_REGEX = /data-contract-flow-terminal\s*=\s*(?:"true"|'true'|{true}|{\s*true\s*})/i;
+const RECOVERY_ACTION_ATTRIBUTE_REGEX = /data-contract-recovery-action\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`}|{\s*["'`]([^"'`]+)["'`]\s*})/;
+const PRESERVE_LAST_GOOD_ATTRIBUTE_REGEX = /data-contract-preserve-last-good\s*=\s*(?:"true"|'true'|{true}|{\s*true\s*})/i;
+const ARIA_DISABLED_TRUE_ATTRIBUTE_REGEX = /aria-disabled\s*=\s*(?:"true"|'true'|{true}|{\s*true\s*})/i;
+const DISABLED_ATTRIBUTE_REGEX = /\bdisabled(?:\s*=\s*(?:"true"|'true'|{true}|{\s*true\s*}))?\b/i;
 const CONTRACT_CONTAINER_TOKEN = "contract-container";
 const PAGE_CONTAINER_ATTRIBUTE_REGEX = /data-contract\s*=\s*(?:"page-container"|'page-container'|{`page-container`}|{\s*["'`]page-container["'`]\s*})/g;
 const CHROME_IGNORE_ATTRIBUTE_REGEX = /data-contract-chrome-ignore\s*=\s*(?:"true"|'true'|{true}|{\s*true\s*})/;
@@ -128,6 +148,7 @@ const RADIUS_TOKEN_MAP = new Map([
     ["rounded-3xl", 24],
     ["rounded-full", Number.POSITIVE_INFINITY],
 ]);
+const INTERACTIVE_TARGET_TAG_REGEX = /<(button|a|summary)\b[^>]*>/gi;
 export async function collectSurfaceDescriptors(options) {
     const structuralDescriptors = [];
     const warnings = [];
@@ -227,6 +248,9 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
     const primitives = await extractPrimitives(sectionFiles, workspaceRoot, fileContentCache);
     const { icons, warnings: iconWarnings } = await extractIconSources(surfaceRoot, workspaceRoot, fileContentCache, surfaceId);
     warnings.push(...iconWarnings);
+    const interactiveTargets = await extractInteractiveTargets(sectionFiles, workspaceRoot, fileContentCache);
+    const flows = await extractFlows(sectionFiles, workspaceRoot, fileContentCache);
+    const asyncStates = await extractAsyncStates(sectionFiles, workspaceRoot, fileContentCache);
     const structuralSurfaceDescriptor = {
         surfaceId,
         sections,
@@ -238,6 +262,25 @@ async function extractSurfaceDescriptor(workspaceRoot, surfaceRoot, surfaceId, s
         layout,
         motion,
         primitives,
+        ...(flows.length > 0
+            ? {
+                flows,
+                flowObservation: {
+                    source: "static-markers",
+                    observedFlowCount: flows.length,
+                },
+            }
+            : {}),
+        interactiveTargets,
+        ...(asyncStates.length > 0
+            ? {
+                asyncStates,
+                asyncStateObservation: {
+                    source: "static-markers",
+                    observedStateCount: asyncStates.length,
+                },
+            }
+            : {}),
     };
     return { descriptor: structuralSurfaceDescriptor, warnings, errors };
 }
@@ -357,6 +400,247 @@ async function extractLayout(cssFilePaths, sectionFiles, workspaceRoot, fileCont
             landingPattern,
         },
         warnings,
+    };
+}
+async function extractInteractiveTargets(filePaths, workspaceRoot, fileContentCache) {
+    const targets = [];
+    let autoIndex = 0;
+    for (const filePath of filePaths) {
+        const content = await readFileCached(filePath, fileContentCache);
+        const source = path.relative(workspaceRoot, filePath);
+        INTERACTIVE_TARGET_TAG_REGEX.lastIndex = 0;
+        let match;
+        while ((match = INTERACTIVE_TARGET_TAG_REGEX.exec(content)) !== null) {
+            const tag = match[0];
+            const tagName = (match[1] ?? extractTagName(tag) ?? "").toLowerCase();
+            const interactiveTarget = buildInteractiveTargetDescriptor(tag, tagName, source, autoIndex);
+            if (interactiveTarget) {
+                targets.push(interactiveTarget);
+                autoIndex += 1;
+            }
+        }
+    }
+    return targets.sort((a, b) => a.id.localeCompare(b.id) ||
+        (a.source ?? "").localeCompare(b.source ?? "") ||
+        a.role.localeCompare(b.role));
+}
+async function extractFlows(filePaths, workspaceRoot, fileContentCache) {
+    const flows = new Map();
+    const ensureFlow = (flowId, source) => {
+        const existing = flows.get(flowId);
+        if (existing) {
+            if (!existing.source) {
+                existing.source = source;
+            }
+            return existing;
+        }
+        const created = {
+            source,
+            steps: new Map(),
+            transitions: new Map(),
+        };
+        flows.set(flowId, created);
+        return created;
+    };
+    for (const filePath of filePaths) {
+        const content = await readFileCached(filePath, fileContentCache);
+        const source = path.relative(workspaceRoot, filePath);
+        const stack = [];
+        TAG_REGEX.lastIndex = 0;
+        let match;
+        while ((match = TAG_REGEX.exec(content)) !== null) {
+            const tag = match[0];
+            const tagName = extractTagName(tag);
+            if (!tagName) {
+                continue;
+            }
+            if (tag.startsWith("</")) {
+                for (let index = stack.length - 1; index >= 0; index -= 1) {
+                    if (stack[index]?.tagName === tagName) {
+                        stack.splice(index, 1);
+                        break;
+                    }
+                }
+                continue;
+            }
+            const rawFlowId = extractTagAttributeValue(tag, FLOW_ID_ATTRIBUTE_REGEX);
+            const rawStepId = extractTagAttributeValue(tag, FLOW_STEP_ATTRIBUTE_REGEX);
+            const transitionTo = extractTagAttributeValue(tag, FLOW_TRANSITION_TO_ATTRIBUTE_REGEX);
+            const nearestFlowId = rawFlowId ??
+                [...stack]
+                    .reverse()
+                    .find((entry) => entry.flowId)?.flowId;
+            const nearestStepId = rawStepId ??
+                [...stack]
+                    .reverse()
+                    .find((entry) => entry.stepId)?.stepId;
+            if (nearestFlowId && rawStepId) {
+                const flow = ensureFlow(nearestFlowId, source);
+                const existingStep = flow.steps.get(rawStepId);
+                if (existingStep) {
+                    existingStep.terminal ||= FLOW_TERMINAL_ATTRIBUTE_REGEX.test(tag);
+                }
+                else {
+                    flow.steps.set(rawStepId, {
+                        id: rawStepId,
+                        ...(FLOW_TERMINAL_ATTRIBUTE_REGEX.test(tag) ? { terminal: true } : {}),
+                    });
+                }
+            }
+            else if (rawFlowId) {
+                ensureFlow(rawFlowId, source);
+            }
+            if (nearestFlowId && nearestStepId && transitionTo) {
+                const flow = ensureFlow(nearestFlowId, source);
+                flow.transitions.set(`${nearestStepId}->${transitionTo}`, {
+                    from: nearestStepId,
+                    to: transitionTo,
+                });
+            }
+            if (!/\/>\s*$/.test(tag)) {
+                stack.push({
+                    tagName,
+                    ...(rawFlowId ? { flowId: rawFlowId } : {}),
+                    ...(rawStepId ? { stepId: rawStepId } : {}),
+                });
+            }
+        }
+    }
+    return [...flows.entries()]
+        .map(([flowId, flow]) => ({
+        flowId,
+        steps: [...flow.steps.values()].sort((a, b) => a.id.localeCompare(b.id)),
+        transitions: [...flow.transitions.values()].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)),
+        source: flow.source,
+    }))
+        .sort((a, b) => a.flowId.localeCompare(b.flowId));
+}
+async function extractAsyncStates(filePaths, workspaceRoot, fileContentCache) {
+    const states = new Map();
+    for (const filePath of filePaths) {
+        const content = await readFileCached(filePath, fileContentCache);
+        const source = path.relative(workspaceRoot, filePath);
+        TAG_REGEX.lastIndex = 0;
+        let match;
+        while ((match = TAG_REGEX.exec(content)) !== null) {
+            const tag = match[0];
+            const stateKind = extractAsyncStateKind(extractTagAttributeValue(tag, STATE_KIND_ATTRIBUTE_REGEX));
+            const stateId = extractTagAttributeValue(tag, STATE_ID_ATTRIBUTE_REGEX);
+            const stateKey = stateId ?? stateKind;
+            if (!stateKey) {
+                continue;
+            }
+            const existing = states.get(stateKey);
+            const sectionId = extractTagAttributeValue(tag, SECTION_ATTRIBUTE_REGEX);
+            const recoveryAction = extractRecoveryActionKind(extractTagAttributeValue(tag, RECOVERY_ACTION_ATTRIBUTE_REGEX));
+            const interactionId = extractTagAttributeValue(tag, INTERACTION_ID_ATTRIBUTE_REGEX);
+            const disabled = interactionId &&
+                (DISABLED_ATTRIBUTE_REGEX.test(tag) || ARIA_DISABLED_TRUE_ATTRIBUTE_REGEX.test(tag));
+            const next = existing ?? {
+                id: stateKey,
+                source,
+                contextId: stateId,
+                sectionIds: [],
+                recoveryActions: [],
+                blockedActions: [],
+            };
+            if (stateKind) {
+                next.kind = stateKind;
+            }
+            if (!next.source) {
+                next.source = source;
+            }
+            if (!next.contextId && stateId) {
+                next.contextId = stateId;
+            }
+            if (sectionId) {
+                next.sectionIds = [...new Set([...(next.sectionIds ?? []), sectionId])];
+            }
+            if (recoveryAction) {
+                next.recoveryActions = [
+                    ...new Set([...(next.recoveryActions ?? []), recoveryAction]),
+                ];
+            }
+            if (PRESERVE_LAST_GOOD_ATTRIBUTE_REGEX.test(tag)) {
+                next.preserveLastGoodContent = true;
+            }
+            if (interactionId) {
+                const blockedActions = next.blockedActions ?? [];
+                const existingBlockedAction = blockedActions.find((action) => action.interactionId === interactionId);
+                if (existingBlockedAction) {
+                    existingBlockedAction.disabled ||= Boolean(disabled);
+                }
+                else {
+                    blockedActions.push({
+                        interactionId,
+                        disabled: Boolean(disabled),
+                    });
+                }
+                next.blockedActions = blockedActions;
+            }
+            states.set(stateKey, next);
+        }
+    }
+    return [...states.values()]
+        .filter((state) => Boolean(state.kind))
+        .sort((a, b) => a.id.localeCompare(b.id));
+}
+function buildInteractiveTargetDescriptor(tag, tagName, source, autoIndex) {
+    const styleText = extractTagStyleText(tag);
+    const interactionId = extractTagAttributeValue(tag, INTERACTION_ID_ATTRIBUTE_REGEX);
+    const componentId = extractTagAttributeValue(tag, COMPONENT_ID_ATTRIBUTE_REGEX);
+    const targetId = extractTagAttributeValue(tag, TARGET_ID_ATTRIBUTE_REGEX) ??
+        interactionId ??
+        `${tagName || "target"}-${autoIndex + 1}`;
+    const viewportId = extractTagAttributeValue(tag, TARGET_VIEWPORT_ATTRIBUTE_REGEX);
+    const contextId = extractTagAttributeValue(tag, TARGET_CONTEXT_ATTRIBUTE_REGEX);
+    const width = extractStyleNumericPx(styleText, "width", "width") ??
+        extractStyleNumericPx(styleText, "min-width", "minWidth");
+    const height = extractStyleNumericPx(styleText, "height", "height") ??
+        extractStyleNumericPx(styleText, "min-height", "minHeight");
+    const explicitGap = parseNumericLiteral(extractTagAttributeValue(tag, TARGET_GAP_ATTRIBUTE_REGEX));
+    const explicitEdgeInset = parseNumericLiteral(extractTagAttributeValue(tag, TARGET_EDGE_INSET_ATTRIBUTE_REGEX));
+    const inferredEdgeInset = inferEdgeInsetPx(styleText);
+    const edgeInsetPx = explicitEdgeInset ?? inferredEdgeInset;
+    const classification = extractInteractiveTargetClassification(extractTagAttributeValue(tag, ACTION_RISK_ATTRIBUTE_REGEX) ??
+        extractTagAttributeValue(tag, ACTION_KIND_ATTRIBUTE_REGEX) ??
+        (/\btype\s*=\s*(?:"submit"|'submit'|{`submit`}|{\s*["'`]submit["'`]\s*})/i.test(tag)
+            ? "primary"
+            : undefined));
+    const nearestNeighborClassification = extractInteractiveTargetClassification(extractTagAttributeValue(tag, TARGET_NEIGHBOR_KIND_ATTRIBUTE_REGEX));
+    if (!tagName) {
+        return null;
+    }
+    return {
+        id: targetId,
+        role: tagName === "a" ? "link" : tagName,
+        source,
+        selector: interactionId
+            ? `[data-contract-interaction="${interactionId}"]`
+            : `[data-contract-target="${targetId}"]`,
+        ...(componentId ? { componentId } : {}),
+        ...(interactionId ? { interactionId } : {}),
+        ...(viewportId ? { viewportId } : {}),
+        ...(contextId ? { contextId } : {}),
+        ...(Number.isFinite(width) && Number.isFinite(height)
+            ? {
+                boundingBox: {
+                    x: 0,
+                    y: 0,
+                    width: Number(width),
+                    height: Number(height),
+                },
+                hitAreaPx: Number(width) * Number(height),
+            }
+            : {
+                hitAreaPx: null,
+            }),
+        nearestNeighborGapPx: explicitGap ?? null,
+        ...(nearestNeighborClassification
+            ? { nearestNeighborClassification }
+            : {}),
+        edgeInsetPx: edgeInsetPx ?? null,
+        ...(classification ? { classification } : {}),
     };
 }
 async function extractChromeLayout(cssFilePaths, sectionFiles, workspaceRoot, fileContentCache, surfaceId) {
@@ -556,6 +840,92 @@ function extractTagStyleText(tag) {
         kind: "string",
         value: raw,
     };
+}
+function extractTagAttributeValue(tag, regex) {
+    regex.lastIndex = 0;
+    const match = regex.exec(tag);
+    regex.lastIndex = 0;
+    const raw = match?.[1] ??
+        match?.[2] ??
+        match?.[3] ??
+        match?.[4] ??
+        match?.[5] ??
+        "";
+    const value = raw.trim();
+    return value.length > 0 ? value : undefined;
+}
+function parseNumericLiteral(value) {
+    if (!value) {
+        return undefined;
+    }
+    const normalized = value.trim().replace(/^["'`]|["'`]$/g, "");
+    const match = normalized.match(/^([0-9.]+)(?:px)?$/i);
+    if (!match?.[1]) {
+        return undefined;
+    }
+    const parsed = Number.parseFloat(match[1]);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+function extractAsyncStateKind(value) {
+    switch (value?.trim()) {
+        case "loading":
+        case "empty":
+        case "partial":
+        case "error":
+        case "success":
+            return value.trim();
+        default:
+            return undefined;
+    }
+}
+function extractRecoveryActionKind(value) {
+    switch (value?.trim()) {
+        case "retry":
+        case "refresh":
+        case "dismiss":
+        case "contact-support":
+        case "navigate-home":
+        case "go-back":
+            return value.trim();
+        default:
+            return undefined;
+    }
+}
+function extractStyleNumericPx(styleText, cssProperty, jsxProperty) {
+    if (!styleText) {
+        return undefined;
+    }
+    if (styleText.kind === "string") {
+        const match = new RegExp(`${cssProperty}\\s*:\\s*([0-9.]+)\\s*px`, "i").exec(styleText.value);
+        return parseNumericLiteral(match?.[1]);
+    }
+    const objectMatch = new RegExp(`\\b${jsxProperty}\\s*:\\s*(?:["'\`])?([0-9.]+)(?:px)?(?:["'\`])?`, "i").exec(styleText.value);
+    return parseNumericLiteral(objectMatch?.[1]);
+}
+function inferEdgeInsetPx(styleText) {
+    const values = [
+        extractStyleNumericPx(styleText, "top", "top"),
+        extractStyleNumericPx(styleText, "right", "right"),
+        extractStyleNumericPx(styleText, "bottom", "bottom"),
+        extractStyleNumericPx(styleText, "left", "left"),
+    ].filter((value) => Number.isFinite(value));
+    if (values.length === 0) {
+        return undefined;
+    }
+    return Math.min(...values);
+}
+function extractInteractiveTargetClassification(input) {
+    const normalized = input?.trim().toLowerCase();
+    if (!normalized) {
+        return undefined;
+    }
+    if (normalized === "destructive" || normalized === "danger") {
+        return "destructive";
+    }
+    if (normalized === "primary" || normalized === "cta") {
+        return "primary";
+    }
+    return "default";
 }
 function parseChromeInlineSignals(styleText, source) {
     const radiusSignals = [];

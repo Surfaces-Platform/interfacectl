@@ -6,6 +6,7 @@ export interface ValidateCommandOptions {
     schemaPath?: string;
     workspaceRoot?: string;
     surfaceFilters?: string[];
+    remoteUrl?: string;
     descriptorOverrides?: SurfaceDescriptor[];
     outputFormat?: OutputFormat;
     outputPath?: string;

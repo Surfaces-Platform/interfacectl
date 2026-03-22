@@ -596,6 +596,374 @@ test("collectSurfaceDescriptors captures deterministic icon sources from surface
   }
 });
 
+test("collectSurfaceDescriptors extracts interactive target metrics and classifications", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-target-static-"));
+  const surfaceId = "target-surface";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <main data-contract-section="main.hero">
+              <a
+                data-contract-target="hero-primary"
+                data-contract-action-kind="primary"
+                data-contract-target-gap={12}
+                data-contract-target-edge-inset={16}
+                style={{ width: 44, height: 44 }}
+                href="#hero"
+              >
+                Start
+              </a>
+              <button
+                type="button"
+                data-contract-target="delete-workspace"
+                data-contract-action-risk="destructive"
+                data-contract-target-gap={10}
+                data-contract-nearest-kind="primary"
+                style={{ width: "44px", height: "44px", right: 4, bottom: 4 }}
+              >
+                Delete
+              </button>
+            </main>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "target.contract",
+      version: "1.0.0",
+      sections: [
+        { id: "main.hero", intent: "hero", description: "Hero section" },
+      ],
+      constraints: {
+        motion: { allowedDurationsMs: [120], allowedTimingFunctions: ["linear"] },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Target Surface",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: {
+            maxContentWidth: 1120,
+            targetAcquisition: {
+              policy: "warn",
+            },
+          },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor);
+    assert.equal(descriptor.interactiveTargets?.length, 2);
+    assert.deepEqual(
+      descriptor.interactiveTargets?.map((target) => target.id),
+      ["delete-workspace", "hero-primary"],
+    );
+    assert.equal(
+      descriptor.interactiveTargets?.find((target) => target.id === "hero-primary")?.boundingBox?.width,
+      44,
+    );
+    assert.equal(
+      descriptor.interactiveTargets?.find((target) => target.id === "hero-primary")?.classification,
+      "primary",
+    );
+    assert.equal(
+      descriptor.interactiveTargets?.find((target) => target.id === "delete-workspace")?.classification,
+      "destructive",
+    );
+    assert.equal(
+      descriptor.interactiveTargets?.find((target) => target.id === "delete-workspace")?.edgeInsetPx,
+      4,
+    );
+    assert.equal(
+      descriptor.interactiveTargets?.find((target) => target.id === "delete-workspace")?.nearestNeighborClassification,
+      "primary",
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("collectSurfaceDescriptors extracts contract-scoped async states and recovery affordances", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-feedback-static-"));
+  const surfaceId = "feedback-surface";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <main data-contract-section="main.hero">
+              <section
+                data-contract-state-id="success"
+                data-contract-state-kind="success"
+                data-contract-section="main.hero"
+              >
+                <h1>Dashboard ready</h1>
+              </section>
+              <section
+                data-contract-state-id="empty"
+                data-contract-state-kind="empty"
+                data-contract-section="main.hero"
+              >
+                <p>No queued items remain.</p>
+              </section>
+              <section
+                data-contract-state-id="loading"
+                data-contract-state-kind="loading"
+                data-contract-section="main.hero"
+              >
+                <button
+                  type="button"
+                  data-contract-state-id="loading"
+                  data-contract-interaction="submit-refresh"
+                  disabled
+                >
+                  Refreshing
+                </button>
+              </section>
+              <section
+                data-contract-state-id="error"
+                data-contract-state-kind="error"
+                data-contract-section="main.hero"
+                data-contract-preserve-last-good="true"
+              >
+                <button
+                  type="button"
+                  data-contract-state-id="error"
+                  data-contract-recovery-action="retry"
+                >
+                  Retry
+                </button>
+              </section>
+            </main>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "feedback.contract",
+      version: "1.0.0",
+      sections: [
+        { id: "main.hero", intent: "hero", description: "Hero section" },
+      ],
+      constraints: {
+        motion: { allowedDurationsMs: [120], allowedTimingFunctions: ["linear"] },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Feedback Surface",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: {
+            maxContentWidth: 960,
+          },
+          runtime: {
+            feedbackRecovery: {
+              policy: "warn",
+            },
+            contexts: [
+              { id: "loading", when: "request == pending", kind: "loading" },
+              { id: "empty", when: "items.length == 0", kind: "empty" },
+              { id: "error", when: "request == failed", kind: "error" },
+              { id: "success", when: "request == fulfilled", kind: "success" },
+            ],
+          },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor);
+    assert.equal(descriptor.asyncStateObservation?.source, "static-markers");
+    assert.equal(descriptor.asyncStates?.length, 4);
+    assert.deepEqual(
+      descriptor.asyncStates?.map((state) => state.id).sort(),
+      ["empty", "error", "loading", "success"],
+    );
+    assert.deepEqual(
+      descriptor.asyncStates?.find((state) => state.id === "error")?.recoveryActions,
+      ["retry"],
+    );
+    assert.equal(
+      descriptor.asyncStates?.find((state) => state.id === "error")?.preserveLastGoodContent,
+      true,
+    );
+    assert.deepEqual(
+      descriptor.asyncStates?.find((state) => state.id === "loading")?.blockedActions,
+      [{ interactionId: "submit-refresh", disabled: true }],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("collectSurfaceDescriptors extracts contract-scoped flow markers", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-flow-static-"));
+  const surfaceId = "flow-surface";
+  const surfaceRoot = path.join(tempRoot, "apps", surfaceId);
+
+  try {
+    await mkdir(path.join(surfaceRoot, "app"), { recursive: true });
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "page.tsx"),
+      `
+        export default function Page() {
+          return (
+            <main data-contract="page-container" data-contract-container="page-container">
+              <div data-contract-flow-id="workspace-delete">
+                <section data-contract-section="main.hero">
+                  <h1>Flow fixture</h1>
+                </section>
+                <section data-contract-flow-step="request">
+                  <button data-contract-flow-transition-to="review" type="button">
+                    Continue to review
+                  </button>
+                </section>
+                <section data-contract-flow-step="review">
+                  <button data-contract-flow-transition-to="confirm" type="button">
+                    Continue to confirm
+                  </button>
+                </section>
+                <section data-contract-flow-step="confirm" data-contract-flow-terminal="true">
+                  <p>Confirm deletion</p>
+                </section>
+              </div>
+            </main>
+          );
+        }
+      `,
+      "utf-8",
+    );
+
+    await writeFile(
+      path.join(surfaceRoot, "app", "globals.css"),
+      `
+        :root {
+          --contract-max-width: 960px;
+        }
+      `,
+      "utf-8",
+    );
+
+    const contract = {
+      contractId: "flow.contract",
+      version: "1.0.0",
+      sections: [
+        { id: "main.hero", intent: "hero", description: "Hero section" },
+      ],
+      constraints: {
+        motion: { allowedDurationsMs: [120], allowedTimingFunctions: ["linear"] },
+      },
+      surfaces: [
+        {
+          id: surfaceId,
+          displayName: "Flow Surface",
+          type: "web",
+          requiredSections: ["main.hero"],
+          allowedFonts: ["Inter"],
+          layout: {
+            maxContentWidth: 960,
+          },
+          flows: {
+            policy: "warn",
+            requirements: [
+              {
+                flowId: "workspace-delete",
+                minSteps: 2,
+                requiredSteps: ["request", "review", "confirm"],
+                requiredTransitions: [
+                  { from: "request", to: "review" },
+                  { from: "review", to: "confirm" },
+                ],
+                terminalSteps: ["confirm"],
+              },
+            ],
+          },
+        },
+      ],
+      color: {
+        policy: "off",
+        allowedValues: [],
+      },
+    };
+
+    const result = await collectSurfaceDescriptors({
+      workspaceRoot: tempRoot,
+      contract,
+      surfaceFilters: new Set(),
+      surfaceRootMap: new Map(),
+    });
+
+    assert.equal(result.errors.length, 0);
+    const descriptor = result.descriptors[0];
+    assert.ok(descriptor);
+    assert.equal(descriptor.flowObservation?.source, "static-markers");
+    assert.equal(descriptor.flows?.length, 1);
+    assert.deepEqual(
+      descriptor.flows?.[0]?.steps,
+      [
+        { id: "confirm", terminal: true },
+        { id: "request" },
+        { id: "review" },
+      ],
+    );
+    assert.deepEqual(
+      descriptor.flows?.[0]?.transitions,
+      [
+        { from: "request", to: "review" },
+        { from: "review", to: "confirm" },
+      ],
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("collectSurfaceDescriptors captures portable chrome markers and deterministic chrome signals", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "interfacectl-chrome-static-"));
   const surfaceId = "demo-chrome";
