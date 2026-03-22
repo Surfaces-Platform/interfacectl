@@ -97,6 +97,26 @@ function buildContract() {
         layout: {
           maxContentWidth: 960,
           requiredContainers: ["contract-container"],
+          targetAcquisition: {
+            policy: "warn",
+            modality: "touch-mouse",
+            minHitAreaPx: 44,
+            minGapPx: 8,
+            minEdgeInsetPx: 8,
+            destructiveGapPx: 16,
+          },
+        },
+        flows: {
+          policy: "warn",
+          requirements: [
+            {
+              flowId: "checkout",
+              minSteps: 2,
+              requiredSteps: ["start", "review"],
+              requiredTransitions: [{ from: "start", to: "review" }],
+              terminalSteps: ["review"],
+            },
+          ],
         },
         governance: {
           status: "published",
@@ -115,6 +135,10 @@ function buildContract() {
         },
         runtime: {
           policy: "strict",
+          feedbackRecovery: {
+            policy: "warn",
+            requiredStateKinds: ["loading", "empty", "error", "success"],
+          },
           mutationEnvelope: {
             mode: "slot-bound",
             scopes: ["content", "components"],
@@ -127,6 +151,27 @@ function buildContract() {
               when: "route == '/'",
               policy: "warn",
               requiredSections: ["main.hero"],
+            },
+            {
+              id: "loading",
+              when: "request == pending",
+              kind: "loading",
+            },
+            {
+              id: "empty",
+              when: "items.length == 0",
+              kind: "empty",
+            },
+            {
+              id: "error",
+              when: "request == failed",
+              kind: "error",
+              requiredRecoveryActions: ["retry"],
+            },
+            {
+              id: "success",
+              when: "request == fulfilled",
+              kind: "success",
             },
           ],
         },
@@ -197,7 +242,26 @@ test("prepare-runtime: emits resolved runtime payload with governance and enforc
     assert.equal(payload.governance.owner, "designers@example.com");
     assert.equal(payload.governance.status, "published");
     assert.equal(payload.runtime.policy, "strict");
+    assert.deepEqual(payload.runtime.feedbackRecovery.requiredStateKinds, [
+      "loading",
+      "empty",
+      "error",
+      "success",
+    ]);
     assert.deepEqual(payload.runtime.structure.requiredSections, ["main.hero"]);
+    assert.equal(payload.runtime.interaction.targetAcquisition.minHitAreaPx, 44);
+    assert.ok(
+      payload.summary.checklist.some((item) => item.id === "target-acquisition"),
+      "runtime summary should include target acquisition checklist item",
+    );
+    assert.ok(
+      payload.summary.checklist.some((item) => item.id === "feedback-recovery"),
+      "runtime summary should include feedback recovery checklist item",
+    );
+    assert.ok(
+      payload.summary.checklist.some((item) => item.id === "flows"),
+      "runtime summary should include flow checklist item",
+    );
     assert.deepEqual(payload.evidenceRefs, [{ kind: "contract-field", path: "/x_extracted" }]);
 
     const schemaValidation = validateDiffOutput(payload, prepareRuntimeOutputSchema);

@@ -54,6 +54,10 @@ function buildSummary(bundle) {
     const adaptation = asRecord(generation.adaptation);
     const mutationEnvelope = asRecord(adaptation.mutationEnvelope);
     const guidance = asRecord(generation.guidance);
+    const layout = asRecord(generation.layout);
+    const flowSummary = asRecord(structure.flowSummary);
+    const targetAcquisition = asRecord(layout.targetAcquisition);
+    const feedbackRecovery = asRecord(adaptation.feedbackRecovery);
     const repairs = getRepairSummary(bundle.surface.repairMap.value);
     const focusOrder = asStringArray(guidance.generationFocusOrder);
     const requiredSectionIds = asStringArray(structure.requiredSectionIds);
@@ -92,6 +96,33 @@ function buildSummary(bundle) {
             detail: `Allowed mutation mode: ${mutationMode}.`,
         });
     }
+    if (Object.keys(targetAcquisition).length > 0) {
+        checklist.push({
+            id: "target-acquisition",
+            label: "Keep targets easy to acquire",
+            detail: `Use ${asString(targetAcquisition.modality) ?? "touch-mouse"} budgets: ` +
+                `${String(targetAcquisition.minHitAreaPx ?? 44)}px targets, ` +
+                `${String(targetAcquisition.minGapPx ?? 8)}px gaps, ` +
+                `${String(targetAcquisition.minEdgeInsetPx ?? 8)}px edge inset, ` +
+                `${String(targetAcquisition.destructiveGapPx ?? 16)}px destructive separation.`,
+        });
+    }
+    if (Object.keys(feedbackRecovery).length > 0) {
+        checklist.push({
+            id: "feedback-recovery",
+            label: "Cover async feedback and recovery states",
+            detail: `Support async states ${asStringArray(feedbackRecovery.requiredStateKinds).join(", ")} ` +
+                "with explicit loading, empty, and error recovery affordances.",
+        });
+    }
+    if (Object.keys(flowSummary).length > 0) {
+        checklist.push({
+            id: "flows",
+            label: "Preserve required task flows",
+            detail: `Support flow requirements for ${asStringArray(flowSummary.flowIds).join(", ")} ` +
+                "with the declared steps, transitions, and terminal behavior.",
+        });
+    }
     if (repairs.length > 0) {
         checklist.push({
             id: "repair-priorities",
@@ -114,6 +145,15 @@ function buildSummary(bundle) {
     }
     if (mutationMode) {
         textParts.push(`stay within ${mutationMode} mutation scope`);
+    }
+    if (Object.keys(targetAcquisition).length > 0) {
+        textParts.push(`honor ${String(targetAcquisition.minHitAreaPx ?? 44)}px targets and ${String(targetAcquisition.minGapPx ?? 8)}px spacing`);
+    }
+    if (Object.keys(feedbackRecovery).length > 0) {
+        textParts.push(`cover async feedback states ${asStringArray(feedbackRecovery.requiredStateKinds).join(", ")}`);
+    }
+    if (Object.keys(flowSummary).length > 0) {
+        textParts.push(`preserve required flows ${asStringArray(flowSummary.flowIds).join(", ")}`);
     }
     if (repairs.length > 0) {
         textParts.push(`prioritize repairs ${repairs.slice(0, 3).map((repair) => repair.code).join(", ")}`);

@@ -131,6 +131,7 @@ export interface ContractInteraction {
   resultingState?: string;
   navigationTarget?: string;
   notes?: string;
+  targetAcquisition?: ContractInteractionTargetAcquisitionOverride;
 }
 
 export interface ContractComponentImplementation {
@@ -235,6 +236,62 @@ export interface SurfaceAuthoring {
   sourcePriority: AuthoringSource[];
 }
 
+export type TargetAcquisitionPolicyLevel = "off" | "warn" | "strict";
+export type TargetAcquisitionModality = "touch-mouse" | "touch" | "mouse";
+export type InteractiveTargetClassification =
+  | "default"
+  | "primary"
+  | "destructive";
+
+export interface TargetAcquisitionBudget {
+  minHitAreaPx?: number;
+  minGapPx?: number;
+  minEdgeInsetPx?: number;
+  destructiveGapPx?: number;
+}
+
+export interface TargetAcquisitionViewportOverride extends TargetAcquisitionBudget {
+  viewport: string;
+}
+
+export interface TargetAcquisitionContextOverride extends TargetAcquisitionBudget {
+  context: string;
+}
+
+export interface TargetAcquisitionPolicy extends TargetAcquisitionBudget {
+  policy: TargetAcquisitionPolicyLevel;
+  modality?: TargetAcquisitionModality;
+  viewportOverrides?: TargetAcquisitionViewportOverride[];
+  contextOverrides?: TargetAcquisitionContextOverride[];
+}
+
+export interface ContractInteractionTargetAcquisitionOverride
+  extends TargetAcquisitionBudget {
+  exceptionId: string;
+  rationale: string;
+  classification?: InteractiveTargetClassification;
+}
+
+export type FeedbackRecoveryPolicyLevel = "off" | "warn" | "strict";
+export type AsyncStateKind =
+  | "loading"
+  | "empty"
+  | "partial"
+  | "error"
+  | "success";
+export type RecoveryActionKind =
+  | "retry"
+  | "refresh"
+  | "dismiss"
+  | "contact-support"
+  | "navigate-home"
+  | "go-back";
+
+export interface FeedbackRecoveryPolicy {
+  policy: FeedbackRecoveryPolicyLevel;
+  requiredStateKinds?: AsyncStateKind[];
+}
+
 export interface SurfacePhase0 {
   authPosture?: "public" | "auth-aware" | "auth-first";
   requiresShell?: boolean;
@@ -306,8 +363,13 @@ export interface SurfaceRuntimeContextRule {
   id: string;
   when: string;
   policy?: "off" | "warn" | "strict";
+  kind?: AsyncStateKind;
   requiredSections?: string[];
   prohibitedSections?: string[];
+  requiredRecoveryActions?: RecoveryActionKind[];
+  preserveSections?: string[];
+  preserveLastGoodContent?: boolean;
+  blockedActionsWhilePending?: string[];
   allowedLayoutIntents?: ResponsiveLayoutIntent[];
   notes?: string;
 }
@@ -316,6 +378,7 @@ export interface SurfaceRuntimePolicy {
   policy?: "off" | "warn" | "strict";
   mutationEnvelope?: SurfaceMutationEnvelope;
   contexts?: SurfaceRuntimeContextRule[];
+  feedbackRecovery?: FeedbackRecoveryPolicy;
 }
 
 export interface ContractSurface {
@@ -332,6 +395,7 @@ export interface ContractSurface {
     pageFrame?: PageFrameLayout;
     chromePolicy?: ChromePolicy;
     landingPattern?: LandingPatternPolicy;
+    targetAcquisition?: TargetAcquisitionPolicy;
   };
   icons?: IconPolicy;
   flows?: FlowPolicy;
@@ -508,6 +572,7 @@ export interface SurfacePrimitiveDescriptor {
 
 export interface SurfaceFlowStepDescriptor {
   id: string;
+  terminal?: boolean;
 }
 
 export interface SurfaceFlowTransitionDescriptor {
@@ -577,6 +642,83 @@ export interface SurfaceLayoutDescriptor {
   landingPattern?: LandingPatternDescriptor;
 }
 
+export interface InteractiveTargetBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface InteractiveTargetDescriptor {
+  id: string;
+  role: string;
+  source?: string;
+  selector?: string;
+  componentId?: string;
+  interactionId?: string;
+  viewportId?: string;
+  contextId?: string;
+  boundingBox?: InteractiveTargetBoundingBox;
+  hitAreaPx?: number | null;
+  nearestNeighborGapPx?: number | null;
+  nearestNeighborClassification?: InteractiveTargetClassification;
+  edgeInsetPx?: number | null;
+  classification?: InteractiveTargetClassification;
+  exceptionId?: string;
+  notes?: string;
+}
+
+export type InteractiveTargetObservationSource =
+  | "contract-scoped"
+  | "all-visible-fallback"
+  | "none-observed";
+
+export interface InteractiveTargetObservationMetadata {
+  source: InteractiveTargetObservationSource;
+  allVisibleCount: number;
+  contractScopedCount: number;
+  location?: string;
+}
+
+export interface AsyncStateBlockedActionDescriptor {
+  interactionId: string;
+  disabled: boolean;
+}
+
+export interface SurfaceAsyncStateDescriptor {
+  id: string;
+  kind: AsyncStateKind;
+  source?: string;
+  contextId?: string;
+  sectionIds?: string[];
+  recoveryActions?: RecoveryActionKind[];
+  preserveLastGoodContent?: boolean;
+  blockedActions?: AsyncStateBlockedActionDescriptor[];
+}
+
+export type AsyncStateObservationSource =
+  | "static-markers"
+  | "contract-scoped"
+  | "none-observed";
+
+export interface AsyncStateObservationMetadata {
+  source: AsyncStateObservationSource;
+  observedStateCount: number;
+  location?: string;
+}
+
+export type FlowObservationSource =
+  | "static-markers"
+  | "flow-descriptor-artifact"
+  | "contract-scoped"
+  | "none-observed";
+
+export interface FlowObservationMetadata {
+  source: FlowObservationSource;
+  observedFlowCount: number;
+  location?: string;
+}
+
 export interface SurfaceDescriptor {
   surfaceId: string;
   sections: SurfaceSectionDescriptor[];
@@ -587,9 +729,14 @@ export interface SurfaceDescriptor {
   marketingTypography?: SurfaceMarketingTypographyDescriptor;
   flows?: SurfaceFlowDescriptor[];
   flowDescriptorPath?: string;
+  flowObservation?: FlowObservationMetadata;
   layout: SurfaceLayoutDescriptor;
   motion: SurfaceMotionDescriptor[];
   primitives?: SurfacePrimitiveDescriptor[];
+  interactiveTargets?: InteractiveTargetDescriptor[];
+  interactiveTargetObservation?: InteractiveTargetObservationMetadata;
+  asyncStates?: SurfaceAsyncStateDescriptor[];
+  asyncStateObservation?: AsyncStateObservationMetadata;
 }
 
 export type DriftViolationType =
@@ -625,12 +772,23 @@ export type DriftViolationType =
   | "marketing-typography-role-token"
   | "motion-duration-not-allowed"
   | "motion-timing-not-allowed"
+  | "target-hit-area-too-small"
+  | "target-gap-too-tight"
+  | "target-edge-inset-too-small"
+  | "destructive-target-too-close"
+  | "target-unobservable"
+  | "feedback-state-missing"
+  | "feedback-recovery-action-missing"
+  | "feedback-pending-action-not-blocked"
+  | "feedback-last-good-content-missing"
+  | "feedback-unobservable"
   | "descriptor-flows-missing"
   | "flow-required-missing"
   | "flow-steps-min"
   | "flow-steps-required"
   | "flow-transition-required"
   | "flow-terminal-invalid"
+  | "flow-unobservable"
   | "descriptor-missing"
   | "descriptor-unused"
   | "shell-owned-primitive-emitted";

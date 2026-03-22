@@ -5,6 +5,12 @@ import { validateContractStructure, getBundledContractSchema, } from "@surfaces/
 import { normalizeContract } from "../utils/normalize.js";
 const BUNDLE_VERSION = "2.0";
 const SCHEMA_VERSION = "surfaces.web.contract@1";
+const DEFAULT_TARGET_ACQUISITION_MODALITY = "touch-mouse";
+const DEFAULT_MIN_HIT_AREA_PX = 44;
+const DEFAULT_MIN_GAP_PX = 8;
+const DEFAULT_MIN_EDGE_INSET_PX = 8;
+const DEFAULT_DESTRUCTIVE_GAP_PX = 16;
+const DEFAULT_FEEDBACK_REQUIRED_STATE_KINDS = ["loading", "empty", "error"];
 function sortKeysRecursive(value) {
     if (value === null || value === undefined) {
         return value;
@@ -52,6 +58,66 @@ function uniqueStrings(values) {
         result.push(value);
     }
     return result;
+}
+function resolveTargetAcquisitionBudget(budget) {
+    return {
+        minHitAreaPx: budget?.minHitAreaPx ?? DEFAULT_MIN_HIT_AREA_PX,
+        minGapPx: budget?.minGapPx ?? DEFAULT_MIN_GAP_PX,
+        minEdgeInsetPx: budget?.minEdgeInsetPx ?? DEFAULT_MIN_EDGE_INSET_PX,
+        destructiveGapPx: budget?.destructiveGapPx ?? DEFAULT_DESTRUCTIVE_GAP_PX,
+    };
+}
+function applyTargetAcquisitionBudget(base, budget) {
+    return {
+        ...base,
+        ...(budget?.minHitAreaPx !== undefined ? { minHitAreaPx: budget.minHitAreaPx } : {}),
+        ...(budget?.minGapPx !== undefined ? { minGapPx: budget.minGapPx } : {}),
+        ...(budget?.minEdgeInsetPx !== undefined ? { minEdgeInsetPx: budget.minEdgeInsetPx } : {}),
+        ...(budget?.destructiveGapPx !== undefined
+            ? { destructiveGapPx: budget.destructiveGapPx }
+            : {}),
+    };
+}
+function resolveTargetAcquisitionPolicy(policy) {
+    if (!policy)
+        return null;
+    const resolvedBudget = applyTargetAcquisitionBudget(resolveTargetAcquisitionBudget(undefined), policy);
+    return {
+        policy: policy.policy,
+        modality: policy.modality ?? DEFAULT_TARGET_ACQUISITION_MODALITY,
+        ...resolvedBudget,
+        ...(policy.viewportOverrides?.length
+            ? {
+                viewportOverrides: policy.viewportOverrides.map((override) => ({
+                    viewport: override.viewport,
+                    ...applyTargetAcquisitionBudget(resolvedBudget, override),
+                })),
+            }
+            : {}),
+        ...(policy.contextOverrides?.length
+            ? {
+                contextOverrides: policy.contextOverrides.map((override) => ({
+                    context: override.context,
+                    ...applyTargetAcquisitionBudget(resolvedBudget, override),
+                })),
+            }
+            : {}),
+    };
+}
+function resolveFeedbackRecoveryPolicy(policy, contexts = []) {
+    if (!policy)
+        return null;
+    return {
+        policy: policy.policy,
+        requiredStateKinds: [
+            ...new Set([
+                ...(policy.requiredStateKinds ?? DEFAULT_FEEDBACK_REQUIRED_STATE_KINDS),
+                ...((Array.isArray(contexts) ? contexts : [])
+                    .map((context) => context?.kind)
+                    .filter(Boolean)),
+            ]),
+        ],
+    };
 }
 function getPolicyRank(policy) {
     switch (policy) {
@@ -155,14 +221,16 @@ function buildPolicySeverities(contract, surface) {
     const structure = maxPolicy(surface.requiredSections.length > 0 ? "strict" : "off", surface.layout.landingPattern?.policy);
     const layout = maxPolicy(surface.layout.pageFrame?.enforcement, surface.layout.chromePolicy?.policy, surface.layout.landingPattern?.policy, surface.layout.landingPattern?.marketingLayoutPolicy);
     const visual = maxPolicy(contract.color.policy, surface.icons?.policy, contract.tokens?.typography?.policy, contract.tokens?.motion?.policy, surface.marketingTypographyPolicy);
-    const interaction = surface.flows?.policy ?? "off";
-    const runtime = maxPolicy(surface.runtime?.policy, boundary, structure, layout, visual, interaction);
+    const feedbackRecoveryPolicy = surface.runtime?.feedbackRecovery?.policy ?? "off";
+    const interaction = maxPolicy(surface.flows?.policy, feedbackRecoveryPolicy);
+    const targetAcquisitionPolicy = surface.layout.targetAcquisition?.policy ?? "off";
+    const runtime = maxPolicy(surface.runtime?.policy, boundary, structure, layout, visual, interaction, targetAcquisitionPolicy, feedbackRecoveryPolicy);
     return {
         boundary,
         structure,
         layout,
         visual,
-        interaction,
+        interaction: maxPolicy(interaction, targetAcquisitionPolicy, feedbackRecoveryPolicy),
         runtime,
     };
 }
@@ -303,6 +371,9 @@ function buildConstraintsPayload(contract, surface) {
                 ...(surface.layout.pageFrame ? { pageFrame: surface.layout.pageFrame } : {}),
                 ...(surface.layout.chromePolicy ? { chromePolicy: surface.layout.chromePolicy } : {}),
                 ...(surface.layout.landingPattern ? { landingPattern: surface.layout.landingPattern } : {}),
+                ...(resolveTargetAcquisitionPolicy(surface.layout.targetAcquisition)
+                    ? { targetAcquisition: resolveTargetAcquisitionPolicy(surface.layout.targetAcquisition) }
+                    : {}),
                 ...(surface.viewports ? { viewports: surface.viewports } : {}),
             },
             ...(surface.icons ? { icons: surface.icons } : {}),
@@ -320,6 +391,10 @@ function buildGuidance(contract, surface, sections) {
     const prohibitedRoles = uniqueStrings([...shellOwns, ...mustNotEmit]);
     const hasLandingPattern = Boolean(surface.layout.landingPattern);
     const hasResponsiveRules = sections.some((section) => section.responsive?.rules?.length);
+    const hasTargetAcquisition = Boolean(surface.layout.targetAcquisition) &&
+        surface.layout.targetAcquisition?.policy !== "off";
+    const hasFeedbackRecovery = Boolean(surface.runtime?.feedbackRecovery) &&
+        surface.runtime?.feedbackRecovery?.policy !== "off";
     const hasVisualPolicy = contract.color.policy !== "off" ||
         Boolean(surface.icons && surface.icons.policy !== "off") ||
         Boolean(contract.tokens && Object.keys(contract.tokens).length > 0);
@@ -354,6 +429,8 @@ function buildGuidance(contract, surface, sections) {
             hasLandingPattern ? "landing-pattern" : undefined,
             hasResponsiveRules ? "responsive" : undefined,
             "layout",
+            hasTargetAcquisition ? "target-acquisition" : undefined,
+            hasFeedbackRecovery ? "feedback-recovery" : undefined,
             hasVisualPolicy ? "visual" : undefined,
             surface.flows ? "flows" : undefined,
         ]),
@@ -374,12 +451,15 @@ function buildGenerationPayload(contract, surface, sections) {
     const mustNotEmit = surface.mustNotEmit ?? [];
     const requiredSections = surface.requiredSections;
     const landingPattern = surface.layout.landingPattern;
+    const targetAcquisition = resolveTargetAcquisitionPolicy(surface.layout.targetAcquisition);
+    const feedbackRecovery = resolveFeedbackRecoveryPolicy(surface.runtime?.feedbackRecovery, surface.runtime?.contexts);
     const observationRefs = buildObservationRefs(contract);
     const governance = buildGovernancePayload(surface);
     const adaptation = {
         policy: surface.runtime?.policy ?? buildPolicySeverities(contract, surface).runtime,
         mutationEnvelope: buildMutationEnvelope(surface, sections),
         contextIds: (surface.runtime?.contexts ?? []).map((context) => context.id),
+        ...(feedbackRecovery ? { feedbackRecovery } : {}),
     };
     return {
         identity: {
@@ -413,6 +493,7 @@ function buildGenerationPayload(contract, surface, sections) {
             ...(surface.layout.pageFrame ? { pageFrame: surface.layout.pageFrame } : {}),
             ...(surface.layout.chromePolicy ? { chromePolicy: surface.layout.chromePolicy } : {}),
             ...(landingPattern ? { landingPattern } : {}),
+            ...(targetAcquisition ? { targetAcquisition } : {}),
             viewportIds: (surface.viewports ?? []).map((viewport) => viewport.id),
         },
         visual: {
@@ -471,6 +552,8 @@ function buildRepairMapPayload(contract, surface, sections) {
     const shellOwns = contract.shell?.owns ?? [];
     const mustNotEmit = surface.mustNotEmit ?? [];
     const prohibitedRoles = uniqueStrings([...shellOwns, ...mustNotEmit]);
+    const targetAcquisition = resolveTargetAcquisitionPolicy(surface.layout.targetAcquisition);
+    const feedbackRecovery = resolveFeedbackRecoveryPolicy(surface.runtime?.feedbackRecovery, surface.runtime?.contexts);
     if (prohibitedRoles.length > 0) {
         addRepair(repairs, "shell.primitive.disallowed", "high", "boundary", {
             type: "remove-prohibited-primitives",
@@ -589,6 +672,10 @@ function buildRepairMapPayload(contract, surface, sections) {
         });
     }
     if (surface.flows && surface.flows.policy !== "off") {
+        addRepair(repairs, "descriptor.flows.missing", "high", "interaction", {
+            type: "restore-flow-observability",
+            requirements: surface.flows.requirements,
+        });
         addRepair(repairs, "flow.required.missing", "high", "interaction", {
             type: "restore-required-flows",
             requirements: surface.flows.requirements,
@@ -601,6 +688,60 @@ function buildRepairMapPayload(contract, surface, sections) {
             type: "restore-required-transitions",
             requirements: surface.flows.requirements,
         });
+        addRepair(repairs, "flow.unobservable", "medium", "interaction", {
+            type: "restore-flow-observability",
+            requirements: surface.flows.requirements,
+        });
+    }
+    if (targetAcquisition && targetAcquisition.policy !== "off") {
+        addRepair(repairs, "target.hit-area-too-small", "medium", "interaction", {
+            type: "increase-hit-area",
+            policy: targetAcquisition.policy,
+            modality: targetAcquisition.modality,
+            minHitAreaPx: targetAcquisition.minHitAreaPx,
+        });
+        addRepair(repairs, "target.gap-too-tight", "medium", "interaction", {
+            type: "increase-target-gap",
+            policy: targetAcquisition.policy,
+            modality: targetAcquisition.modality,
+            minGapPx: targetAcquisition.minGapPx,
+        });
+        addRepair(repairs, "target.edge-inset-too-small", "medium", "interaction", {
+            type: "move-away-from-edge",
+            policy: targetAcquisition.policy,
+            modality: targetAcquisition.modality,
+            minEdgeInsetPx: targetAcquisition.minEdgeInsetPx,
+        });
+        addRepair(repairs, "target.destructive-too-close", "high", "interaction", {
+            type: "separate-destructive-action",
+            policy: targetAcquisition.policy,
+            modality: targetAcquisition.modality,
+            destructiveGapPx: targetAcquisition.destructiveGapPx,
+        });
+    }
+    if (feedbackRecovery && feedbackRecovery.policy !== "off") {
+        addRepair(repairs, "feedback.state-missing", "high", "runtime", {
+            type: "add-loading-state",
+            policy: feedbackRecovery.policy,
+            requiredStateKinds: feedbackRecovery.requiredStateKinds,
+        });
+        addRepair(repairs, "feedback.state-missing", "high", "runtime", {
+            type: "add-empty-state",
+            policy: feedbackRecovery.policy,
+            requiredStateKinds: feedbackRecovery.requiredStateKinds,
+        });
+        addRepair(repairs, "feedback.recovery-action-missing", "medium", "runtime", {
+            type: "add-error-retry",
+            policy: feedbackRecovery.policy,
+        });
+        addRepair(repairs, "feedback.last-good-content-missing", "medium", "runtime", {
+            type: "preserve-last-good-content",
+            policy: feedbackRecovery.policy,
+        });
+        addRepair(repairs, "feedback.pending-action-not-blocked", "medium", "runtime", {
+            type: "disable-pending-submit",
+            policy: feedbackRecovery.policy,
+        });
     }
     return {
         provenance: makeBundleProvenance(contract, surface.id),
@@ -610,6 +751,8 @@ function buildRepairMapPayload(contract, surface, sections) {
 function buildRuntimePayload(contract, surface, sections, components) {
     const policySeverities = buildPolicySeverities(contract, surface);
     const mutationEnvelope = buildMutationEnvelope(surface, sections);
+    const targetAcquisition = resolveTargetAcquisitionPolicy(surface.layout.targetAcquisition);
+    const feedbackRecovery = resolveFeedbackRecoveryPolicy(surface.runtime?.feedbackRecovery, surface.runtime?.contexts);
     return {
         provenance: makeBundleProvenance(contract, surface.id),
         identity: {
@@ -623,6 +766,7 @@ function buildRuntimePayload(contract, surface, sections, components) {
             policySeverities,
             mutationEnvelope,
             contexts: surface.runtime?.contexts ?? [],
+            ...(feedbackRecovery ? { feedbackRecovery } : {}),
             boundary: {
                 shellOwns: contract.shell?.owns ?? [],
                 contentSlot: contract.shell?.contentSlot ?? null,
@@ -633,6 +777,15 @@ function buildRuntimePayload(contract, surface, sections, components) {
                 requiredSections: surface.requiredSections,
                 allowedSections: sections.map((section) => section.id),
                 allowedComponents: components.map((component) => component.id),
+                ...(surface.flows
+                    ? {
+                        flowSummary: {
+                            policy: surface.flows.policy,
+                            flowIds: surface.flows.requirements.map((flow) => flow.flowId),
+                            requirementCount: surface.flows.requirements.length,
+                        },
+                    }
+                    : {}),
             },
             layout: {
                 maxContentWidth: surface.layout.maxContentWidth,
@@ -649,7 +802,14 @@ function buildRuntimePayload(contract, surface, sections, components) {
                 ...(contract.tokens ? { tokens: contract.tokens } : {}),
                 ...(surface.icons ? { icons: surface.icons } : {}),
             },
-            ...(surface.flows ? { interaction: { flows: surface.flows } } : {}),
+            ...((surface.flows || targetAcquisition)
+                ? {
+                    interaction: {
+                        ...(surface.flows ? { flows: surface.flows } : {}),
+                        ...(targetAcquisition ? { targetAcquisition } : {}),
+                    },
+                }
+                : {}),
         },
         refs: {
             contract: "../../contract/normalized.json",

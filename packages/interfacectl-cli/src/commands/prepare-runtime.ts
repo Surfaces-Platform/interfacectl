@@ -41,9 +41,13 @@ function buildSummary(bundle: LoadedCompiledSurfaceBundle) {
   const runtimeDoc = asRecord(bundle.surface.runtime.value);
   const runtime = asRecord(runtimeDoc.runtime);
   const structure = asRecord(runtime.structure);
+  const flowSummary = asRecord(structure.flowSummary);
   const mutationEnvelope = asRecord(runtime.mutationEnvelope);
   const policySeverities = asRecord(runtime.policySeverities);
   const contexts = Array.isArray(runtime.contexts) ? runtime.contexts : [];
+  const feedbackRecovery = asRecord(runtime.feedbackRecovery);
+  const interaction = asRecord(runtime.interaction);
+  const targetAcquisition = asRecord(interaction.targetAcquisition);
   const requiredSectionIds = asStringArray(structure.requiredSections);
   const mutationMode = asString(mutationEnvelope.mode) ?? "content-only";
   const strictCategories = Object.entries(policySeverities)
@@ -77,12 +81,50 @@ function buildSummary(bundle: LoadedCompiledSurfaceBundle) {
       detail: `Context rules: ${contexts.map((context) => asString(asRecord(context).id) ?? "unknown").join(", ")}.`,
     });
   }
+  if (Object.keys(targetAcquisition).length > 0) {
+    checklist.push({
+      id: "target-acquisition",
+      label: "Keep controls easy to acquire",
+      detail:
+        `Runtime should preserve ${String(targetAcquisition.minHitAreaPx ?? 44)}px targets, ` +
+        `${String(targetAcquisition.minGapPx ?? 8)}px gaps, ` +
+        `${String(targetAcquisition.minEdgeInsetPx ?? 8)}px edge inset, ` +
+        `${String(targetAcquisition.destructiveGapPx ?? 16)}px destructive separation.`,
+    });
+  }
+  if (Object.keys(feedbackRecovery).length > 0) {
+    checklist.push({
+      id: "feedback-recovery",
+      label: "Honor async feedback and recovery policy",
+      detail:
+        `Runtime should observe async states ${asStringArray(feedbackRecovery.requiredStateKinds).join(", ")} ` +
+        "and preserve required recovery affordances.",
+    });
+  }
+  if (Object.keys(flowSummary).length > 0) {
+    checklist.push({
+      id: "flows",
+      label: "Keep required task flows intact",
+      detail:
+        `Runtime should preserve flow requirements for ${asStringArray(flowSummary.flowIds).join(", ")} ` +
+        "including required steps, transitions, and terminal states.",
+    });
+  }
 
   const textParts = [
     requiredSectionIds.length > 0 ? `preserve required sections ${requiredSectionIds.join(", ")}` : undefined,
     `stay within ${mutationMode} mutation scope`,
     strictCategories.length > 0 ? `treat ${strictCategories.join(", ")} as strict runtime categories` : undefined,
     contexts.length > 0 ? `evaluate ${contexts.length} contextual runtime rules` : undefined,
+    Object.keys(targetAcquisition).length > 0
+      ? `preserve ${String(targetAcquisition.minHitAreaPx ?? 44)}px targets and ${String(targetAcquisition.minGapPx ?? 8)}px gaps`
+      : undefined,
+    Object.keys(feedbackRecovery).length > 0
+      ? `observe async feedback states ${asStringArray(feedbackRecovery.requiredStateKinds).join(", ")}`
+      : undefined,
+    Object.keys(flowSummary).length > 0
+      ? `preserve required flows ${asStringArray(flowSummary.flowIds).join(", ")}`
+      : undefined,
   ].filter((value): value is string => Boolean(value));
 
   return {

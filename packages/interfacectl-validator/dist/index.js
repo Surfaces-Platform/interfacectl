@@ -6,6 +6,16 @@ import bundledSchema from "./schema/web.surface.contract.schema.json" with {
 import { normalizeColorValue } from "./color-policy.js";
 import { matchTokenPolicy } from "./token-policy.js";
 const frozenBundledSchema = Object.freeze(bundledSchema);
+const DEFAULT_TARGET_ACQUISITION_MODALITY = "touch-mouse";
+const DEFAULT_MIN_HIT_AREA_PX = 44;
+const DEFAULT_MIN_GAP_PX = 8;
+const DEFAULT_MIN_EDGE_INSET_PX = 8;
+const DEFAULT_DESTRUCTIVE_GAP_PX = 16;
+const DEFAULT_FEEDBACK_REQUIRED_STATE_KINDS = [
+    "loading",
+    "empty",
+    "error",
+];
 export function getBundledContractSchema() {
     return frozenBundledSchema;
 }
@@ -112,8 +122,11 @@ function validateAuthoringMetadata(contract) {
 function validateGovernanceMetadata(contract) {
     const errors = [];
     const sectionIds = new Set(contract.sections.map((section) => section.id));
+    const interactionIds = new Set((contract.components ?? []).flatMap((component) => (component.interactions ?? []).map((interaction) => interaction.id)));
     for (const surface of contract.surfaces) {
+        const targetAcquisition = surface.layout.targetAcquisition;
         const mutationEnvelope = surface.runtime?.mutationEnvelope;
+        const feedbackRecovery = surface.runtime?.feedbackRecovery;
         validateSurfaceSectionReferences(mutationEnvelope?.allowedSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/mutationEnvelope/allowedSections`, errors);
         validateSurfaceSectionReferences(mutationEnvelope?.prohibitedSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/mutationEnvelope/prohibitedSections`, errors);
         const allowedSections = new Set(mutationEnvelope?.allowedSections ?? []);
@@ -130,6 +143,51 @@ function validateGovernanceMetadata(contract) {
             contextIds.add(context.id);
             validateSurfaceSectionReferences(context.requiredSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/contexts/${context.id}/requiredSections`, errors);
             validateSurfaceSectionReferences(context.prohibitedSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/contexts/${context.id}/prohibitedSections`, errors);
+            validateSurfaceSectionReferences(context.preserveSections ?? [], sectionIds, `/surfaces/${surface.id}/runtime/contexts/${context.id}/preserveSections`, errors);
+            const hasFeedbackMetadata = Boolean(context.kind) ||
+                Boolean(context.requiredRecoveryActions?.length) ||
+                Boolean(context.preserveSections?.length) ||
+                context.preserveLastGoodContent === true ||
+                Boolean(context.blockedActionsWhilePending?.length);
+            if (hasFeedbackMetadata && !context.kind) {
+                errors.push(`/surfaces/${surface.id}/runtime/contexts/${context.id} must declare kind when feedback recovery metadata is present`);
+            }
+            for (const blockedActionId of context.blockedActionsWhilePending ?? []) {
+                if (!interactionIds.has(blockedActionId)) {
+                    errors.push(`/surfaces/${surface.id}/runtime/contexts/${context.id}/blockedActionsWhilePending/${blockedActionId} must reference a declared component interaction id`);
+                }
+            }
+        }
+        if (targetAcquisition) {
+            const viewportIds = new Set((surface.viewports ?? []).map((viewport) => viewport.id));
+            for (const override of targetAcquisition.viewportOverrides ?? []) {
+                if (viewportIds.size === 0) {
+                    errors.push(`/surfaces/${surface.id}/layout/targetAcquisition/viewportOverrides/${override.viewport} must reference a declared surfaces[*].viewports id; none were declared`);
+                }
+                else if (!viewportIds.has(override.viewport)) {
+                    errors.push(`/surfaces/${surface.id}/layout/targetAcquisition/viewportOverrides/${override.viewport} must reference a declared surfaces[*].viewports id`);
+                }
+            }
+            for (const override of targetAcquisition.contextOverrides ?? []) {
+                if (contextIds.size === 0) {
+                    errors.push(`/surfaces/${surface.id}/layout/targetAcquisition/contextOverrides/${override.context} must reference a declared runtime context id; none were declared`);
+                }
+                else if (!contextIds.has(override.context)) {
+                    errors.push(`/surfaces/${surface.id}/layout/targetAcquisition/contextOverrides/${override.context} must reference a declared runtime context id`);
+                }
+            }
+        }
+        if (feedbackRecovery && feedbackRecovery.policy !== "off") {
+            const requiredStateKinds = new Set(feedbackRecovery.requiredStateKinds ??
+                DEFAULT_FEEDBACK_REQUIRED_STATE_KINDS);
+            const declaredContextKinds = new Set((surface.runtime?.contexts ?? [])
+                .map((context) => context.kind)
+                .filter((kind) => Boolean(kind)));
+            for (const kind of requiredStateKinds) {
+                if (!declaredContextKinds.has(kind)) {
+                    errors.push(`/surfaces/${surface.id}/runtime/feedbackRecovery/requiredStateKinds/${kind} must reference a declared runtime context kind`);
+                }
+            }
         }
     }
     return errors;
@@ -168,6 +226,7 @@ function validateComponentAuthoring(component, componentIds, errors) {
         }
     }
     const interactionIds = new Set();
+    const targetAcquisitionExceptionIds = new Set();
     for (const interaction of component.interactions ?? []) {
         if (interactionIds.has(interaction.id)) {
             errors.push(`/components/${component.id}/interactions/${interaction.id} must use a unique interaction id within the component`);
@@ -176,6 +235,13 @@ function validateComponentAuthoring(component, componentIds, errors) {
         if (interaction.resultingState !== undefined &&
             !stateIds.has(interaction.resultingState)) {
             errors.push(`/components/${component.id}/interactions/${interaction.id}/resultingState must reference a declared state id`);
+        }
+        const targetAcquisition = interaction.targetAcquisition;
+        if (targetAcquisition) {
+            if (targetAcquisitionExceptionIds.has(targetAcquisition.exceptionId)) {
+                errors.push(`/components/${component.id}/interactions/${interaction.id}/targetAcquisition/exceptionId must be unique within the component`);
+            }
+            targetAcquisitionExceptionIds.add(targetAcquisition.exceptionId);
         }
     }
     const implementation = component.implementation;
@@ -350,7 +416,25 @@ function validateFlowPolicy(surface, descriptor, violations) {
     const policy = flowPolicy.policy;
     const requirements = flowPolicy.requirements ?? [];
     const descriptorFlows = descriptor.flows;
-    const defaultSource = descriptor.flowDescriptorPath;
+    const flowObservation = descriptor.flowObservation;
+    const defaultSource = descriptor.flowDescriptorPath ?? flowObservation?.location;
+    const runtimeObservation = flowObservation?.source === "contract-scoped" ||
+        flowObservation?.source === "none-observed";
+    if (runtimeObservation && flowObservation?.source === "none-observed") {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "flow-unobservable",
+            message: `Flow policy is "${policy}" for surface "${descriptor.surfaceId}", ` +
+                "but runtime validation could not observe any contract-scoped flow markers.",
+            details: {
+                policy,
+                source: flowObservation.location,
+                requiredMetrics: ["contractScopedFlows"],
+                missingMetrics: ["contractScopedFlows"],
+            },
+        });
+        return;
+    }
     if (!Array.isArray(descriptorFlows)) {
         violations.push({
             surfaceId: descriptor.surfaceId,
@@ -430,7 +514,9 @@ function validateFlowPolicy(surface, descriptor, violations) {
             .filter((transition) => Boolean(transition.from && transition.to));
         const transitionKeys = new Set(transitionList.map((transition) => `${transition.from}->${transition.to}`));
         const requiredTransitions = requirement.requiredTransitions ?? [];
-        const missingRequiredTransitions = requiredTransitions.filter((transition) => !transitionKeys.has(`${transition.from}->${transition.to}`));
+        const missingRequiredTransitions = requiredTransitions.filter((transition) => stepIds.has(transition.from) &&
+            stepIds.has(transition.to) &&
+            !transitionKeys.has(`${transition.from}->${transition.to}`));
         if (missingRequiredTransitions.length > 0) {
             violations.push({
                 surfaceId: descriptor.surfaceId,
@@ -460,6 +546,375 @@ function validateFlowPolicy(surface, descriptor, violations) {
                     source: flowSource,
                 },
             });
+        }
+    }
+}
+function resolveTargetAcquisitionBudget(budget) {
+    return {
+        minHitAreaPx: budget?.minHitAreaPx ?? DEFAULT_MIN_HIT_AREA_PX,
+        minGapPx: budget?.minGapPx ?? DEFAULT_MIN_GAP_PX,
+        minEdgeInsetPx: budget?.minEdgeInsetPx ?? DEFAULT_MIN_EDGE_INSET_PX,
+        destructiveGapPx: budget?.destructiveGapPx ?? DEFAULT_DESTRUCTIVE_GAP_PX,
+    };
+}
+function applyTargetAcquisitionBudget(base, budget) {
+    return {
+        ...base,
+        ...(budget?.minHitAreaPx !== undefined ? { minHitAreaPx: budget.minHitAreaPx } : {}),
+        ...(budget?.minGapPx !== undefined ? { minGapPx: budget.minGapPx } : {}),
+        ...(budget?.minEdgeInsetPx !== undefined ? { minEdgeInsetPx: budget.minEdgeInsetPx } : {}),
+        ...(budget?.destructiveGapPx !== undefined
+            ? { destructiveGapPx: budget.destructiveGapPx }
+            : {}),
+    };
+}
+function resolveTargetAcquisitionPolicy(policy, target) {
+    if (!policy || policy.policy === "off") {
+        return null;
+    }
+    const resolvedBudget = applyTargetAcquisitionBudget(resolveTargetAcquisitionBudget(undefined), policy);
+    const viewportOverride = target.viewportId
+        ? policy.viewportOverrides?.find((override) => override.viewport === target.viewportId)
+        : undefined;
+    const contextOverride = target.contextId
+        ? policy.contextOverrides?.find((override) => override.context === target.contextId)
+        : undefined;
+    const viewportBudget = applyTargetAcquisitionBudget(resolvedBudget, viewportOverride);
+    const contextBudget = applyTargetAcquisitionBudget(viewportBudget, contextOverride);
+    return {
+        policy: policy.policy,
+        modality: policy.modality ?? DEFAULT_TARGET_ACQUISITION_MODALITY,
+        ...contextBudget,
+    };
+}
+function resolveTargetAcquisitionOverride(contract, target) {
+    if (!target.interactionId) {
+        return undefined;
+    }
+    if (target.componentId) {
+        return contract.components
+            ?.find((component) => component.id === target.componentId)
+            ?.interactions?.find((interaction) => interaction.id === target.interactionId)
+            ?.targetAcquisition;
+    }
+    const matches = (contract.components ?? [])
+        .flatMap((component) => (component.interactions ?? [])
+        .filter((interaction) => interaction.id === target.interactionId)
+        .map((interaction) => interaction.targetAcquisition)
+        .filter(Boolean));
+    return matches.length === 1 ? matches[0] : undefined;
+}
+function resolveTargetClassification(target, override) {
+    return override?.classification ?? target.classification ?? "default";
+}
+function validateTargetAcquisition(contract, surface, descriptor, violations) {
+    const surfacePolicy = surface.layout.targetAcquisition;
+    if (!surfacePolicy || surfacePolicy.policy === "off") {
+        return;
+    }
+    const interactiveTargets = descriptor.interactiveTargets ?? [];
+    if (interactiveTargets.length === 0) {
+        const observationSource = descriptor.interactiveTargetObservation?.source ?? "none-observed";
+        const usedFallbackObservation = observationSource === "all-visible-fallback";
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "target-unobservable",
+            message: usedFallbackObservation
+                ? `Target acquisition policy is "${surfacePolicy.policy}" for surface "${descriptor.surfaceId}", ` +
+                    "but no contract-scoped interactive targets were observed during remote validation."
+                : `Target acquisition policy is "${surfacePolicy.policy}" for surface "${descriptor.surfaceId}", ` +
+                    "but no interactive targets were observed.",
+            details: {
+                policy: surfacePolicy.policy,
+                modality: surfacePolicy.modality ?? DEFAULT_TARGET_ACQUISITION_MODALITY,
+                source: descriptor.interactiveTargetObservation?.location ??
+                    descriptor.layout.source,
+                requiredMetrics: [
+                    usedFallbackObservation
+                        ? "contractScopedInteractiveTargets"
+                        : "interactiveTargets",
+                ],
+                missingMetrics: [
+                    usedFallbackObservation
+                        ? "contractScopedInteractiveTargets"
+                        : "interactiveTargets",
+                ],
+                observationSource,
+                observedInteractiveTargetCount: descriptor.interactiveTargetObservation?.allVisibleCount ?? 0,
+                contractScopedObservedTargetCount: descriptor.interactiveTargetObservation?.contractScopedCount ?? 0,
+            },
+        });
+        return;
+    }
+    for (const target of interactiveTargets) {
+        const override = resolveTargetAcquisitionOverride(contract, target);
+        const resolvedPolicy = resolveTargetAcquisitionPolicy(surfacePolicy, target);
+        if (!resolvedPolicy) {
+            continue;
+        }
+        const effectiveBudget = applyTargetAcquisitionBudget(resolvedPolicy, override);
+        const classification = resolveTargetClassification(target, override);
+        const width = target.boundingBox?.width;
+        const height = target.boundingBox?.height;
+        const missingMetrics = [];
+        const requiredMetrics = ["boundingBox", "edgeInsetPx"];
+        if (!Number.isFinite(width) || !Number.isFinite(height)) {
+            missingMetrics.push("boundingBox");
+        }
+        if (target.edgeInsetPx === null || target.edgeInsetPx === undefined) {
+            missingMetrics.push("edgeInsetPx");
+        }
+        if (missingMetrics.length > 0) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "target-unobservable",
+                message: `Interactive target "${target.id}" could not be fully observed for surface "${descriptor.surfaceId}".`,
+                details: {
+                    policy: resolvedPolicy.policy,
+                    modality: resolvedPolicy.modality,
+                    targetId: target.id,
+                    role: target.role,
+                    source: target.source,
+                    requiredMetrics,
+                    missingMetrics,
+                    interactionId: target.interactionId,
+                    componentId: target.componentId,
+                    exceptionId: override?.exceptionId ?? target.exceptionId,
+                    observationSource: descriptor.interactiveTargetObservation?.source,
+                },
+            });
+        }
+        if (Number.isFinite(width) &&
+            Number.isFinite(height) &&
+            (Number(width) < effectiveBudget.minHitAreaPx ||
+                Number(height) < effectiveBudget.minHitAreaPx)) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "target-hit-area-too-small",
+                message: `Interactive target "${target.id}" is smaller than the ${effectiveBudget.minHitAreaPx}px floor ` +
+                    `for surface "${descriptor.surfaceId}".`,
+                details: {
+                    policy: resolvedPolicy.policy,
+                    modality: resolvedPolicy.modality,
+                    targetId: target.id,
+                    role: target.role,
+                    source: target.source,
+                    width,
+                    height,
+                    minHitAreaPx: effectiveBudget.minHitAreaPx,
+                    exceptionId: override?.exceptionId ?? target.exceptionId,
+                },
+            });
+        }
+        if (target.nearestNeighborGapPx !== null &&
+            target.nearestNeighborGapPx !== undefined &&
+            target.nearestNeighborGapPx < effectiveBudget.minGapPx) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "target-gap-too-tight",
+                message: `Interactive target "${target.id}" is closer than ${effectiveBudget.minGapPx}px ` +
+                    `to its nearest neighbor for surface "${descriptor.surfaceId}".`,
+                details: {
+                    policy: resolvedPolicy.policy,
+                    modality: resolvedPolicy.modality,
+                    targetId: target.id,
+                    role: target.role,
+                    source: target.source,
+                    nearestNeighborGapPx: target.nearestNeighborGapPx,
+                    minGapPx: effectiveBudget.minGapPx,
+                    exceptionId: override?.exceptionId ?? target.exceptionId,
+                },
+            });
+        }
+        if (target.edgeInsetPx !== null &&
+            target.edgeInsetPx !== undefined &&
+            target.edgeInsetPx < effectiveBudget.minEdgeInsetPx) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "target-edge-inset-too-small",
+                message: `Interactive target "${target.id}" is inset less than ${effectiveBudget.minEdgeInsetPx}px ` +
+                    `from the viewport edge for surface "${descriptor.surfaceId}".`,
+                details: {
+                    policy: resolvedPolicy.policy,
+                    modality: resolvedPolicy.modality,
+                    targetId: target.id,
+                    role: target.role,
+                    source: target.source,
+                    edgeInsetPx: target.edgeInsetPx,
+                    minEdgeInsetPx: effectiveBudget.minEdgeInsetPx,
+                    exceptionId: override?.exceptionId ?? target.exceptionId,
+                },
+            });
+        }
+        if (classification === "destructive" &&
+            target.nearestNeighborGapPx !== null &&
+            target.nearestNeighborGapPx !== undefined &&
+            target.nearestNeighborClassification !== "destructive" &&
+            target.nearestNeighborGapPx < effectiveBudget.destructiveGapPx) {
+            violations.push({
+                surfaceId: descriptor.surfaceId,
+                type: "destructive-target-too-close",
+                message: `Destructive target "${target.id}" must be separated by at least ${effectiveBudget.destructiveGapPx}px ` +
+                    `from adjacent non-destructive actions for surface "${descriptor.surfaceId}".`,
+                details: {
+                    policy: resolvedPolicy.policy,
+                    modality: resolvedPolicy.modality,
+                    targetId: target.id,
+                    role: target.role,
+                    source: target.source,
+                    classification,
+                    nearestNeighborGapPx: target.nearestNeighborGapPx,
+                    destructiveGapPx: effectiveBudget.destructiveGapPx,
+                    nearestNeighborClassification: target.nearestNeighborClassification ?? "default",
+                    exceptionId: override?.exceptionId ?? target.exceptionId,
+                },
+            });
+        }
+    }
+}
+function resolveFeedbackRequiredStateKinds(surface) {
+    const feedbackRecovery = surface.runtime?.feedbackRecovery;
+    if (!feedbackRecovery || feedbackRecovery.policy === "off") {
+        return [];
+    }
+    return [
+        ...new Set([
+            ...(feedbackRecovery.requiredStateKinds ??
+                DEFAULT_FEEDBACK_REQUIRED_STATE_KINDS),
+            ...(surface.runtime?.contexts ?? [])
+                .map((context) => context.kind)
+                .filter((kind) => Boolean(kind)),
+        ]),
+    ];
+}
+function findMatchingFeedbackContexts(surface, state) {
+    return (surface.runtime?.contexts ?? []).filter((context) => {
+        if (!context.kind) {
+            return false;
+        }
+        if (state.contextId && state.contextId === context.id) {
+            return true;
+        }
+        if (state.id === context.id) {
+            return true;
+        }
+        return state.kind === context.kind;
+    });
+}
+function validateFeedbackContextState(surface, context, state, policy, violations) {
+    const recoveryActions = new Set(state.recoveryActions ?? []);
+    const missingRecoveryActions = (context.requiredRecoveryActions ?? []).filter((action) => !recoveryActions.has(action));
+    if (missingRecoveryActions.length > 0) {
+        violations.push({
+            surfaceId: surface.id,
+            type: "feedback-recovery-action-missing",
+            message: `Async state "${state.id}" is missing required recovery actions for ` +
+                `context "${context.id}" on surface "${surface.id}".`,
+            details: {
+                policy: policy.policy,
+                stateId: state.id,
+                kind: state.kind,
+                contextId: context.id,
+                expectedRecoveryActions: context.requiredRecoveryActions,
+                missingRecoveryActions,
+                source: state.source,
+            },
+        });
+    }
+    const observedBlockedActions = new Map((state.blockedActions ?? []).map((action) => [
+        action.interactionId,
+        action.disabled,
+    ]));
+    const missingBlockedActions = (context.blockedActionsWhilePending ?? []).filter((interactionId) => observedBlockedActions.get(interactionId) !== true);
+    if (missingBlockedActions.length > 0) {
+        violations.push({
+            surfaceId: surface.id,
+            type: "feedback-pending-action-not-blocked",
+            message: `Async state "${state.id}" leaves required pending actions enabled for ` +
+                `context "${context.id}" on surface "${surface.id}".`,
+            details: {
+                policy: policy.policy,
+                stateId: state.id,
+                kind: state.kind,
+                contextId: context.id,
+                expectedBlockedActions: context.blockedActionsWhilePending,
+                missingBlockedActions,
+                source: state.source,
+            },
+        });
+    }
+    const observedSections = new Set(state.sectionIds ?? []);
+    const missingPreserveSections = (context.preserveSections ?? []).filter((sectionId) => !observedSections.has(sectionId));
+    const preserveLastGoodRequired = context.preserveLastGoodContent === true;
+    const preserveLastGoodObserved = state.preserveLastGoodContent === true;
+    if (missingPreserveSections.length > 0 ||
+        (preserveLastGoodRequired && !preserveLastGoodObserved)) {
+        violations.push({
+            surfaceId: surface.id,
+            type: "feedback-last-good-content-missing",
+            message: `Async state "${state.id}" does not preserve the required last-good content ` +
+                `for context "${context.id}" on surface "${surface.id}".`,
+            details: {
+                policy: policy.policy,
+                stateId: state.id,
+                kind: state.kind,
+                contextId: context.id,
+                expectedPreserveSections: context.preserveSections ?? [],
+                missingPreserveSections,
+                preserveLastGoodContentRequired: preserveLastGoodRequired,
+                preserveLastGoodContentObserved: preserveLastGoodObserved,
+                source: state.source,
+            },
+        });
+    }
+}
+function validateFeedbackRecovery(surface, descriptor, violations) {
+    const feedbackRecovery = surface.runtime?.feedbackRecovery;
+    if (!feedbackRecovery || feedbackRecovery.policy === "off") {
+        return;
+    }
+    const asyncStates = descriptor.asyncStates ?? [];
+    const observationSource = descriptor.asyncStateObservation?.source;
+    const runtimeObservation = observationSource === "contract-scoped" || observationSource === "none-observed";
+    if (runtimeObservation && asyncStates.length === 0) {
+        violations.push({
+            surfaceId: descriptor.surfaceId,
+            type: "feedback-unobservable",
+            message: `Feedback and recovery policy is "${feedbackRecovery.policy}" for surface "${descriptor.surfaceId}", ` +
+                "but no contract-scoped async states were observed during remote validation.",
+            details: {
+                policy: feedbackRecovery.policy,
+                source: descriptor.asyncStateObservation?.location ??
+                    descriptor.layout.source,
+                requiredMetrics: ["contractScopedAsyncStates"],
+                missingMetrics: ["contractScopedAsyncStates"],
+                observationSource,
+                observedStateCount: descriptor.asyncStateObservation?.observedStateCount ?? 0,
+            },
+        });
+        return;
+    }
+    if (!runtimeObservation) {
+        for (const kind of resolveFeedbackRequiredStateKinds(surface)) {
+            if (!asyncStates.some((state) => state.kind === kind)) {
+                violations.push({
+                    surfaceId: descriptor.surfaceId,
+                    type: "feedback-state-missing",
+                    message: `Required async state "${kind}" is missing for surface "${descriptor.surfaceId}".`,
+                    details: {
+                        policy: feedbackRecovery.policy,
+                        kind,
+                        source: descriptor.asyncStateObservation?.location ??
+                            descriptor.layout.source,
+                    },
+                });
+            }
+        }
+    }
+    for (const state of asyncStates) {
+        const matchingContexts = findMatchingFeedbackContexts(surface, state);
+        for (const context of matchingContexts) {
+            validateFeedbackContextState(surface, context, state, feedbackRecovery, violations);
         }
     }
 }
@@ -884,6 +1339,8 @@ export function evaluateSurfaceCompliance(contract, descriptor) {
     validateTokenPolicies(contract, descriptor, violations);
     validateIconPolicy(surface, descriptor, violations);
     validateFlowPolicy(surface, descriptor, violations);
+    validateTargetAcquisition(contract, surface, descriptor, violations);
+    validateFeedbackRecovery(surface, descriptor, violations);
     validateLandingPattern(surface, contract, descriptor, violations);
     validateMarketingTypography(surface, contract, descriptor, violations);
     const reportedWidth = descriptor.layout.maxContentWidth;
