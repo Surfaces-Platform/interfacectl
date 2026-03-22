@@ -1242,6 +1242,7 @@ function inferContractPath(surfaceId, findingCode, repair) {
         case "restore-required-flows":
         case "restore-required-flow-steps":
         case "restore-required-transitions":
+        case "restore-flow-observability":
             return `surfaces[id=${surfaceId}].flows`;
         case "remove-prohibited-primitives":
             return `surfaces[id=${surfaceId}].shell`;

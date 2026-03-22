@@ -67,6 +67,26 @@ function buildContract(overrides = {}) {
         layout: {
           maxContentWidth: 960,
           requiredContainers: ["contract-container"],
+          targetAcquisition: {
+            policy: "warn",
+            modality: "touch-mouse",
+            minHitAreaPx: 44,
+            minGapPx: 8,
+            minEdgeInsetPx: 8,
+            destructiveGapPx: 16,
+          },
+        },
+        flows: {
+          policy: "warn",
+          requirements: [
+            {
+              flowId: "checkout",
+              minSteps: 2,
+              requiredSteps: ["start", "review"],
+              requiredTransitions: [{ from: "start", to: "review" }],
+              terminalSteps: ["review"],
+            },
+          ],
         },
         governance: {
           status: "review",
@@ -77,6 +97,10 @@ function buildContract(overrides = {}) {
         },
         runtime: {
           policy: "strict",
+          feedbackRecovery: {
+            policy: "warn",
+            requiredStateKinds: ["loading", "empty", "error", "success"],
+          },
           mutationEnvelope: {
             mode: "slot-bound",
             scopes: ["content", "components"],
@@ -89,6 +113,27 @@ function buildContract(overrides = {}) {
               when: "route == '/'",
               policy: "warn",
               requiredSections: ["main.hero"],
+            },
+            {
+              id: "loading",
+              when: "request == pending",
+              kind: "loading",
+            },
+            {
+              id: "empty",
+              when: "items.length == 0",
+              kind: "empty",
+            },
+            {
+              id: "error",
+              when: "request == failed",
+              kind: "error",
+              requiredRecoveryActions: ["retry"],
+            },
+            {
+              id: "success",
+              when: "request == fulfilled",
+              kind: "success",
             },
           ],
         },
@@ -200,6 +245,25 @@ test("prepare-generation: emits resolved payload with summary, provenance, autho
     assert.deepEqual(payload.generation.boundary.shellOwns, ["header", "footer"]);
     assert.equal(payload.generation.governance.owner, "designers@example.com");
     assert.equal(payload.generation.adaptation.mutationEnvelope.mode, "slot-bound");
+    assert.deepEqual(payload.generation.adaptation.feedbackRecovery.requiredStateKinds, [
+      "loading",
+      "empty",
+      "error",
+      "success",
+    ]);
+    assert.equal(payload.generation.layout.targetAcquisition.minHitAreaPx, 44);
+    assert.ok(
+      payload.summary.checklist.some((item) => item.id === "target-acquisition"),
+      "summary should include target acquisition checklist item",
+    );
+    assert.ok(
+      payload.summary.checklist.some((item) => item.id === "feedback-recovery"),
+      "summary should include feedback recovery checklist item",
+    );
+    assert.ok(
+      payload.summary.checklist.some((item) => item.id === "flows"),
+      "summary should include flow checklist item",
+    );
     assert.equal(payload.sections.length, 1);
     assert.equal(payload.components.length, 1);
     assert.equal(payload.constraints.color.policy, "warn");

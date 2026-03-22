@@ -144,6 +144,22 @@ export async function observeRemotePage(options) {
                         shadowKinds: [],
                         motions: [],
                         containers: [],
+                        interactiveTargets: [],
+                        interactiveTargetCollection: {
+                            source: "none-observed",
+                            allVisibleCount: 0,
+                            contractScopedCount: 0,
+                        },
+                        flows: [],
+                        flowCollection: {
+                            source: "none-observed",
+                            observedFlowCount: 0,
+                        },
+                        asyncStates: [],
+                        asyncStateCollection: {
+                            source: "none-observed",
+                            observedStateCount: 0,
+                        },
                     },
                 };
             }
@@ -210,6 +226,63 @@ export async function observeRemotePage(options) {
             const headingNodes = Array.from(doc.querySelectorAll("main h1, main h2, [role='main'] h1, [role='main'] h2, h1, h2")).filter((node) => isVisible(node));
             const visibleForms = Array.from(doc.querySelectorAll("form")).filter((node) => isVisible(node));
             const passwordInputs = Array.from(doc.querySelectorAll("input[type='password']")).filter((node) => isVisible(node));
+            const allInteractiveNodes = Array.from(doc.querySelectorAll("a, button, summary, [role='button']")).filter((node) => isVisible(node));
+            const contractScopedInteractiveNodes = allInteractiveNodes.filter((node) => {
+                const dataset = node?.dataset ?? {};
+                return Boolean(String(dataset.contractTarget ?? "").trim() ||
+                    String(dataset.contractInteraction ?? "").trim());
+            });
+            const interactiveTargetCollection = contractScopedInteractiveNodes.length > 0
+                ? {
+                    source: "contract-scoped",
+                    allVisibleCount: allInteractiveNodes.length,
+                    contractScopedCount: contractScopedInteractiveNodes.length,
+                }
+                : allInteractiveNodes.length > 0
+                    ? {
+                        source: "all-visible-fallback",
+                        allVisibleCount: allInteractiveNodes.length,
+                        contractScopedCount: 0,
+                    }
+                    : {
+                        source: "none-observed",
+                        allVisibleCount: 0,
+                        contractScopedCount: 0,
+                    };
+            const interactiveNodes = interactiveTargetCollection.source === "contract-scoped"
+                ? contractScopedInteractiveNodes
+                : allInteractiveNodes;
+            const isAsyncStateKind = (value) => value === "loading" ||
+                value === "empty" ||
+                value === "partial" ||
+                value === "error" ||
+                value === "success";
+            const isRecoveryActionKind = (value) => value === "retry" ||
+                value === "refresh" ||
+                value === "dismiss" ||
+                value === "contact-support" ||
+                value === "navigate-home" ||
+                value === "go-back";
+            const stateNodes = Array.from(doc.querySelectorAll("[data-contract-state-kind]")).filter((node) => isVisible(node));
+            const flowNodes = Array.from(doc.querySelectorAll("[data-contract-flow-id]")).filter((node) => isVisible(node));
+            const flowCollection = flowNodes.length > 0
+                ? {
+                    source: "contract-scoped",
+                    observedFlowCount: flowNodes.length,
+                }
+                : {
+                    source: "none-observed",
+                    observedFlowCount: 0,
+                };
+            const asyncStateCollection = stateNodes.length > 0
+                ? {
+                    source: "contract-scoped",
+                    observedStateCount: stateNodes.length,
+                }
+                : {
+                    source: "none-observed",
+                    observedStateCount: 0,
+                };
             const nodes = Array.from(doc.querySelectorAll("body, main, header, nav, footer, aside, section, article, form, div, h1, h2, h3, h4, h5, h6, p, a, button, input, label"));
             for (const node of nodes) {
                 if (!node || typeof node !== "object" || !isVisible(node)) {
@@ -248,6 +321,138 @@ export async function observeRemotePage(options) {
                     containers.add("container");
                 }
             }
+            const classifyTarget = (node) => {
+                const dataset = node?.dataset ?? {};
+                const raw = String(dataset.contractActionRisk ?? dataset.contractActionKind ?? "").toLowerCase() ||
+                    (String(node?.getAttribute?.("type") ?? "").toLowerCase() === "submit" ? "primary" : "");
+                if (raw === "destructive" || raw === "danger") {
+                    return "destructive";
+                }
+                if (raw === "primary" || raw === "cta") {
+                    return "primary";
+                }
+                return "default";
+            };
+            const viewportWidth = typeof globalThis.innerWidth === "number" ? globalThis.innerWidth : 0;
+            const viewportHeight = typeof globalThis.innerHeight === "number" ? globalThis.innerHeight : 0;
+            const interactiveTargets = interactiveNodes.map((node, index, list) => {
+                const rect = node.getBoundingClientRect();
+                const classification = classifyTarget(node);
+                let nearestNeighborGapPx = null;
+                let nearestNeighborClassification;
+                for (const other of list) {
+                    if (other === node)
+                        continue;
+                    const otherRect = other.getBoundingClientRect();
+                    const dx = Math.max(0, otherRect.left - rect.right, rect.left - otherRect.right);
+                    const dy = Math.max(0, otherRect.top - rect.bottom, rect.top - otherRect.bottom);
+                    const gap = dx === 0 ? dy : dy === 0 ? dx : Math.hypot(dx, dy);
+                    if (nearestNeighborGapPx === null || gap < nearestNeighborGapPx) {
+                        nearestNeighborGapPx = gap;
+                        nearestNeighborClassification = classifyTarget(other);
+                    }
+                }
+                const edgeInsetPx = Math.min(rect.left, viewportWidth - rect.right, rect.top, viewportHeight - rect.bottom);
+                const dataset = node?.dataset ?? {};
+                return {
+                    id: String(dataset.contractTarget ?? dataset.contractInteraction ?? "").trim() ||
+                        `${String(node?.tagName ?? "target").toLowerCase()}-${index + 1}`,
+                    role: String(node?.tagName ?? "target").toLowerCase() === "a"
+                        ? "link"
+                        : String(node?.tagName ?? "target").toLowerCase(),
+                    selector: typeof dataset.contractInteraction === "string"
+                        ? `[data-contract-interaction="${dataset.contractInteraction}"]`
+                        : typeof dataset.contractTarget === "string"
+                            ? `[data-contract-target="${dataset.contractTarget}"]`
+                            : undefined,
+                    boundingBox: {
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: rect.height,
+                    },
+                    hitAreaPx: rect.width * rect.height,
+                    nearestNeighborGapPx,
+                    nearestNeighborClassification,
+                    edgeInsetPx,
+                    classification,
+                };
+            });
+            const asyncStates = stateNodes.flatMap((node, index) => {
+                const dataset = node?.dataset ?? {};
+                const stateId = String(dataset.contractStateId ?? "").trim() ||
+                    String(dataset.contractStateKind ?? "").trim() ||
+                    `state-${index + 1}`;
+                const stateKind = String(dataset.contractStateKind ?? "").trim().toLowerCase();
+                if (!isAsyncStateKind(stateKind)) {
+                    return [];
+                }
+                const selector = `[data-contract-state-id="${stateId}"]`;
+                const sectionIds = Array.from(doc.querySelectorAll(`${selector}[data-contract-section]`))
+                    .filter((candidate) => isVisible(candidate))
+                    .map((candidate) => String(candidate?.dataset?.contractSection ?? "").trim())
+                    .filter(Boolean);
+                const recoveryActions = Array.from(doc.querySelectorAll(`${selector}[data-contract-recovery-action]`))
+                    .filter((candidate) => isVisible(candidate))
+                    .map((candidate) => String(candidate?.dataset?.contractRecoveryAction ?? "").trim().toLowerCase())
+                    .filter(isRecoveryActionKind);
+                const preserveLastGoodContent = Array.from(doc.querySelectorAll(`${selector}[data-contract-preserve-last-good="true"]`)).some((candidate) => isVisible(candidate));
+                const blockedActions = Array.from(doc.querySelectorAll(`${selector}[data-contract-interaction]`))
+                    .filter((candidate) => isVisible(candidate))
+                    .map((candidate) => {
+                    const interactionId = String(candidate?.dataset?.contractInteraction ?? "").trim();
+                    return {
+                        interactionId,
+                        disabled: Boolean(candidate?.disabled) ||
+                            String(candidate?.getAttribute?.("aria-disabled") ?? "").toLowerCase() === "true",
+                    };
+                })
+                    .filter((candidate) => candidate.interactionId.length > 0);
+                return [{
+                        id: stateId,
+                        kind: stateKind,
+                        sectionIds: [...new Set(sectionIds)].sort((a, b) => a.localeCompare(b)),
+                        recoveryActions: [...new Set(recoveryActions)].sort((a, b) => a.localeCompare(b)),
+                        preserveLastGoodContent,
+                        blockedActions,
+                    }];
+            });
+            const flows = flowNodes.flatMap((flowNode, index) => {
+                const flowId = String(flowNode?.dataset?.contractFlowId ?? "").trim() || `flow-${index + 1}`;
+                const stepMap = new Map();
+                const transitionMap = new Map();
+                const stepNodes = Array.from(flowNode.querySelectorAll("[data-contract-flow-step]")).filter((candidate) => isVisible(candidate) &&
+                    candidate.closest?.("[data-contract-flow-id]") === flowNode);
+                for (const stepNode of stepNodes) {
+                    const stepId = String(stepNode?.dataset?.contractFlowStep ?? "").trim();
+                    if (!stepId) {
+                        continue;
+                    }
+                    stepMap.set(stepId, {
+                        id: stepId,
+                        ...(String(stepNode?.getAttribute?.("data-contract-flow-terminal") ?? "").toLowerCase() === "true"
+                            ? { terminal: true }
+                            : {}),
+                    });
+                    const transitionNodes = Array.from(stepNode.querySelectorAll("[data-contract-flow-transition-to]")).filter((candidate) => isVisible(candidate) &&
+                        candidate.closest?.("[data-contract-flow-step]") === stepNode);
+                    for (const transitionNode of transitionNodes) {
+                        const transitionTo = String(transitionNode?.dataset?.contractFlowTransitionTo ?? "").trim();
+                        if (!transitionTo) {
+                            continue;
+                        }
+                        transitionMap.set(`${stepId}->${transitionTo}`, {
+                            from: stepId,
+                            to: transitionTo,
+                        });
+                    }
+                }
+                return [{
+                        flowId,
+                        steps: [...stepMap.values()].sort((a, b) => a.id.localeCompare(b.id)),
+                        transitions: [...transitionMap.values()].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)),
+                    }];
+            });
             return {
                 gateObservation: {
                     bodyText: getVisibleText(doc.body),
@@ -264,6 +469,12 @@ export async function observeRemotePage(options) {
                     shadowKinds,
                     motions,
                     containers: [...containers].sort((a, b) => a.localeCompare(b)),
+                    interactiveTargets,
+                    interactiveTargetCollection,
+                    flows,
+                    flowCollection,
+                    asyncStates,
+                    asyncStateCollection,
                 },
             };
         });

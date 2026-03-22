@@ -185,6 +185,9 @@
             },
             "landingPattern": {
               "$ref": "#/$defs/landingPattern"
+            },
+            "targetAcquisition": {
+              "$ref": "#/$defs/targetAcquisitionPolicy"
             }
           }
         },
@@ -560,6 +563,9 @@
         "navigationTarget": {
           "type": "string",
           "minLength": 1
+        },
+        "targetAcquisition": {
+          "$ref": "#/$defs/interactionTargetAcquisitionOverride"
         },
         "notes": {
           "type": "string"
@@ -986,11 +992,236 @@
         "mutationEnvelope": {
           "$ref": "#/$defs/surfaceMutationEnvelope"
         },
+        "feedbackRecovery": {
+          "$ref": "#/$defs/feedbackRecoveryPolicy"
+        },
         "contexts": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/surfaceRuntimeContext"
           }
+        }
+      }
+    },
+    "asyncStateKind": {
+      "type": "string",
+      "enum": [
+        "loading",
+        "empty",
+        "partial",
+        "error",
+        "success"
+      ]
+    },
+    "recoveryActionKind": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "refresh",
+        "dismiss",
+        "contact-support",
+        "navigate-home",
+        "go-back"
+      ]
+    },
+    "feedbackRecoveryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "requiredStateKinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asyncStateKind"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "targetAcquisitionClassification": {
+      "type": "string",
+      "enum": [
+        "default",
+        "primary",
+        "destructive"
+      ]
+    },
+    "targetAcquisitionBudget": {
+      "type": "object",
+      "properties": {
+        "minHitAreaPx": {
+          "type": "number",
+          "minimum": 1
+        },
+        "minGapPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minEdgeInsetPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "destructiveGapPx": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "targetAcquisitionViewportOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "viewport"
+      ],
+      "properties": {
+        "viewport": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "minHitAreaPx": {
+          "type": "number",
+          "minimum": 1
+        },
+        "minGapPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minEdgeInsetPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "destructiveGapPx": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "targetAcquisitionContextOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context"
+      ],
+      "properties": {
+        "context": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "minHitAreaPx": {
+          "type": "number",
+          "minimum": 1
+        },
+        "minGapPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minEdgeInsetPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "destructiveGapPx": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "targetAcquisitionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy"
+      ],
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "strict"
+          ]
+        },
+        "modality": {
+          "type": "string",
+          "enum": [
+            "touch-mouse",
+            "touch",
+            "mouse"
+          ]
+        },
+        "minHitAreaPx": {
+          "type": "number",
+          "minimum": 1
+        },
+        "minGapPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minEdgeInsetPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "destructiveGapPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "viewportOverrides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/targetAcquisitionViewportOverride"
+          }
+        },
+        "contextOverrides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/targetAcquisitionContextOverride"
+          }
+        }
+      }
+    },
+    "interactionTargetAcquisitionOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exceptionId",
+        "rationale"
+      ],
+      "properties": {
+        "exceptionId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification": {
+          "$ref": "#/$defs/targetAcquisitionClassification"
+        },
+        "minHitAreaPx": {
+          "type": "number",
+          "minimum": 1
+        },
+        "minGapPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minEdgeInsetPx": {
+          "type": "number",
+          "minimum": 0
+        },
+        "destructiveGapPx": {
+          "type": "number",
+          "minimum": 0
         }
       }
     },
@@ -1094,6 +1325,9 @@
             "strict"
           ]
         },
+        "kind": {
+          "$ref": "#/$defs/asyncStateKind"
+        },
         "requiredSections": {
           "type": "array",
           "items": {
@@ -1107,6 +1341,32 @@
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "requiredRecoveryActions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/recoveryActionKind"
+          },
+          "uniqueItems": true
+        },
+        "preserveSections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)*$"
+          },
+          "uniqueItems": true
+        },
+        "preserveLastGoodContent": {
+          "type": "boolean"
+        },
+        "blockedActionsWhilePending": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*$"
           },
           "uniqueItems": true
         },

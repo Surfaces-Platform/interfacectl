@@ -187,7 +187,33 @@ test("compile: includes component catalog refs, authoring hints, and observation
                   marketingLayoutProfile: "marketing-landing",
                   marketingLayoutPolicy: "warn",
                 },
+                targetAcquisition: {
+                  policy: "warn",
+                  modality: "touch-mouse",
+                  minHitAreaPx: 44,
+                  minGapPx: 8,
+                  minEdgeInsetPx: 8,
+                  destructiveGapPx: 16,
+                  viewportOverrides: [
+                    {
+                      viewport: "mobile",
+                      minHitAreaPx: 48,
+                    },
+                  ],
+                  contextOverrides: [
+                    {
+                      context: "pricing-campaign",
+                      destructiveGapPx: 24,
+                    },
+                  ],
+                },
               },
+              viewports: [
+                {
+                  id: "mobile",
+                  maxWidthPx: 767,
+                },
+              ],
               governance: {
                 status: "review",
                 roles: {
@@ -206,6 +232,10 @@ test("compile: includes component catalog refs, authoring hints, and observation
               },
               runtime: {
                 policy: "strict",
+                feedbackRecovery: {
+                  policy: "warn",
+                  requiredStateKinds: ["loading", "empty", "error", "success"],
+                },
                 mutationEnvelope: {
                   mode: "slot-bound",
                   scopes: ["content", "components"],
@@ -219,6 +249,30 @@ test("compile: includes component catalog refs, authoring hints, and observation
                     policy: "warn",
                     requiredSections: ["main.cta"],
                     allowedLayoutIntents: ["columns"],
+                  },
+                  {
+                    id: "loading",
+                    when: "request == pending",
+                    kind: "loading",
+                    blockedActionsWhilePending: ["compact-primary"],
+                  },
+                  {
+                    id: "empty",
+                    when: "items.length == 0",
+                    kind: "empty",
+                  },
+                  {
+                    id: "error",
+                    when: "request == failed",
+                    kind: "error",
+                    requiredRecoveryActions: ["retry"],
+                    preserveSections: ["main.hero"],
+                    preserveLastGoodContent: true,
+                  },
+                  {
+                    id: "success",
+                    when: "request == fulfilled",
+                    kind: "success",
                   },
                 ],
               },
@@ -278,6 +332,20 @@ test("compile: includes component catalog refs, authoring hints, and observation
               intent: "actions",
               slots: [
                 { id: "primary", kind: "action", required: true },
+              ],
+              interactions: [
+                {
+                  id: "compact-primary",
+                  trigger: "click compact primary",
+                  effect: "navigate",
+                  navigationTarget: "/pricing",
+                  targetAcquisition: {
+                    exceptionId: "cta-group.compact-primary",
+                    rationale: "Toolbar-adjacent compact action.",
+                    minHitAreaPx: 40,
+                    classification: "primary",
+                  },
+                },
               ],
               references: [
                 { system: "code", kind: "component", ref: "app/components/cta-group.tsx" },
@@ -355,7 +423,21 @@ test("compile: includes component catalog refs, authoring hints, and observation
     assert.equal(generation.governance.owner, "designers@example.com");
     assert.equal(generation.governance.status, "review");
     assert.equal(generation.adaptation.mutationEnvelope.mode, "slot-bound");
-    assert.deepEqual(generation.adaptation.contextIds, ["pricing-campaign"]);
+    assert.deepEqual(generation.adaptation.contextIds, [
+      "pricing-campaign",
+      "loading",
+      "empty",
+      "error",
+      "success",
+    ]);
+    assert.deepEqual(generation.adaptation.feedbackRecovery.requiredStateKinds, [
+      "loading",
+      "empty",
+      "error",
+      "success",
+    ]);
+    assert.equal(generation.layout.targetAcquisition.minHitAreaPx, 44);
+    assert.equal(generation.layout.targetAcquisition.viewportOverrides[0].minHitAreaPx, 48);
 
     const runtime = await readJson(path.join(outDir, "surfaces", "demo-surface", "runtime.json"));
     assert.equal(runtime.runtime.policy, "strict");
@@ -363,6 +445,32 @@ test("compile: includes component catalog refs, authoring hints, and observation
     assert.equal(runtime.runtime.policySeverities.runtime, "strict");
     assert.deepEqual(runtime.runtime.mutationEnvelope.allowedSections, ["main.hero", "main.cta"]);
     assert.deepEqual(runtime.runtime.structure.allowedComponents, ["hero-banner", "cta-group"]);
+    assert.deepEqual(runtime.runtime.feedbackRecovery.requiredStateKinds, [
+      "loading",
+      "empty",
+      "error",
+      "success",
+    ]);
+    assert.equal(runtime.runtime.interaction.targetAcquisition.minGapPx, 8);
+    assert.equal(runtime.runtime.interaction.targetAcquisition.contextOverrides[0].destructiveGapPx, 24);
+
+    const repairMap = await readJson(path.join(outDir, "surfaces", "demo-surface", "repair-map.json"));
+    assert.ok(
+      repairMap.repairs.some((repair) => repair.action.type === "increase-hit-area"),
+      "repair map should include hit-area guidance",
+    );
+    assert.ok(
+      repairMap.repairs.some((repair) => repair.action.type === "separate-destructive-action"),
+      "repair map should include destructive separation guidance",
+    );
+    assert.ok(
+      repairMap.repairs.some((repair) => repair.action.type === "add-error-retry"),
+      "repair map should include async error recovery guidance",
+    );
+    assert.ok(
+      repairMap.repairs.some((repair) => repair.action.type === "disable-pending-submit"),
+      "repair map should include pending-action guidance",
+    );
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }
@@ -490,6 +598,13 @@ test("compile: includes surface flow policy when present in contract", async () 
       flowIds: ["checkout"],
       requirementCount: 1,
     });
+    const repairMap = await readJson(
+      path.join(outDir, "surfaces", "demo-surface", "repair-map.json"),
+    );
+    assert.ok(
+      repairMap.repairs.some((repair) => repair.code === "flow.unobservable"),
+      "repair map should include flow.unobservable guidance",
+    );
   } finally {
     await rm(outDir, { recursive: true, force: true });
   }

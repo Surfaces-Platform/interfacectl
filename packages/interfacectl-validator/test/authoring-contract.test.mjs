@@ -132,6 +132,290 @@ test("validateContractStructure rejects runtime metadata that references unknown
   );
 });
 
+test("validateContractStructure accepts target acquisition metadata with viewport, context, and interaction overrides", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    policy: "warn",
+    contexts: [
+      {
+        id: "checkout",
+        when: "route == '/checkout'",
+      },
+    ],
+  };
+  contract.surfaces[0].layout.targetAcquisition = {
+    policy: "warn",
+    modality: "touch-mouse",
+    minHitAreaPx: 44,
+    viewportOverrides: [
+      {
+        viewport: "mobile",
+        minHitAreaPx: 48,
+      },
+    ],
+    contextOverrides: [
+      {
+        context: "checkout",
+        destructiveGapPx: 24,
+      },
+    ],
+  };
+  contract.components[1].interactions[0].targetAcquisition = {
+    exceptionId: "feature-card.compact-nav",
+    rationale: "Marketing rail keeps secondary actions compact.",
+    minHitAreaPx: 40,
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true, JSON.stringify(result.errors));
+});
+
+test("validateContractStructure rejects target acquisition overrides that reference unknown viewport or context ids", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].layout.targetAcquisition = {
+    policy: "warn",
+    viewportOverrides: [{ viewport: "tablet" }],
+    contextOverrides: [{ context: "checkout" }],
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/reference-target-web/layout/targetAcquisition/viewportOverrides/tablet")),
+    `expected viewport override validation error, got ${JSON.stringify(result.errors)}`,
+  );
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/reference-target-web/layout/targetAcquisition/contextOverrides/checkout")),
+    `expected context override validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure rejects duplicate target acquisition exception ids within a component", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.components[1].interactions[0].targetAcquisition = {
+    exceptionId: "feature-card.compact-nav",
+    rationale: "First exception",
+  };
+  contract.components[1].interactions.push({
+    id: "secondary-cta",
+    trigger: "click secondary",
+    effect: "navigate",
+    navigationTarget: "#secondary",
+    targetAcquisition: {
+      exceptionId: "feature-card.compact-nav",
+      rationale: "Duplicate exception id",
+    },
+  });
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/components/feature-card/interactions/secondary-cta/targetAcquisition/exceptionId")),
+    `expected duplicate exception validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure accepts feedback recovery metadata with required async contexts", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    policy: "warn",
+    feedbackRecovery: {
+      policy: "warn",
+      requiredStateKinds: ["loading", "empty", "error", "success"],
+    },
+    contexts: [
+      {
+        id: "loading",
+        when: "request == pending",
+        kind: "loading",
+        blockedActionsWhilePending: ["primary-cta"],
+      },
+      {
+        id: "empty",
+        when: "items.length == 0",
+        kind: "empty",
+      },
+      {
+        id: "error",
+        when: "request == failed",
+        kind: "error",
+        requiredRecoveryActions: ["retry"],
+        preserveSections: ["page.intro"],
+        preserveLastGoodContent: true,
+      },
+      {
+        id: "success",
+        when: "request == fulfilled",
+        kind: "success",
+      },
+    ],
+  };
+  contract.components[0].interactions = [
+    {
+      id: "primary-cta",
+      trigger: "click primary cta",
+      effect: "navigate",
+      navigationTarget: "#next",
+    },
+  ];
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, true, JSON.stringify(result.errors));
+});
+
+test("validateContractStructure rejects feedback recovery contexts without kind", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    feedbackRecovery: {
+      policy: "warn",
+    },
+    contexts: [
+      {
+        id: "loading",
+        when: "request == pending",
+        blockedActionsWhilePending: ["primary-cta"],
+      },
+    ],
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/reference-target-web/runtime/contexts/loading must declare kind")),
+    `expected feedback context kind validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure rejects feedback recovery requiredStateKinds without matching runtime contexts", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    feedbackRecovery: {
+      policy: "warn",
+      requiredStateKinds: ["loading", "error"],
+    },
+    contexts: [
+      {
+        id: "loading",
+        when: "request == pending",
+        kind: "loading",
+      },
+    ],
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/reference-target-web/runtime/feedbackRecovery/requiredStateKinds/error")),
+    `expected feedback requiredStateKinds validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure rejects feedback recovery runtime contexts that reference unknown interaction ids", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    feedbackRecovery: {
+      policy: "warn",
+    },
+    contexts: [
+      {
+        id: "loading",
+        when: "request == pending",
+        kind: "loading",
+        blockedActionsWhilePending: ["missing-action"],
+      },
+      {
+        id: "empty",
+        when: "items.length == 0",
+        kind: "empty",
+      },
+      {
+        id: "error",
+        when: "request == failed",
+        kind: "error",
+      },
+    ],
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/reference-target-web/runtime/contexts/loading/blockedActionsWhilePending/missing-action")),
+    `expected blockedActionsWhilePending validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure rejects invalid feedback recovery action values", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    feedbackRecovery: {
+      policy: "warn",
+    },
+    contexts: [
+      {
+        id: "loading",
+        when: "request == pending",
+        kind: "loading",
+      },
+      {
+        id: "empty",
+        when: "items.length == 0",
+        kind: "empty",
+      },
+      {
+        id: "error",
+        when: "request == failed",
+        kind: "error",
+        requiredRecoveryActions: ["retry", "reboot"],
+      },
+    ],
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/0/runtime/contexts/2/requiredRecoveryActions/1")),
+    `expected recovery action schema validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
+test("validateContractStructure rejects duplicate runtime context ids", async () => {
+  const schema = getBundledContractSchema();
+  const contract = await loadFixture();
+  contract.surfaces[0].runtime = {
+    feedbackRecovery: {
+      policy: "warn",
+    },
+    contexts: [
+      {
+        id: "loading",
+        when: "request == pending",
+        kind: "loading",
+      },
+      {
+        id: "loading",
+        when: "request == pending again",
+        kind: "loading",
+      },
+      {
+        id: "empty",
+        when: "items.length == 0",
+        kind: "empty",
+      },
+      {
+        id: "error",
+        when: "request == failed",
+        kind: "error",
+      },
+    ],
+  };
+  const result = validateContractStructure(contract, schema);
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("/surfaces/reference-target-web/runtime/contexts/loading must use a unique context id")),
+    `expected duplicate context id validation error, got ${JSON.stringify(result.errors)}`,
+  );
+});
+
 test("validateContractStructure rejects authoring metadata on non-web surfaces", async () => {
   const schema = getBundledContractSchema();
   const contract = await loadFixture();

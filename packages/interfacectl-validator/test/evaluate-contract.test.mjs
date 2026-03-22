@@ -1004,6 +1004,34 @@ test("flow policy emits flow-transition-required when required transition is mis
   ]);
 });
 
+test("flow policy does not cascade missing transition findings when a required step is absent", () => {
+  const contract = makeFlowContract("warn", {
+    minSteps: 2,
+    requiredSteps: ["start", "review", "confirm"],
+    requiredTransitions: [
+      { from: "start", to: "review" },
+      { from: "review", to: "confirm" },
+    ],
+    terminalSteps: ["confirm"],
+  });
+  const descriptor = makeFlowDescriptor({
+    flows: [
+      {
+        flowId: "checkout",
+        steps: [{ id: "start" }, { id: "confirm", terminal: true }],
+        transitions: [{ from: "start", to: "review" }],
+      },
+    ],
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  assert.ok(report.violations.some((item) => item.type === "flow-steps-required"));
+  assert.equal(
+    report.violations.some((item) => item.type === "flow-transition-required"),
+    false,
+  );
+});
+
 test("flow policy emits flow-terminal-invalid when terminal step has outgoing transition", () => {
   const contract = makeFlowContract("strict", {
     minSteps: 1,
@@ -1029,6 +1057,27 @@ test("flow policy emits flow-terminal-invalid when terminal step has outgoing tr
   assert.deepEqual(violation.details?.invalidTransitions, [
     { from: "review", to: "done" },
   ]);
+});
+
+test("flow policy emits flow-unobservable when runtime validation cannot observe contract-scoped flow markers", () => {
+  const contract = makeFlowContract("warn");
+  const descriptor = makeFlowDescriptor({
+    flows: [],
+    flowObservation: {
+      source: "none-observed",
+      observedFlowCount: 0,
+      location: "http://127.0.0.1:3000/",
+    },
+  });
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "flow-unobservable",
+  );
+  assert.ok(violation);
+  assert.equal(violation.details?.policy, "warn");
+  assert.deepEqual(violation.details?.requiredMetrics, ["contractScopedFlows"]);
+  assert.deepEqual(violation.details?.missingMetrics, ["contractScopedFlows"]);
 });
 
 test("reports landing pattern violations for nested sections and custom background", () => {
@@ -1145,4 +1194,720 @@ test("passes landing pattern validation when the shared structure is preserved",
     violation.type.startsWith("landing-pattern-"),
   );
   assert.equal(landingViolations.length, 0);
+});
+
+test("reports target acquisition violations for undersized, crowded, and edge-pinned controls", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-target-acquisition",
+        displayName: "Surface Target Acquisition",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-targets)"],
+        layout: {
+          maxContentWidth: 1120,
+          targetAcquisition: {
+            policy: "strict",
+            modality: "touch-mouse",
+            minHitAreaPx: 44,
+            minGapPx: 8,
+            minEdgeInsetPx: 8,
+            destructiveGapPx: 16,
+          },
+        },
+      },
+    ],
+    components: [
+      {
+        id: "toolbar",
+        intent: "toolbar",
+        slots: [{ id: "actions", kind: "action", required: true }],
+        interactions: [
+          {
+            id: "compact-open",
+            trigger: "click compact open",
+            effect: "open",
+            targetAcquisition: {
+              exceptionId: "toolbar.compact-open",
+              rationale: "Toolbar icon is intentionally compact.",
+              minHitAreaPx: 32,
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-target-acquisition",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-targets)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    interactiveTargets: [
+      {
+        id: "compact-open",
+        role: "button",
+        componentId: "toolbar",
+        interactionId: "compact-open",
+        source: "apps/surface/app/page.tsx",
+        boundingBox: { x: 0, y: 0, width: 32, height: 32 },
+        hitAreaPx: 1024,
+        nearestNeighborGapPx: 6,
+        edgeInsetPx: 4,
+        classification: "primary",
+      },
+      {
+        id: "delete-workspace",
+        role: "button",
+        source: "apps/surface/app/page.tsx",
+        boundingBox: { x: 0, y: 0, width: 44, height: 44 },
+        hitAreaPx: 1936,
+        nearestNeighborGapPx: 10,
+        nearestNeighborClassification: "primary",
+        edgeInsetPx: 12,
+        classification: "destructive",
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violationTypes = report.violations.map((violation) => violation.type);
+
+  assert.ok(!violationTypes.includes("target-hit-area-too-small"), "compact override should suppress hit-area failure");
+  assert.ok(violationTypes.includes("target-gap-too-tight"));
+  assert.ok(violationTypes.includes("target-edge-inset-too-small"));
+  assert.ok(violationTypes.includes("destructive-target-too-close"));
+});
+
+test("singleton measurable target does not emit target-unobservable when no neighbor exists", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-target-acquisition-singleton",
+        displayName: "Surface Target Acquisition Singleton",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-targets)"],
+        layout: {
+          maxContentWidth: 1120,
+          targetAcquisition: {
+            policy: "strict",
+            modality: "touch-mouse",
+            minHitAreaPx: 44,
+            minGapPx: 8,
+            minEdgeInsetPx: 8,
+            destructiveGapPx: 16,
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-target-acquisition-singleton",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-targets)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    interactiveTargets: [
+      {
+        id: "solo-review",
+        role: "button",
+        source: "apps/surface/app/page.tsx",
+        boundingBox: { x: 24, y: 24, width: 48, height: 48 },
+        hitAreaPx: 2304,
+        nearestNeighborGapPx: null,
+        edgeInsetPx: 24,
+        classification: "default",
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violationTypes = report.violations.map((violation) => violation.type);
+
+  assert.equal(violationTypes.includes("target-unobservable"), false);
+  assert.equal(violationTypes.includes("target-gap-too-tight"), false);
+  assert.equal(violationTypes.includes("destructive-target-too-close"), false);
+});
+
+test("surface-level target acquisition reports unobservable when remote validation falls back to all visible controls", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-target-acquisition-fallback",
+        displayName: "Surface Target Acquisition Fallback",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-targets)"],
+        layout: {
+          maxContentWidth: 1120,
+          targetAcquisition: {
+            policy: "warn",
+            minHitAreaPx: 44,
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-target-acquisition-fallback",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-targets)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    interactiveTargets: [],
+    interactiveTargetObservation: {
+      source: "all-visible-fallback",
+      allVisibleCount: 3,
+      contractScopedCount: 0,
+    },
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find((item) => item.type === "target-unobservable");
+  assert.ok(violation);
+  assert.equal(violation.details?.policy, "warn");
+  assert.deepEqual(violation.details?.missingMetrics, ["contractScopedInteractiveTargets"]);
+  assert.equal(violation.details?.observationSource, "all-visible-fallback");
+});
+
+test("target acquisition warn policy preserves warn metadata for reporting", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-target-acquisition-warn",
+        displayName: "Surface Target Acquisition Warn",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-targets)"],
+        layout: {
+          maxContentWidth: 1120,
+          targetAcquisition: {
+            policy: "warn",
+            minHitAreaPx: 44,
+          },
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-target-acquisition-warn",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-targets)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 1000,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    interactiveTargets: [
+      {
+        id: "missing-metrics",
+        role: "button",
+        source: "apps/surface/app/page.tsx",
+        nearestNeighborGapPx: null,
+        edgeInsetPx: null,
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find((item) => item.type === "target-unobservable");
+  assert.ok(violation);
+  assert.equal(violation.details?.policy, "warn");
+});
+
+test("reports feedback.state-missing for required async states that are not authored", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-feedback-missing",
+        displayName: "Surface Feedback Missing",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-feedback)"],
+        layout: {
+          maxContentWidth: 960,
+        },
+        runtime: {
+          feedbackRecovery: {
+            policy: "warn",
+          },
+          contexts: [
+            { id: "loading", when: "request == pending", kind: "loading" },
+            { id: "empty", when: "items.length == 0", kind: "empty" },
+            { id: "error", when: "request == failed", kind: "error" },
+          ],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-feedback-missing",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-feedback)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 900,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    asyncStates: [
+      {
+        id: "success",
+        kind: "success",
+        source: "apps/surface/app/page.tsx",
+        sectionIds: ["main.hero"],
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const stateMissingViolations = report.violations.filter(
+    (violation) => violation.type === "feedback-state-missing",
+  );
+  assert.deepEqual(
+    stateMissingViolations.map((violation) => violation.details?.kind).sort(),
+    ["empty", "error", "loading"],
+  );
+  assert.ok(stateMissingViolations.every((violation) => violation.details?.policy === "warn"));
+});
+
+test("reports feedback.recovery-action-missing when error recovery affordances are absent", () => {
+  const contract = {
+    ...baseContract,
+    components: [
+      {
+        id: "dashboard-actions",
+        intent: "actions",
+        slots: [{ id: "actions", kind: "action", required: true }],
+        interactions: [
+          {
+            id: "retry-dashboard",
+            trigger: "click retry dashboard",
+            effect: "set-state",
+          },
+        ],
+      },
+    ],
+    surfaces: [
+      {
+        id: "surface-feedback-recovery",
+        displayName: "Surface Feedback Recovery",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-feedback)"],
+        layout: {
+          maxContentWidth: 960,
+        },
+        runtime: {
+          feedbackRecovery: {
+            policy: "warn",
+          },
+          contexts: [
+            { id: "loading", when: "request == pending", kind: "loading" },
+            { id: "empty", when: "items.length == 0", kind: "empty" },
+            {
+              id: "error",
+              when: "request == failed",
+              kind: "error",
+              requiredRecoveryActions: ["retry"],
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-feedback-recovery",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-feedback)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 900,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    asyncStates: [
+      {
+        id: "loading",
+        kind: "loading",
+        source: "apps/surface/app/loading.tsx",
+      },
+      {
+        id: "empty",
+        kind: "empty",
+        source: "apps/surface/app/page.tsx",
+      },
+      {
+        id: "error",
+        kind: "error",
+        source: "apps/surface/app/error.tsx",
+        recoveryActions: [],
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "feedback-recovery-action-missing",
+  );
+  assert.ok(violation);
+  assert.deepEqual(violation.details?.missingRecoveryActions, ["retry"]);
+  assert.equal(violation.details?.policy, "warn");
+});
+
+test("reports feedback.pending-action-not-blocked when pending submit remains enabled", () => {
+  const contract = {
+    ...baseContract,
+    components: [
+      {
+        id: "dashboard-actions",
+        intent: "actions",
+        slots: [{ id: "actions", kind: "action", required: true }],
+        interactions: [
+          {
+            id: "submit-refresh",
+            trigger: "click refresh",
+            effect: "submit",
+          },
+        ],
+      },
+    ],
+    surfaces: [
+      {
+        id: "surface-feedback-pending",
+        displayName: "Surface Feedback Pending",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-feedback)"],
+        layout: {
+          maxContentWidth: 960,
+        },
+        runtime: {
+          feedbackRecovery: {
+            policy: "warn",
+          },
+          contexts: [
+            {
+              id: "loading",
+              when: "request == pending",
+              kind: "loading",
+              blockedActionsWhilePending: ["submit-refresh"],
+            },
+            { id: "empty", when: "items.length == 0", kind: "empty" },
+            { id: "error", when: "request == failed", kind: "error" },
+          ],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-feedback-pending",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-feedback)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 900,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    asyncStates: [
+      {
+        id: "loading",
+        kind: "loading",
+        source: "apps/surface/app/loading.tsx",
+        blockedActions: [
+          {
+            interactionId: "submit-refresh",
+            disabled: false,
+          },
+        ],
+      },
+      {
+        id: "empty",
+        kind: "empty",
+        source: "apps/surface/app/page.tsx",
+      },
+      {
+        id: "error",
+        kind: "error",
+        source: "apps/surface/app/error.tsx",
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "feedback-pending-action-not-blocked",
+  );
+  assert.ok(violation);
+  assert.deepEqual(violation.details?.missingBlockedActions, ["submit-refresh"]);
+  assert.equal(violation.details?.policy, "warn");
+});
+
+test("reports feedback.last-good-content-missing when required preserved content is absent", () => {
+  const contract = {
+    ...baseContract,
+    sections: [
+      ...baseContract.sections,
+      {
+        id: "main.queue",
+        intent: "queue",
+        description: "Queue section",
+      },
+    ],
+    surfaces: [
+      {
+        id: "surface-feedback-preserve",
+        displayName: "Surface Feedback Preserve",
+        type: "web",
+        requiredSections: ["main.hero", "main.queue"],
+        allowedFonts: ["var(--font-feedback)"],
+        layout: {
+          maxContentWidth: 960,
+        },
+        runtime: {
+          feedbackRecovery: {
+            policy: "warn",
+            requiredStateKinds: ["error"],
+          },
+          contexts: [
+            {
+              id: "error",
+              when: "request == failed",
+              kind: "error",
+              preserveSections: ["main.hero", "main.queue"],
+              preserveLastGoodContent: true,
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-feedback-preserve",
+    sections: [{ id: "main.hero" }, { id: "main.queue" }],
+    fonts: [{ value: "var(--font-feedback)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 900,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    asyncStates: [
+      {
+        id: "error",
+        kind: "error",
+        source: "apps/surface/app/error.tsx",
+        sectionIds: ["main.hero"],
+        preserveLastGoodContent: false,
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find(
+    (item) => item.type === "feedback-last-good-content-missing",
+  );
+  assert.ok(violation);
+  assert.deepEqual(violation.details?.missingPreserveSections, ["main.queue"]);
+  assert.equal(violation.details?.preserveLastGoodContentObserved, false);
+  assert.equal(violation.details?.policy, "warn");
+});
+
+test("feedback recovery passes when authored states and affordances satisfy the contract", () => {
+  const contract = {
+    ...baseContract,
+    components: [
+      {
+        id: "dashboard-actions",
+        intent: "actions",
+        slots: [{ id: "actions", kind: "action", required: true }],
+        interactions: [
+          {
+            id: "submit-refresh",
+            trigger: "click refresh",
+            effect: "submit",
+          },
+          {
+            id: "retry-dashboard",
+            trigger: "click retry dashboard",
+            effect: "set-state",
+          },
+        ],
+      },
+    ],
+    sections: [
+      ...baseContract.sections,
+      {
+        id: "main.queue",
+        intent: "queue",
+        description: "Queue section",
+      },
+    ],
+    surfaces: [
+      {
+        id: "surface-feedback-pass",
+        displayName: "Surface Feedback Pass",
+        type: "web",
+        requiredSections: ["main.hero", "main.queue"],
+        allowedFonts: ["var(--font-feedback)"],
+        layout: {
+          maxContentWidth: 960,
+        },
+        runtime: {
+          feedbackRecovery: {
+            policy: "warn",
+            requiredStateKinds: ["loading", "empty", "error", "success"],
+          },
+          contexts: [
+            {
+              id: "loading",
+              when: "request == pending",
+              kind: "loading",
+              blockedActionsWhilePending: ["submit-refresh"],
+            },
+            { id: "empty", when: "items.length == 0", kind: "empty" },
+            {
+              id: "error",
+              when: "request == failed",
+              kind: "error",
+              requiredRecoveryActions: ["retry"],
+              preserveSections: ["main.hero", "main.queue"],
+              preserveLastGoodContent: true,
+            },
+            { id: "success", when: "request == fulfilled", kind: "success" },
+          ],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-feedback-pass",
+    sections: [{ id: "main.hero" }, { id: "main.queue" }],
+    fonts: [{ value: "var(--font-feedback)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 900,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    asyncStates: [
+      {
+        id: "loading",
+        kind: "loading",
+        source: "apps/surface/app/loading.tsx",
+        blockedActions: [
+          {
+            interactionId: "submit-refresh",
+            disabled: true,
+          },
+        ],
+      },
+      {
+        id: "empty",
+        kind: "empty",
+        source: "apps/surface/app/page.tsx",
+      },
+      {
+        id: "error",
+        kind: "error",
+        source: "apps/surface/app/error.tsx",
+        sectionIds: ["main.hero", "main.queue"],
+        recoveryActions: ["retry"],
+        preserveLastGoodContent: true,
+      },
+      {
+        id: "success",
+        kind: "success",
+        source: "apps/surface/app/page.tsx",
+        sectionIds: ["main.hero", "main.queue"],
+      },
+    ],
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const feedbackViolations = report.violations.filter((violation) =>
+    violation.type.startsWith("feedback-"),
+  );
+  assert.equal(feedbackViolations.length, 0, JSON.stringify(feedbackViolations, null, 2));
+});
+
+test("surface-level feedback recovery reports unobservable when remote validation finds no contract-scoped async states", () => {
+  const contract = {
+    ...baseContract,
+    surfaces: [
+      {
+        id: "surface-feedback-unobservable",
+        displayName: "Surface Feedback Unobservable",
+        type: "web",
+        requiredSections: ["main.hero"],
+        allowedFonts: ["var(--font-feedback)"],
+        layout: {
+          maxContentWidth: 960,
+        },
+        runtime: {
+          feedbackRecovery: {
+            policy: "warn",
+          },
+          contexts: [
+            { id: "loading", when: "request == pending", kind: "loading" },
+            { id: "empty", when: "items.length == 0", kind: "empty" },
+            { id: "error", when: "request == failed", kind: "error" },
+          ],
+        },
+      },
+    ],
+  };
+
+  const descriptor = {
+    surfaceId: "surface-feedback-unobservable",
+    sections: [{ id: "main.hero" }],
+    fonts: [{ value: "var(--font-feedback)" }],
+    colors: [{ value: "var(--color-primary)" }],
+    layout: {
+      maxContentWidth: 900,
+      containers: ["contract-container"],
+    },
+    motion: [],
+    asyncStates: [],
+    asyncStateObservation: {
+      source: "none-observed",
+      observedStateCount: 0,
+    },
+  };
+
+  const report = evaluateSurfaceCompliance(contract, descriptor);
+  const violation = report.violations.find((item) => item.type === "feedback-unobservable");
+  assert.ok(violation);
+  assert.equal(violation.details?.policy, "warn");
+  assert.deepEqual(violation.details?.missingMetrics, ["contractScopedAsyncStates"]);
 });

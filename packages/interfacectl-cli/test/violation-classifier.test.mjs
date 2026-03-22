@@ -30,6 +30,7 @@ test("classifyViolationType: E2 violations", () => {
   assert.equal(classifyViolationType("flow-steps-required"), "E2");
   assert.equal(classifyViolationType("flow-transition-required"), "E2");
   assert.equal(classifyViolationType("flow-terminal-invalid"), "E2");
+  assert.equal(classifyViolationType("flow-unobservable"), "E2");
 });
 
 test("getExitCodeForCategory: v2 exit codes", () => {
