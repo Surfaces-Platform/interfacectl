@@ -1,6 +1,6 @@
 # interfacectl
 
-Interface contract tooling for the Surfaces ecosystem. Validates, compares, and enforces compliance between defined interface contracts and actual implementation artifacts across multiple surfaces.
+Interface contract tooling for the Surfaces ecosystem. Validates, compares, compiles, and enforces compliance between defined interface contracts and observed implementation artifacts across checked-out surfaces and browser-observed runtime sessions.
 
 ## Planning
 
@@ -61,6 +61,18 @@ interfacectl init --url https://app.example.com --surface customer-app --auth-pr
 
 `interfacectl` replays the saved browser session in Chromium, analyzes the rendered authenticated page, and keeps auth state out of generated artifacts.
 
+For checked-out code and optional runtime observation, use `validate`:
+
+```bash
+interfacectl validate --workspace-root . --contract ./contracts/surfaces.web.contract.json --format json --exit-codes v2
+
+interfacectl validate --workspace-root . --contract ./contracts/surfaces.web.contract.json \
+  --surface customer-app \
+  --remote-url https://app.example.com/dashboard \
+  --format json \
+  --exit-codes v2
+```
+
 ## Canonical docs
 
 Reusable platform semantics live in `interfacectl`:
@@ -76,7 +88,7 @@ Reusable platform semantics live in `interfacectl`:
 
 ## Commands Overview
 
-The CLI provides two first-run commands, browser-session auth helpers, and the validation and enforcement commands:
+The CLI provides two first-run commands, browser-session auth helpers, validation and enforcement commands, and compiled bundle preparation for generation-time and runtime consumers:
 
 ### `init`
 
@@ -123,7 +135,7 @@ Notes:
 
 ### `validate`
 
-Validates configured surfaces against a shared interface contract. Performs comprehensive validation including contract structure validation, surface descriptor collection, and compliance checking for fonts, colors, icon sources, layout, motion, and sections.
+Validates configured surfaces against a shared interface contract. Performs comprehensive validation including contract structure validation, surface descriptor collection, compliance checking for fonts, colors, icon sources, layout, motion, sections, authored flows, authored async feedback/recovery states, and interactive target metadata. When `--remote-url` is provided, `validate` augments the checked-out surface with browser-observed target metrics, flow markers, and async-state/recovery markers from the live route.
 
 ```bash
 interfacectl validate [options]
@@ -147,7 +159,7 @@ interfacectl enforce [options]
 
 ### `compile`
 
-Compiles a validated interface contract into a deterministic, generation-oriented bundle. The bundle includes a manifest, `contract/normalized.json`, and per-surface slices for downstream generators, adapters, and workbench consumers.
+Compiles a validated interface contract into a deterministic generation-and-runtime bundle. The bundle includes a manifest, `contract/normalized.json`, and per-surface slices for downstream generators, runtime adapters, repair guidance, and workbench consumers.
 
 This command does **not** perform enforcement or runtime gating. It produces a stable artifact intended for inspection, tooling, or future runtime consumption.
 
@@ -157,13 +169,23 @@ interfacectl compile --contract <path> --out <dir>
 
 ### `prepare-generation`
 
-Resolves one compiled surface bundle into a single, agent-ready JSON payload for local workspace agents. The payload includes bundle and contract provenance, resolved generation guidance, sections, components, constraints, repair actions, and optional authoring hints.
+Resolves one compiled surface bundle into a single, agent-ready JSON payload for local workspace agents. The payload includes bundle and contract provenance, resolved generation guidance, sections, components, constraints, repair actions, and optional authoring hints, including repair-map entries for flow, target-acquisition, and feedback-recovery findings when the contract declares them.
 
 ```bash
 interfacectl prepare-generation --bundle-root <dir> --surface <id> [--out <path>]
 ```
 
 Use this before local agent generation. Use `validate-generation` after code is written.
+
+### `prepare-runtime`
+
+Resolves one compiled surface bundle into a single, adapter-ready JSON payload for runtime consumers. The payload includes runtime structure, governance, mutation-envelope policy, contextual rules, target-acquisition thresholds, feedback-recovery requirements, flow summaries, and evidence refs from the compiled bundle.
+
+```bash
+interfacectl prepare-runtime --bundle-root <dir> --surface <id> [--out <path>]
+```
+
+Use this after `compile` when a runtime consumer or edge adapter needs one canonical runtime payload instead of reading bundle files directly.
 
 ### `init-generation-session`
 
@@ -363,19 +385,29 @@ interfacectl analyze --url https://app.example.com/dashboard --surface customer-
 Validate all surfaces against a contract:
 
 ```bash
-interfacectl validate --root . --contract ./contracts/ui.contract.json
+interfacectl validate --root . --contract ./contracts/surfaces.web.contract.json
 ```
 
 Validate with JSON output for CI integration:
 
 ```bash
-interfacectl validate --root . --contract ./contracts/ui.contract.json --format json
+interfacectl validate --root . --contract ./contracts/surfaces.web.contract.json --format json
 ```
 
 Validate specific surfaces only:
 
 ```bash
 interfacectl validate --surface my-surface --surface another-surface
+```
+
+Validate a live route with browser-observed runtime signals:
+
+```bash
+interfacectl validate --workspace-root . --contract ./contracts/surfaces.web.contract.json \
+  --surface customer-app \
+  --remote-url https://app.example.com/dashboard \
+  --format json \
+  --exit-codes v2
 ```
 
 ### Diff

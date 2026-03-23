@@ -33,7 +33,7 @@ program
     .option("--root <path>", "Project root (defaults to current working directory)")
     .option("--workspace-root <path>", "Workspace root (defaults to current working directory)")
     .option("--surface <id...>", "Limit validation to the provided surface identifiers")
-    .option("--remote-url <url>", "Augment validation with browser-observed target metrics from the provided URL")
+    .option("--remote-url <url>", "Augment validation with browser-observed target, flow, and async-state metrics from the provided URL")
     .option("--json", "Emit machine-readable JSON instead of human-readable text output")
     .option("--format <format>", "Output format (text|json)")
     .option("--out <path>", "Write output to the provided file path instead of stdout")
@@ -213,7 +213,7 @@ program
 program
     .command("prepare-runtime")
     .description("Resolve a compiled runtime bundle into one adapter-ready JSON payload")
-    .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
+    .requiredOption("--bundle-root <path>", "Path to the compiled bundle directory")
     .requiredOption("--surface <id>", "Surface identifier")
     .option("--out <path>", "Write the prepared JSON payload to the provided file")
     .action(async (options) => {

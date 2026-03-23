@@ -70,7 +70,7 @@ program
   )
   .option(
     "--remote-url <url>",
-    "Augment validation with browser-observed target metrics from the provided URL",
+    "Augment validation with browser-observed target, flow, and async-state metrics from the provided URL",
   )
   .option(
     "--json",
@@ -324,7 +324,7 @@ program
 program
   .command("prepare-runtime")
   .description("Resolve a compiled runtime bundle into one adapter-ready JSON payload")
-  .requiredOption("--bundle-root <path>", "Path to the compiled generation bundle directory")
+  .requiredOption("--bundle-root <path>", "Path to the compiled bundle directory")
   .requiredOption("--surface <id>", "Surface identifier")
   .option("--out <path>", "Write the prepared JSON payload to the provided file")
   .action(async (options) => {

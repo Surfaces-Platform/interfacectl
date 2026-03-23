@@ -2,13 +2,13 @@
 
 ## Overview
 
-`interfacectl` is a command-line tool for managing interface contracts in the Surfaces ecosystem. It validates, compares, and enforces compliance between defined interface contracts and actual implementation artifacts across multiple surfaces.
+`interfacectl` is a command-line tool for managing interface contracts in the Surfaces ecosystem. It validates, compares, compiles, and enforces compliance between defined interface contracts and observed implementation artifacts across multiple surfaces.
 
 In an interactive terminal, running bare `interfacectl` with no arguments opens the first-run onboarding screen. In non-interactive contexts, bare `interfacectl` keeps the existing help output and exit behavior so scripts and CI remain stable.
 
 ## Generation-time gating
 
-`interfacectl validate` is the canonical command for contract compliance. Use it to gate changes before merge or deployment. For deterministic, category-based exit codes, use `--exit-codes v2` or set `INTERFACECTL_EXIT_CODES=v2`. The command `enforce --mode fail` runs a structural diff and applies a policy threshold. It is optional and useful when you want to block on diff severity separately from compliance. For the minimal contract format and where contract semantics live in the repo, see [docs/contract-baseline.md](docs/contract-baseline.md). For optional generator-facing authoring metadata, see [docs/authoring-contracts.md](docs/authoring-contracts.md).
+`interfacectl validate` is the canonical command for contract compliance. Use it to gate changes before merge or deployment. The same command can validate checked-out code only, or augment that result with browser observation through `--remote-url` for live target-acquisition, flow, and feedback-recovery checks. For deterministic, category-based exit codes, use `--exit-codes v2` or set `INTERFACECTL_EXIT_CODES=v2`. The command `enforce --mode fail` runs a structural diff and applies a policy threshold. It is optional and useful when you want to block on diff severity separately from compliance. For the minimal contract format and where contract semantics live in the repo, see [docs/contract-baseline.md](docs/contract-baseline.md). For optional generator-facing authoring metadata, see [docs/authoring-contracts.md](docs/authoring-contracts.md).
 
 Canonical docs for adjacent validation and generation workflows:
 
@@ -196,6 +196,8 @@ Performs comprehensive validation of surface implementations against an interfac
 - Contract structure validation against schema
 - Surface descriptor collection from codebase
 - Compliance checking for fonts, colors, icon sources, layout, motion, and sections
+- Authored flow, interactive-target, and async feedback/recovery validation from workspace descriptors
+- Optional browser observation via `--remote-url` for live target metrics, flow markers, and async-state / recovery markers
 - Generation of structured validation reports
 
 **Options:**
@@ -208,6 +210,7 @@ Performs comprehensive validation of surface implementations against an interfac
 | `--root <path>` | Project root directory | Current working directory or `SURFACES_ROOT` env var |
 | `--workspace-root <path>` | Workspace root directory (alias for `--root`) | Current working directory |
 | `--surface <id...>` | Limit validation to specified surface identifiers | All surfaces |
+| `--remote-url <url>` | Augment validation with browser-observed target, flow, and async-state metrics from the provided URL | none |
 | `--format <text\|json>` | Output format | `text` |
 | `--json` | Emit JSON output (shortcut for `--format json`) | `false` |
 | `--out <path>` | Write output to file instead of stdout | stdout |
@@ -232,6 +235,7 @@ Performs comprehensive validation of surface implementations against an interfac
 - `surface.unknown`: Surface ID not found in contract
 - `descriptor.missing`: Surface descriptor not found in codebase
 - `descriptor.unused`: Surface defined in contract but no descriptor found
+- `descriptor.flows.missing`: Contract-declared flow is not authored or discoverable in the checked-out surface
 - `section.missing`: Required section missing from surface
 - `section.unexpected`: Unknown section in surface
 - `font.disallowed`: Font not allowed by contract
@@ -242,6 +246,22 @@ Performs comprehensive validation of surface implementations against an interfac
 - `layout.container-missing`: Required container missing from layout
 - `motion.duration`: Motion duration not allowed by contract
 - `motion.timing`: Motion timing function not allowed by contract
+- `target.hit-area-too-small`: Browser-observed control is smaller than the contract minimum
+- `target.gap-too-tight`: Browser-observed controls are spaced too closely
+- `target.edge-inset-too-small`: Browser-observed control sits too close to the viewport edge
+- `target.destructive-too-close`: Browser-observed destructive control is too close to a non-destructive neighbor
+- `target.unobservable`: Runtime observation cannot deterministically measure the required control set
+- `flow.required.missing`: Required flow wrapper is missing
+- `flow.steps.min`: Observed flow does not meet the declared minimum step count
+- `flow.steps.required`: Required flow step marker is missing
+- `flow.transition.required`: Required flow transition marker is missing
+- `flow.terminal.invalid`: Terminal step still exposes an outgoing transition
+- `flow.unobservable`: Runtime observation cannot see the declared flow markers
+- `feedback.state-missing`: Required async state is missing or unmarked
+- `feedback.recovery-action-missing`: Required recovery affordance is missing from the observed async state
+- `feedback.pending-action-not-blocked`: Pending submit action remains interactive while work is in flight
+- `feedback.last-good-content-missing`: Required preserved content is missing from the failing async state
+- `feedback.unobservable`: Runtime observation cannot see the declared async-state markers
 
 **Output Format (JSON):**
 ```json
@@ -266,6 +286,8 @@ Performs comprehensive validation of surface implementations against an interfac
   ]
 }
 ```
+
+When `--remote-url` is supplied, the JSON shape is unchanged. The `findings` array may include browser-observed `target.*`, `flow.*`, and `feedback.*` codes alongside workspace-discovered findings.
 
 ---
 
@@ -530,7 +552,7 @@ Includes traceability fields.
 
 ### `compile`
 
-Produces a deterministic directory bundle from a contract for runtime consumption. The bundle is readable, composable, and diffable. This is a build artifact, not an enforcement engine.
+Produces a deterministic directory bundle from a contract for generation-time and runtime consumption. The bundle is readable, composable, and diffable. This is a build artifact, not an enforcement engine.
 
 **Synopsis:**
 ```bash
@@ -540,6 +562,7 @@ interfacectl compile --contract <path> --out <dir> [--schema <path>] [--format j
 **Description:**
 - Loads and validates the contract structure using the same validator as `validate`.
 - Writes a bundle directory at `--out` with stable key ordering and deterministic JSON.
+- Emits generation slices, runtime slices, and repair guidance keyed to canonical finding codes when the contract declares those capabilities.
 - Writes files atomically (temp then rename) where possible to avoid partial bundles.
 - Exits non-zero on invalid contract or write failure.
 
@@ -568,6 +591,7 @@ The output directory contains:
 | `surfaces/<surfaceId>/sections.json` | Surface-local section slices and anatomy references |
 | `surfaces/<surfaceId>/components.json` | Shared component catalog referenced by sections |
 | `surfaces/<surfaceId>/constraints.json` | Cross-cutting contract-authoritative constraints for the surface |
+| `surfaces/<surfaceId>/runtime.json` | Runtime-ready structure, contexts, policy severities, flow summaries, target-acquisition policy, and feedback-recovery policy |
 | `surfaces/<surfaceId>/repair-map.json` | Deterministic repair actions keyed by canonical finding codes |
 | `surfaces/<surfaceId>/authoring.json` | Optional authoring hints when the surface declares them |
 
@@ -600,6 +624,7 @@ interfacectl prepare-generation --bundle-root <dir> --surface <id> [--out <path>
 - Loads a compiled generation bundle and validates that the requested surface exists.
 - Resolves `generation.json`, `sections.json`, `components.json`, `constraints.json`, `repair-map.json`, optional `authoring.json`, and `contract/normalized.json`.
 - Emits one deterministic JSON document with summary text, checklist items, resolved generation guidance, sections, components, constraints, repairs, provenance, and source file paths.
+- The resolved `repairMap` may include canonical `flow.*`, `target.*`, and `feedback.*` finding codes when the compiled contract declares those policy families.
 - Uses evidence refs only; it does not inline extracted observation payloads.
 
 **Options:**
@@ -632,6 +657,50 @@ The generated JSON document includes:
 | `repairMap` | Deterministic repair actions keyed by canonical finding codes |
 | `authoring` | Optional authoring hints when present in the source bundle |
 | `evidenceRefs` | Evidence refs only; no inline extracted payloads |
+
+---
+
+### `prepare-runtime`
+
+Resolves one compiled surface bundle into a single, adapter-ready JSON payload for runtime consumers.
+
+**Synopsis:**
+```bash
+interfacectl prepare-runtime --bundle-root <dir> --surface <id> [--out <path>]
+```
+
+**Description:**
+- Loads a compiled bundle and validates that the requested surface includes `runtime.json`.
+- Resolves runtime structure, governance, mutation-envelope policy, contextual rules, target-acquisition policy, feedback-recovery policy, and flow summaries from the compiled bundle.
+- Emits one deterministic JSON document with runtime checklist items, bundle and contract provenance, source paths, and evidence refs.
+- Reuses the same canonical finding families that surface in `validate --remote-url`; consumer adapters may wrap the data, but they should not redefine rule meaning.
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--bundle-root <dir>` | Path to the compiled bundle directory (required) |
+| `--surface <id>` | Surface identifier to resolve from the bundle (required) |
+| `--out <path>` | Optional output file path. When provided, the command writes the JSON payload to disk and suppresses the full stdout payload |
+
+**Exit Codes:**
+- `0`: Prepared runtime payload written successfully
+- `10`: Invalid input, missing bundle files, missing `runtime.json`, unsupported bundle version, or unreadable compiled contract
+- `1`: Unexpected internal error
+
+**Output shape**
+
+The generated JSON document includes:
+
+| Field | Description |
+|-------|-------------|
+| `surface` | `{ surfaceId, displayName, type }` |
+| `bundle` | `{ root, version, manifestPath, sourcePaths }` |
+| `contract` | `{ id, version, normalizedPath }` |
+| `summary` | Human-readable runtime checklist including required sections, mutation mode, strict categories, contexts, target-acquisition thresholds, feedback-recovery requirements, and flow coverage |
+| `governance` | Resolved governance payload for the surface |
+| `runtime` | Resolved runtime structure, contexts, interaction policy, mutation envelope, and policy severities |
+| `evidenceRefs` | Evidence refs only; no inline extracted observation payloads |
 
 ---
 
@@ -965,6 +1034,7 @@ Enforcement policies define:
 - Structural validation of contract format
 - Surface descriptor discovery and parsing
 - Multi-surface compliance checking
+- Optional browser observation for target acquisition, task flows, and async feedback / recovery states
 
 ### Diff Generation
 - Structural comparison between contract and implementation
