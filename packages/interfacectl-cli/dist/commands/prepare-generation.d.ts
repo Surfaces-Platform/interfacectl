@@ -15,18 +15,6 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
     evidenceRefs: any[];
     authoring?: JsonRecord | undefined;
     runtime?: JsonRecord | undefined;
-    summary: {
-        text: string;
-        focusOrder: string[];
-        requiredSectionIds: string[];
-        prohibitedRoles: string[];
-        checklist: {
-            id: string;
-            label: string;
-            detail: string;
-        }[];
-        topRepairs: SummaryRepairItem[];
-    };
     generation: {
         boundary: JsonRecord;
         structure: JsonRecord;
@@ -42,6 +30,21 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
     components: any[];
     constraints: JsonRecord;
     repairMap: any[];
+    integration?: JsonRecord | undefined;
+    proposal?: JsonRecord | undefined;
+    lifecycle?: JsonRecord | undefined;
+    summary: {
+        text: string;
+        focusOrder: string[];
+        requiredSectionIds: string[];
+        prohibitedRoles: string[];
+        checklist: {
+            id: string;
+            label: string;
+            detail: string;
+        }[];
+        topRepairs: SummaryRepairItem[];
+    };
     ast?: {
         id: string;
         version: string;
@@ -64,6 +67,9 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
             components: string;
             constraints: string;
             repairMap: string;
+            integration?: string | undefined;
+            proposal?: string | undefined;
+            lifecycle?: string | undefined;
             platforms?: string | undefined;
             astSlice?: string | undefined;
             contract: string;
@@ -80,18 +86,6 @@ export declare function loadPreparedGenerationPayload(bundleRoot: string, surfac
     evidenceRefs: any[];
     authoring?: JsonRecord | undefined;
     runtime?: JsonRecord | undefined;
-    summary: {
-        text: string;
-        focusOrder: string[];
-        requiredSectionIds: string[];
-        prohibitedRoles: string[];
-        checklist: {
-            id: string;
-            label: string;
-            detail: string;
-        }[];
-        topRepairs: SummaryRepairItem[];
-    };
     generation: {
         boundary: JsonRecord;
         structure: JsonRecord;
@@ -107,6 +101,21 @@ export declare function loadPreparedGenerationPayload(bundleRoot: string, surfac
     components: any[];
     constraints: JsonRecord;
     repairMap: any[];
+    integration?: JsonRecord | undefined;
+    proposal?: JsonRecord | undefined;
+    lifecycle?: JsonRecord | undefined;
+    summary: {
+        text: string;
+        focusOrder: string[];
+        requiredSectionIds: string[];
+        prohibitedRoles: string[];
+        checklist: {
+            id: string;
+            label: string;
+            detail: string;
+        }[];
+        topRepairs: SummaryRepairItem[];
+    };
     ast?: {
         id: string;
         version: string;
@@ -129,6 +138,9 @@ export declare function loadPreparedGenerationPayload(bundleRoot: string, surfac
             components: string;
             constraints: string;
             repairMap: string;
+            integration?: string | undefined;
+            proposal?: string | undefined;
+            lifecycle?: string | undefined;
             platforms?: string | undefined;
             astSlice?: string | undefined;
             contract: string;

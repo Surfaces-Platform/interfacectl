@@ -106,7 +106,10 @@
     "components": "./components.json",
     "constraints": "./constraints.json",
     "contract": "../../derived/contract.normalized.json",
+    "integration": "./integration.json",
+    "lifecycle": "./lifecycle.json",
     "platforms": "./platforms.json",
+    "proposal": "./proposal.json",
     "repairMap": "./repair-map.json",
     "runtime": "./runtime.json",
     "sections": "./sections.json"

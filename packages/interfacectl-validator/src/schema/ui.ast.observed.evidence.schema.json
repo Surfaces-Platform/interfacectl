@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.observed.evidence.schema.json",
+  "title": "UiAstObservedEvidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "source",
+    "observedAt",
+    "ast",
+    "platform",
+    "observedNodeIds",
+    "observedActionIntents",
+    "observedStateIds",
+    "drift"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.observed.evidence.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.observed.evidence@1" },
+    "source": {
+      "type": "string",
+      "enum": ["browser-remote", "edge-runtime", "device-runtime", "server-renderer"]
+    },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "platform": { "type": "string", "enum": ["web", "ios", "android"] },
+    "observedNodeIds": { "type": "array", "items": { "type": "string" } },
+    "observedActionIntents": { "type": "array", "items": { "type": "string" } },
+    "observedStateIds": { "type": "array", "items": { "type": "string" } },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missingNodeIds",
+        "unexpectedNodeIds",
+        "missingActionIntents",
+        "unexpectedActionIntents",
+        "missingStateIds",
+        "unexpectedStateIds"
+      ],
+      "properties": {
+        "missingNodeIds": { "type": "array", "items": { "type": "string" } },
+        "unexpectedNodeIds": { "type": "array", "items": { "type": "string" } },
+        "missingActionIntents": { "type": "array", "items": { "type": "string" } },
+        "unexpectedActionIntents": { "type": "array", "items": { "type": "string" } },
+        "missingStateIds": { "type": "array", "items": { "type": "string" } },
+        "unexpectedStateIds": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

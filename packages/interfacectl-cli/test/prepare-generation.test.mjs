@@ -238,6 +238,9 @@ test("prepare-generation: emits resolved payload with summary, provenance, autho
     assert.equal(payload.bundle.sourcePaths.contract, path.join(bundleRoot, "derived", "contract.normalized.json"));
     assert.equal(payload.bundle.sourcePaths.astSlice, path.join(bundleRoot, "surfaces", "demo-surface", "ast.json"));
     assert.equal(payload.bundle.sourcePaths.platforms, path.join(bundleRoot, "surfaces", "demo-surface", "platforms.json"));
+    assert.equal(payload.bundle.sourcePaths.lifecycle, path.join(bundleRoot, "surfaces", "demo-surface", "lifecycle.json"));
+    assert.equal(payload.bundle.sourcePaths.proposal, path.join(bundleRoot, "surfaces", "demo-surface", "proposal.json"));
+    assert.equal(payload.bundle.sourcePaths.integration, path.join(bundleRoot, "surfaces", "demo-surface", "integration.json"));
     assert.equal(payload.bundle.sourcePaths.runtime, path.join(bundleRoot, "surfaces", "demo-surface", "runtime.json"));
     assert.equal(payload.contract.id, "prepare-demo");
     assert.equal(payload.contract.version, "1.0.0");
@@ -248,6 +251,12 @@ test("prepare-generation: emits resolved payload with summary, provenance, autho
     assert.equal(payload.summary.focusOrder[0], "boundary");
     assert.ok(payload.summary.text.includes("Focus on"), "summary should include human-readable text");
     assert.ok(Array.isArray(payload.summary.checklist));
+    assert.equal(payload.lifecycle.stage, "validated");
+    assert.equal(payload.proposal.adapter.requestSchemaId.endsWith("ui.ast.proposal.request.schema.json"), true);
+    assert.ok(
+      payload.integration.rendererBindings.some((binding) => binding.platform === "web"),
+      "integration contract should include web renderer bindings",
+    );
     assert.deepEqual(payload.generation.boundary.shellOwns, ["header", "footer"]);
     assert.equal(payload.generation.governance.owner, "designers@example.com");
     assert.equal(payload.generation.adaptation.mutationEnvelope.mode, "slot-bound");

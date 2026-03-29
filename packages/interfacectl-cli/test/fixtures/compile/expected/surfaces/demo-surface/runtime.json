@@ -34,6 +34,9 @@
     "components": "./components.json",
     "constraints": "./constraints.json",
     "contract": "../../derived/contract.normalized.json",
+    "integration": "./integration.json",
+    "lifecycle": "./lifecycle.json",
+    "observation": "./observation.json",
     "platforms": "./platforms.json",
     "repairMap": "./repair-map.json",
     "sections": "./sections.json"

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.promotion.schema.json",
+  "title": "UiAstPromotionRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "promotionId",
+    "promotedAt",
+    "ast",
+    "lifecycleStage",
+    "artifacts"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.promotion.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.promotion@1" },
+    "promotionId": { "type": "string", "minLength": 1 },
+    "promotedAt": { "type": "string", "format": "date-time" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "lifecycleStage": { "type": "string", "enum": ["published", "observed"] },
+    "sourceRunId": { "type": ["string", "null"] },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["astPath", "bundleRoot", "generationPayloadPath", "runtimePayloadPath"],
+      "properties": {
+        "astPath": { "type": "string", "minLength": 1 },
+        "bundleRoot": { "type": "string", "minLength": 1 },
+        "generationPayloadPath": { "type": "string", "minLength": 1 },
+        "runtimePayloadPath": { "type": "string", "minLength": 1 },
+        "integrationEvidencePath": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

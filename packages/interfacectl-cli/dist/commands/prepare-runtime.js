@@ -129,6 +129,15 @@ export function buildPreparedRuntimePayload(bundle) {
     const platformsDoc = bundle.surface.platforms
         ? asRecord(bundle.surface.platforms.value)
         : undefined;
+    const lifecycleDoc = bundle.surface.lifecycle
+        ? asRecord(bundle.surface.lifecycle.value)
+        : undefined;
+    const integrationDoc = bundle.surface.integration
+        ? asRecord(bundle.surface.integration.value)
+        : undefined;
+    const observationDoc = bundle.surface.observation
+        ? asRecord(bundle.surface.observation.value)
+        : undefined;
     return {
         surface: {
             surfaceId: asString(identity.surfaceId) ?? bundle.surface.id,
@@ -144,6 +153,9 @@ export function buildPreparedRuntimePayload(bundle) {
                 contract: bundle.contract.path,
                 ...(bundle.surface.ast ? { astSlice: bundle.surface.ast.path } : {}),
                 ...(bundle.surface.platforms ? { platforms: bundle.surface.platforms.path } : {}),
+                ...(bundle.surface.lifecycle ? { lifecycle: bundle.surface.lifecycle.path } : {}),
+                ...(bundle.surface.integration ? { integration: bundle.surface.integration.path } : {}),
+                ...(bundle.surface.observation ? { observation: bundle.surface.observation.path } : {}),
                 runtime: bundle.surface.runtime.path,
                 generation: bundle.surface.generation.path,
                 sections: bundle.surface.sections.path,
@@ -167,6 +179,15 @@ export function buildPreparedRuntimePayload(bundle) {
             }
             : {}),
         summary: buildSummary(bundle),
+        ...(lifecycleDoc && isRecord(lifecycleDoc.lifecycle)
+            ? { lifecycle: lifecycleDoc.lifecycle }
+            : {}),
+        ...(integrationDoc && isRecord(integrationDoc.integration)
+            ? { integration: integrationDoc.integration }
+            : {}),
+        ...(observationDoc && isRecord(observationDoc.observation)
+            ? { observation: observationDoc.observation }
+            : {}),
         governance: asRecord(runtimeDoc.governance),
         runtime: {
             ...(astDoc && isRecord(astDoc.ast) ? { ast: astDoc.ast } : {}),

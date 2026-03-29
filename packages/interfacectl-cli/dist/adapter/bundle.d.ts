@@ -24,12 +24,16 @@ export interface LoadedCompiledSurfaceBundle {
         dir: string;
         ast?: LoadedJsonFile;
         platforms?: LoadedJsonFile;
+        lifecycle?: LoadedJsonFile;
+        proposal?: LoadedJsonFile;
+        integration?: LoadedJsonFile;
         generation: LoadedJsonFile;
         sections: LoadedJsonFile;
         components: LoadedJsonFile;
         constraints: LoadedJsonFile;
         repairMap: LoadedJsonFile;
         runtime?: LoadedJsonFile;
+        observation?: LoadedJsonFile;
         authoring?: LoadedJsonFile;
     };
 }

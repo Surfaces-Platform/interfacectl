@@ -5,6 +5,15 @@ export interface PrepareRuntimeCommandOptions {
     outPath?: string;
 }
 export declare function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfaceBundle): {
+    governance: JsonRecord;
+    runtime: {
+        platforms?: any[] | undefined;
+        ast?: JsonRecord | undefined;
+    };
+    evidenceRefs: any[];
+    observation?: JsonRecord | undefined;
+    integration?: JsonRecord | undefined;
+    lifecycle?: JsonRecord | undefined;
     summary: {
         text: string;
         requiredSectionIds: string[];
@@ -17,12 +26,6 @@ export declare function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfac
             detail: string;
         }[];
     };
-    governance: JsonRecord;
-    runtime: {
-        platforms?: any[] | undefined;
-        ast?: JsonRecord | undefined;
-    };
-    evidenceRefs: any[];
     ast?: {
         id: string;
         version: string;
@@ -44,6 +47,9 @@ export declare function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfac
             components: string;
             constraints: string;
             repairMap: string;
+            observation?: string | undefined;
+            integration?: string | undefined;
+            lifecycle?: string | undefined;
             platforms?: string | undefined;
             astSlice?: string | undefined;
             contract: string;
@@ -57,6 +63,15 @@ export declare function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfac
     };
 };
 export declare function loadPreparedRuntimePayload(bundleRoot: string, surfaceId: string, cwd?: string): {
+    governance: JsonRecord;
+    runtime: {
+        platforms?: any[] | undefined;
+        ast?: JsonRecord | undefined;
+    };
+    evidenceRefs: any[];
+    observation?: JsonRecord | undefined;
+    integration?: JsonRecord | undefined;
+    lifecycle?: JsonRecord | undefined;
     summary: {
         text: string;
         requiredSectionIds: string[];
@@ -69,12 +84,6 @@ export declare function loadPreparedRuntimePayload(bundleRoot: string, surfaceId
             detail: string;
         }[];
     };
-    governance: JsonRecord;
-    runtime: {
-        platforms?: any[] | undefined;
-        ast?: JsonRecord | undefined;
-    };
-    evidenceRefs: any[];
     ast?: {
         id: string;
         version: string;
@@ -96,6 +105,9 @@ export declare function loadPreparedRuntimePayload(bundleRoot: string, surfaceId
             components: string;
             constraints: string;
             repairMap: string;
+            observation?: string | undefined;
+            integration?: string | undefined;
+            lifecycle?: string | undefined;
             platforms?: string | undefined;
             astSlice?: string | undefined;
             contract: string;

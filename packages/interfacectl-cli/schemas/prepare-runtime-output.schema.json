@@ -79,6 +79,18 @@
               "type": "string",
               "minLength": 1
             },
+            "lifecycle": {
+              "type": "string",
+              "minLength": 1
+            },
+            "integration": {
+              "type": "string",
+              "minLength": 1
+            },
+            "observation": {
+              "type": "string",
+              "minLength": 1
+            },
             "runtime": {
               "type": "string",
               "minLength": 1
@@ -209,6 +221,15 @@
           }
         }
       }
+    },
+    "lifecycle": {
+      "type": "object"
+    },
+    "integration": {
+      "type": "object"
+    },
+    "observation": {
+      "type": "object"
     },
     "governance": {
       "type": "object"

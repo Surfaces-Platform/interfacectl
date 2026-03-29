@@ -32,12 +32,16 @@ export interface LoadedCompiledSurfaceBundle {
     dir: string;
     ast?: LoadedJsonFile;
     platforms?: LoadedJsonFile;
+    lifecycle?: LoadedJsonFile;
+    proposal?: LoadedJsonFile;
+    integration?: LoadedJsonFile;
     generation: LoadedJsonFile;
     sections: LoadedJsonFile;
     components: LoadedJsonFile;
     constraints: LoadedJsonFile;
     repairMap: LoadedJsonFile;
     runtime?: LoadedJsonFile;
+    observation?: LoadedJsonFile;
     authoring?: LoadedJsonFile;
   };
 }
@@ -196,6 +200,51 @@ export function loadCompiledSurfaceBundle(
     };
   }
 
+  let lifecycle: LoadedJsonFile | undefined;
+  if (manifest.bundleVersion === "3.0") {
+    const lifecycleRef =
+      typeof refs.lifecycle === "string" && refs.lifecycle.trim().length > 0
+        ? refs.lifecycle
+        : "./lifecycle.json";
+    const lifecyclePath = path.resolve(path.dirname(generationPath), lifecycleRef);
+    if (fs.existsSync(lifecyclePath) && fs.statSync(lifecyclePath).isFile()) {
+      lifecycle = {
+        path: lifecyclePath,
+        value: readJsonFile(lifecyclePath, "Surface lifecycle bundle"),
+      };
+    }
+  }
+
+  let proposal: LoadedJsonFile | undefined;
+  if (manifest.bundleVersion === "3.0") {
+    const proposalRef =
+      typeof refs.proposal === "string" && refs.proposal.trim().length > 0
+        ? refs.proposal
+        : "./proposal.json";
+    const proposalPath = path.resolve(path.dirname(generationPath), proposalRef);
+    if (fs.existsSync(proposalPath) && fs.statSync(proposalPath).isFile()) {
+      proposal = {
+        path: proposalPath,
+        value: readJsonFile(proposalPath, "Surface proposal bundle"),
+      };
+    }
+  }
+
+  let integration: LoadedJsonFile | undefined;
+  if (manifest.bundleVersion === "3.0") {
+    const integrationRef =
+      typeof refs.integration === "string" && refs.integration.trim().length > 0
+        ? refs.integration
+        : "./integration.json";
+    const integrationPath = path.resolve(path.dirname(generationPath), integrationRef);
+    if (fs.existsSync(integrationPath) && fs.statSync(integrationPath).isFile()) {
+      integration = {
+        path: integrationPath,
+        value: readJsonFile(integrationPath, "Surface integration bundle"),
+      };
+    }
+  }
+
   let runtime: LoadedJsonFile | undefined;
   const runtimeRef =
     typeof refs.runtime === "string" && refs.runtime.trim().length > 0
@@ -207,6 +256,21 @@ export function loadCompiledSurfaceBundle(
       path: runtimePath,
       value: readJsonFile(runtimePath, "Runtime bundle"),
     };
+  }
+
+  let observation: LoadedJsonFile | undefined;
+  if (manifest.bundleVersion === "3.0") {
+    const observationRef =
+      typeof refs.observation === "string" && refs.observation.trim().length > 0
+        ? refs.observation
+        : "./observation.json";
+    const observationPath = path.resolve(path.dirname(generationPath), observationRef);
+    if (fs.existsSync(observationPath) && fs.statSync(observationPath).isFile()) {
+      observation = {
+        path: observationPath,
+        value: readJsonFile(observationPath, "Surface observation bundle"),
+      };
+    }
   }
 
   let surfaceAst: LoadedJsonFile | undefined;
@@ -269,12 +333,16 @@ export function loadCompiledSurfaceBundle(
       dir: surfaceDir,
       ...(surfaceAst ? { ast: surfaceAst } : {}),
       ...(platforms ? { platforms } : {}),
+      ...(lifecycle ? { lifecycle } : {}),
+      ...(proposal ? { proposal } : {}),
+      ...(integration ? { integration } : {}),
       generation,
       sections,
       components,
       constraints,
       repairMap,
       ...(runtime ? { runtime } : {}),
+      ...(observation ? { observation } : {}),
       ...(authoring ? { authoring } : {}),
     },
   };

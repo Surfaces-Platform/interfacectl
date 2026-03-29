@@ -84,6 +84,9 @@ test("compile: structure - required files exist and no extra files", async () =>
       "bundle must include derived/contract.normalized.json",
     );
     assert.ok(paths.includes("surfaces/demo-surface/ast.json"), "bundle must include ast.json");
+    assert.ok(paths.includes("surfaces/demo-surface/lifecycle.json"), "bundle must include lifecycle.json");
+    assert.ok(paths.includes("surfaces/demo-surface/proposal.json"), "bundle must include proposal.json");
+    assert.ok(paths.includes("surfaces/demo-surface/integration.json"), "bundle must include integration.json");
     assert.ok(paths.includes("surfaces/demo-surface/generation.json"), "bundle must include generation.json");
     assert.ok(paths.includes("surfaces/demo-surface/sections.json"), "bundle must include sections.json");
     assert.ok(paths.includes("surfaces/demo-surface/components.json"), "bundle must include components.json");
@@ -91,6 +94,7 @@ test("compile: structure - required files exist and no extra files", async () =>
     assert.ok(paths.includes("surfaces/demo-surface/platforms.json"), "bundle must include platforms.json");
     assert.ok(paths.includes("surfaces/demo-surface/repair-map.json"), "bundle must include repair-map.json");
     assert.ok(paths.includes("surfaces/demo-surface/runtime.json"), "bundle must include runtime.json");
+    assert.ok(paths.includes("surfaces/demo-surface/observation.json"), "bundle must include observation.json");
     assert.ok(!paths.includes("contract/normalized.json"), "legacy contract path must not be canonical");
     assert.ok(!paths.includes("surfaces/demo-surface/authoring.json"), "authoring.json should be omitted when authoring is absent");
 
@@ -117,7 +121,11 @@ test("compile: structure - required files exist and no extra files", async () =>
         "components.json",
         "constraints.json",
         "generation.json",
+        "integration.json",
+        "lifecycle.json",
+        "observation.json",
         "platforms.json",
+        "proposal.json",
         "repair-map.json",
         "runtime.json",
         "sections.json",

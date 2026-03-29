@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.review.schema.json",
+  "title": "UiAstReview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "ast", "review", "summary", "changes"],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.review.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.review@1" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "requiresHumanReview"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["accepted", "proposed", "rejected", "needs-human-review"]
+        },
+        "requiresHumanReview": { "type": "boolean" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changeCount",
+        "nodeChangeCount",
+        "stateChangeCount",
+        "governanceChangeCount",
+        "platformChangeCount"
+      ],
+      "properties": {
+        "changeCount": { "type": "integer", "minimum": 0 },
+        "nodeChangeCount": { "type": "integer", "minimum": 0 },
+        "stateChangeCount": { "type": "integer", "minimum": 0 },
+        "governanceChangeCount": { "type": "integer", "minimum": 0 },
+        "platformChangeCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind", "reviewHint"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "enum": ["added", "removed", "modified"] },
+          "before": {},
+          "after": {},
+          "surfaceId": { "type": "string" },
+          "nodeId": { "type": "string" },
+          "nodeKind": { "type": "string" },
+          "actionIntent": { "type": "string" },
+          "stateId": { "type": "string" },
+          "platforms": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["web", "ios", "android"] }
+          },
+          "reviewHint": {
+            "type": "string",
+            "enum": ["structural", "interaction", "state", "governance", "platform", "content"]
+          }
+        }
+      }
+    }
+  }
+}

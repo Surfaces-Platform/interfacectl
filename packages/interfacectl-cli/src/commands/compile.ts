@@ -1,6 +1,12 @@
 import path from "node:path";
 import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import {
+  buildUiAstIntegrationContract,
+  buildUiAstLifecycleRecord,
+  buildUiAstObservationContract,
+  buildUiAstProposalContract,
+} from "@surfaces/interfacectl-validator";
 import type {
   AuthoringSource,
   ContractComponent,
@@ -805,6 +811,9 @@ function buildGenerationPayload(
       contract: "../../derived/contract.normalized.json",
       astSlice: "./ast.json",
       platforms: "./platforms.json",
+      lifecycle: "./lifecycle.json",
+      proposal: "./proposal.json",
+      integration: "./integration.json",
       sections: "./sections.json",
       components: "./components.json",
       constraints: "./constraints.json",
@@ -831,6 +840,73 @@ function buildAuthoringPayload(
         (source: AuthoringSource) => source,
       ),
     },
+  };
+}
+
+function buildLifecyclePayload(
+  ast: UiSurfaceAst,
+  contract: InterfaceContract,
+  surface: ContractSurface,
+) {
+  return {
+    provenance: makeBundleProvenance(ast, contract, surface.id),
+    lifecycle: buildUiAstLifecycleRecord(ast, {
+      surfaceId: surface.id,
+      validationStatus: "passed",
+    }),
+  };
+}
+
+function buildProposalPayload(
+  ast: UiSurfaceAst,
+  contract: InterfaceContract,
+  surface: ContractSurface,
+  repairMapPayload: { repairs?: unknown[] },
+) {
+  const lifecycle = buildUiAstLifecycleRecord(ast, {
+    surfaceId: surface.id,
+    validationStatus: "passed",
+  });
+  return {
+    provenance: makeBundleProvenance(ast, contract, surface.id),
+    proposal: buildUiAstProposalContract(
+      ast,
+      {
+        lifecycle,
+        repairMap: repairMapPayload,
+      },
+      surface.id,
+    ),
+  };
+}
+
+function buildIntegrationPayload(
+  ast: UiSurfaceAst,
+  contract: InterfaceContract,
+  surface: ContractSurface,
+) {
+  const lifecycle = buildUiAstLifecycleRecord(ast, {
+    surfaceId: surface.id,
+    validationStatus: "passed",
+  });
+  return {
+    provenance: makeBundleProvenance(ast, contract, surface.id),
+    integration: buildUiAstIntegrationContract(ast, lifecycle, surface.id),
+  };
+}
+
+function buildObservationPayload(
+  ast: UiSurfaceAst,
+  contract: InterfaceContract,
+  surface: ContractSurface,
+) {
+  const lifecycle = buildUiAstLifecycleRecord(ast, {
+    surfaceId: surface.id,
+    validationStatus: "passed",
+  });
+  return {
+    provenance: makeBundleProvenance(ast, contract, surface.id),
+    observation: buildUiAstObservationContract(ast, lifecycle, surface.id),
   };
 }
 
@@ -1162,6 +1238,9 @@ function buildRuntimePayload(
       contract: "../../derived/contract.normalized.json",
       astSlice: "./ast.json",
       platforms: "./platforms.json",
+      lifecycle: "./lifecycle.json",
+      integration: "./integration.json",
+      observation: "./observation.json",
       sections: "./sections.json",
       components: "./components.json",
       constraints: "./constraints.json",
@@ -1181,13 +1260,17 @@ function buildSurfaceBundleFiles(
   const components = resolveSurfaceComponents(contract, sections);
   const astPayload = buildAstPayload(ast, contract, astSurface, surface);
   const platformsPayload = buildPlatformsPayload(ast, contract, astSurface, surface);
+  const lifecyclePayload = buildLifecyclePayload(ast, contract, surface);
   const constraintsPayload = buildConstraintsPayload(ast, contract, surface);
   const generationPayload = buildGenerationPayload(ast, contract, surface, sections, astSurface);
   const sectionsPayload = buildSectionsPayload(ast, contract, surface, sections);
   const componentsPayload = buildComponentsPayload(ast, contract, surface, components);
   const repairMapPayload = buildRepairMapPayload(ast, contract, surface, sections);
+  const proposalPayload = buildProposalPayload(ast, contract, surface, repairMapPayload);
+  const integrationPayload = buildIntegrationPayload(ast, contract, surface);
   const authoringPayload = buildAuthoringPayload(ast, contract, surface);
   const runtimePayload = buildRuntimePayload(ast, contract, surface, sections, components, astSurface);
+  const observationPayload = buildObservationPayload(ast, contract, surface);
 
   const files: BundleFile[] = [
     {
@@ -1197,6 +1280,18 @@ function buildSurfaceBundleFiles(
     {
       path: `${surfaceDir}/platforms.json`,
       content: stringifyDeterministic(platformsPayload),
+    },
+    {
+      path: `${surfaceDir}/lifecycle.json`,
+      content: stringifyDeterministic(lifecyclePayload),
+    },
+    {
+      path: `${surfaceDir}/proposal.json`,
+      content: stringifyDeterministic(proposalPayload),
+    },
+    {
+      path: `${surfaceDir}/integration.json`,
+      content: stringifyDeterministic(integrationPayload),
     },
     {
       path: `${surfaceDir}/generation.json`,
@@ -1221,6 +1316,10 @@ function buildSurfaceBundleFiles(
     {
       path: `${surfaceDir}/runtime.json`,
       content: stringifyDeterministic(runtimePayload),
+    },
+    {
+      path: `${surfaceDir}/observation.json`,
+      content: stringifyDeterministic(observationPayload),
     },
   ];
 

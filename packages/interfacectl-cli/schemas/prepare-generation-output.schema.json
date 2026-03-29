@@ -81,6 +81,18 @@
               "type": "string",
               "minLength": 1
             },
+            "lifecycle": {
+              "type": "string",
+              "minLength": 1
+            },
+            "proposal": {
+              "type": "string",
+              "minLength": 1
+            },
+            "integration": {
+              "type": "string",
+              "minLength": 1
+            },
             "generation": {
               "type": "string",
               "minLength": 1
@@ -237,6 +249,15 @@
           }
         }
       }
+    },
+    "lifecycle": {
+      "type": "object"
+    },
+    "proposal": {
+      "type": "object"
+    },
+    "integration": {
+      "type": "object"
     },
     "generation": {
       "type": "object",
