@@ -4,6 +4,7 @@ import bundledSchema from "./schema/web.surface.contract.schema.json" with {
     type: "json"
 };
 export { getBundledUiAstSchema, validateUiAstStructure, } from "./ui-ast.js";
+export { applyUiAstChange, deriveLegacyContractFromUiAst, diffUiAst, migrateLegacyContractToUiAst, normalizeUiAst, summarizeUiAst, } from "./ui-ast-authoring.js";
 import { normalizeColorValue } from "./color-policy.js";
 import { matchTokenPolicy } from "./token-policy.js";
 const frozenBundledSchema = Object.freeze(bundledSchema);

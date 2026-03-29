@@ -18,8 +18,6 @@ interface ResolveUiAstInputOptions {
     contractPath?: string;
     schemaPath?: string;
 }
-export declare function migrateLegacyContractToUiAst(contract: InterfaceContract): UiSurfaceAst;
-export declare function deriveLegacyContractFromUiAst(ast: UiSurfaceAst): InterfaceContract;
 export declare function resolveUiAstInput(options: ResolveUiAstInputOptions): Promise<ResolvedUiAstInput | ResolvedUiAstInputError>;
 export {};
 //# sourceMappingURL=ui-ast.d.ts.map

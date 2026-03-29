@@ -43,6 +43,19 @@ export {
   type UiAstTextRole,
   type UiSurfaceAst,
 } from "./ui-ast.js";
+export {
+  applyUiAstChange,
+  deriveLegacyContractFromUiAst,
+  diffUiAst,
+  migrateLegacyContractToUiAst,
+  normalizeUiAst,
+  summarizeUiAst,
+  type UiAstChange,
+  type UiAstChangeAction,
+  type UiAstDiffEntry,
+  type UiAstSummary,
+  type UiAstSurfaceSummary,
+} from "./ui-ast-authoring.js";
 import { normalizeColorValue } from "./color-policy.js";
 import { matchTokenPolicy, normalizeTokenLiteralValue } from "./token-policy.js";
 

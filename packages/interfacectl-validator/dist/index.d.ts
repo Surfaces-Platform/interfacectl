@@ -1,5 +1,6 @@
 import { InterfaceContract, SurfaceDescriptor, SurfaceReport, ValidationSummary } from "./types.js";
 export { getBundledUiAstSchema, validateUiAstStructure, type UiAstStructureValidation, type UiAstActionIntent, type UiAstAlertSeverity, type UiAstFieldType, type UiAstMigrationEscalation, type UiAstMigrationMetadata, type UiAstNode, type UiAstNodeKind, type UiAstPlatform, type UiAstPlatformProjection, type UiAstSelectionMode, type UiAstStateRef, type UiAstSurface, type UiAstSurfaceKind, type UiAstTextRole, type UiSurfaceAst, } from "./ui-ast.js";
+export { applyUiAstChange, deriveLegacyContractFromUiAst, diffUiAst, migrateLegacyContractToUiAst, normalizeUiAst, summarizeUiAst, type UiAstChange, type UiAstChangeAction, type UiAstDiffEntry, type UiAstSummary, type UiAstSurfaceSummary, } from "./ui-ast-authoring.js";
 export declare function getBundledContractSchema(): object;
 export interface ContractStructureValidation {
     ok: boolean;
