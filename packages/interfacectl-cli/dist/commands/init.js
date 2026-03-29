@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { getBundledContractSchema, validateContractStructure, } from "@surfaces/interfacectl-validator";
+import { getBundledContractSchema, getBundledUiAstSchema, deriveLegacyContractFromUiAst, migrateLegacyContractToUiAst, normalizeUiAst, validateContractStructure, validateUiAstStructure, } from "@surfaces/interfacectl-validator";
+import { runCompileCommand } from "./compile.js";
 import { runValidateCommand } from "./validate.js";
 import { runValidateExtractedCommand } from "./validate-extracted.js";
 import { getAuthStorageMode, inspectAuthProfile, saveReplayAuthProfile, } from "../utils/auth-profiles.js";
@@ -10,6 +11,7 @@ import { captureBrowserStorageState, observeRemotePage } from "../utils/browser-
 import { analyzeSurface, stringifyStableArtifact, } from "../utils/first-run-analysis.js";
 import { emitOnboardingRunArtifact, normalizeRemoteUrlInput, suggestSurfaceIdFromPath, suggestSurfaceIdFromUrl, suggestSurfaceName, } from "../utils/onboarding.js";
 import { inferSourceMode, normalizeSurfaceId, promptGateResolution, promptInteractiveInitInputs, promptSurfaceKindConfirmation, promptWriteConfirmation, } from "../utils/init-interactive.js";
+import { normalizeContract } from "../utils/normalize.js";
 import { redactSensitiveText } from "../utils/redaction.js";
 const DEFAULT_OUT_DIR = "contracts/generated";
 async function maybeCaptureAuthProfile(inputValue) {
@@ -92,8 +94,12 @@ function resolveArtifactPaths(rootDir, surfaceId, options) {
         outDir,
         analysisPath: resolvePath(options.analysisOut, `${surfaceId}.analysis.json`),
         draftPath: resolvePath(options.draftOut, `${surfaceId}.design-system.draft.json`),
+        astPath: resolvePath(options.astOut, `${surfaceId}.ui.surface.ast.json`),
         contractPath: resolvePath(options.contractOut, `${surfaceId}.contract.json`),
         reportPath: resolvePath(options.reportOut, `${surfaceId}.extraction.json`),
+        bundleRoot: options.bundleOutDir
+            ? path.resolve(rootDir, options.bundleOutDir)
+            : path.join(outDir, `${surfaceId}.bundle`),
     };
 }
 async function writeArtifact(filePath, payload) {
@@ -215,7 +221,10 @@ function rewritePreviewMessage(message, verbose = false) {
     }
     return message;
 }
-function logStage(step, total, message) {
+function logStage(step, total, message, enabled = true) {
+    if (!enabled) {
+        return;
+    }
     console.log(`[${step}/${total}] ${message}`);
 }
 function hasBlockingValidationError(validateResult, validateExtractedResult) {
@@ -261,7 +270,7 @@ async function validateTempArtifacts(input) {
     const validateExtractedPath = path.join(input.tempDir, "validate-extracted.json");
     await writeArtifact(analysisPath, input.analysisResult.analysis);
     await writeArtifact(draftPath, input.analysisResult.draft);
-    await writeArtifact(contractPath, input.analysisResult.contract);
+    await writeArtifact(contractPath, input.compatibilityContract);
     await writeArtifact(reportPath, input.analysisResult.extractionReport);
     const validateExitCode = await runValidateCommand({
         contractPath,
@@ -351,12 +360,12 @@ function printWriteSummary(input) {
     const { rootDir, resolved, artifacts, provisional, verbose, runId, storageMode, authProfileName, } = input;
     console.log("");
     console.log("Created");
-    console.log(`  - Created a first contract and draft design system for ${resolved.surfaceName}.`);
+    console.log(`  - Created a first UI AST bootstrap for ${resolved.surfaceName}.`);
     if (provisional) {
         console.log("  - Results are marked provisional because the source view was limited.");
     }
     console.log("Next");
-    console.log("  - Review the generated draft design system and contract.");
+    console.log("  - Review the generated UI AST, derived compatibility contract, and compiled bundle.");
     if (resolved.sourceMode === "local-root") {
         console.log("  - Connect the local app root in interfacectl.config.json for stronger repeatable validation.");
     }
@@ -365,16 +374,17 @@ function printWriteSummary(input) {
     }
     if (verbose) {
         console.log(`  - interfacectl validate-extracted --contract ${relativeDisplay(rootDir, artifacts.contractPath)} --extracted ${relativeDisplay(rootDir, artifacts.reportPath)} --surface ${resolved.surfaceId}`);
-        if (resolved.sourceMode === "local-root") {
-            console.log(`  - interfacectl validate --contract ${relativeDisplay(rootDir, artifacts.contractPath)} --surface ${resolved.surfaceId}`);
-        }
+        console.log(`  - interfacectl validate --ast ${relativeDisplay(rootDir, artifacts.astPath)} --surface ${resolved.surfaceId}`);
+        console.log(`  - interfacectl compile --ast ${relativeDisplay(rootDir, artifacts.astPath)} --out-dir ${relativeDisplay(rootDir, artifacts.bundleRoot)}`);
     }
     console.log("Artifacts");
     const displayPath = (filePath) => verbose ? filePath : relativeDisplay(rootDir, filePath);
     console.log(`  - analysis: ${displayPath(artifacts.analysisPath)}`);
     console.log(`  - draft: ${displayPath(artifacts.draftPath)}`);
-    console.log(`  - contract: ${displayPath(artifacts.contractPath)}`);
+    console.log(`  - ast: ${displayPath(artifacts.astPath)}`);
+    console.log(`  - compatibility contract: ${displayPath(artifacts.contractPath)}`);
     console.log(`  - report: ${displayPath(artifacts.reportPath)}`);
+    console.log(`  - bundle: ${displayPath(artifacts.bundleRoot)}`);
     if (verbose) {
         console.log("Technical details");
         console.log(`  - Run id: ${runId}`);
@@ -386,6 +396,24 @@ function printWriteSummary(input) {
             console.log(`  - Auth profile: ${authProfileName}`);
         }
     }
+}
+function buildInitJsonSummary(input) {
+    return {
+        state: "completed",
+        surfaceId: input.resolved.surfaceId,
+        surfaceName: input.resolved.surfaceName,
+        status: input.status,
+        runId: input.runId,
+        recommendedNextStep: "review-ui-ast",
+        artifacts: {
+            analysisPath: relativeDisplay(input.rootDir, input.artifacts.analysisPath),
+            draftPath: relativeDisplay(input.rootDir, input.artifacts.draftPath),
+            astPath: relativeDisplay(input.rootDir, input.artifacts.astPath),
+            compatibilityContractPath: relativeDisplay(input.rootDir, input.artifacts.contractPath),
+            extractionReportPath: relativeDisplay(input.rootDir, input.artifacts.reportPath),
+            bundleRoot: relativeDisplay(input.rootDir, input.artifacts.bundleRoot),
+        },
+    };
 }
 function gateFailureMessage(analysis) {
     if (analysis.sourceHealth.status === "access-denied") {
@@ -408,6 +436,10 @@ export async function runInitCommand(options) {
     const rootDir = process.cwd();
     const storageMode = getAuthStorageMode();
     try {
+        if (options.json === true && options.nonInteractive !== true) {
+            console.error("--json requires --non-interactive.");
+            return 1;
+        }
         let resolved = await resolveInputs(options);
         let pendingAuthCapture;
         while (true) {
@@ -415,7 +447,7 @@ export async function runInitCommand(options) {
             if (localRootValidation !== null) {
                 return localRootValidation;
             }
-            logStage(1, 6, "Discovering source");
+            logStage(1, 6, "Discovering source", options.json !== true);
             const authCapture = pendingAuthCapture ??
                 (resolved.sourceMode === "remote-url" && resolved.url
                     ? await maybeCaptureAuthProfile({
@@ -426,7 +458,7 @@ export async function runInitCommand(options) {
                     })
                     : { authMode: "none", storageState: undefined });
             pendingAuthCapture = undefined;
-            logStage(2, 6, "Checking access");
+            logStage(2, 6, "Checking access", options.json !== true);
             const remoteObservation = resolved.sourceMode === "remote-url" && resolved.url
                 ? await observeRemotePage({
                     url: resolved.url,
@@ -442,7 +474,7 @@ export async function runInitCommand(options) {
                     : `Authenticated replay still resolved to a login page at ${remoteObservation.sourceHealth.finalUrl}. Re-capture the auth profile and retry.`);
                 return 1;
             }
-            logStage(3, 6, "Analyzing surface kind and UI system");
+            logStage(3, 6, "Analyzing surface kind and UI system", options.json !== true);
             let analysisResult = await analyzeSurface({
                 workspaceRoot: rootDir,
                 surfaceId: resolved.surfaceId,
@@ -528,7 +560,17 @@ export async function runInitCommand(options) {
                 }
                 return 1;
             }
-            logStage(4, 6, "Validating generated outputs");
+            const astDraft = normalizeUiAst(migrateLegacyContractToUiAst(analysisResult.contract));
+            const astStructure = validateUiAstStructure(astDraft, getBundledUiAstSchema());
+            if (!astStructure.ok || !astStructure.ast) {
+                console.error("Generated UI AST failed schema validation:");
+                for (const issue of astStructure.errors) {
+                    console.error(`  ${issue}`);
+                }
+                return 1;
+            }
+            const compatibilityContract = normalizeContract(deriveLegacyContractFromUiAst(astStructure.ast)).contract;
+            logStage(4, 6, "Validating generated outputs", options.json !== true);
             const tempDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-preview-"));
             try {
                 const validation = await validateTempArtifacts({
@@ -536,6 +578,7 @@ export async function runInitCommand(options) {
                     rootDir,
                     surfaceId: resolved.surfaceId,
                     analysisResult,
+                    compatibilityContract,
                 });
                 const blockingValidationError = hasBlockingValidationError(validation.validateResult, validation.validateExtractedResult);
                 if (blockingValidationError) {
@@ -545,7 +588,7 @@ export async function runInitCommand(options) {
                     }
                     return 1;
                 }
-                logStage(5, 6, "Previewing generated draft");
+                logStage(5, 6, "Previewing generated draft", options.json !== true);
                 if (!options.nonInteractive) {
                     printPreviewSummary({
                         analysis: analysisResult.analysis,
@@ -560,12 +603,20 @@ export async function runInitCommand(options) {
                         return 0;
                     }
                 }
-                logStage(6, 6, "Writing onboarding artifacts");
+                logStage(6, 6, "Writing onboarding artifacts", options.json !== true);
                 const artifacts = resolveArtifactPaths(rootDir, resolved.surfaceId, options);
                 await writeArtifact(artifacts.analysisPath, analysisResult.analysis);
                 await writeArtifact(artifacts.draftPath, analysisResult.draft);
-                await writeArtifact(artifacts.contractPath, analysisResult.contract);
+                await writeArtifact(artifacts.astPath, astStructure.ast);
+                await writeArtifact(artifacts.contractPath, compatibilityContract);
                 await writeArtifact(artifacts.reportPath, analysisResult.extractionReport);
+                const compileExitCode = await runCompileCommand({
+                    astPath: artifacts.astPath,
+                    outDir: artifacts.bundleRoot,
+                }, options.toolVersion ?? "0.0.0");
+                if (compileExitCode !== 0) {
+                    return compileExitCode;
+                }
                 const findingCodes = collectFindingCodes(analysisResult.analysis, validation.validateResult, validation.validateExtractedResult);
                 const status = findingCodes.length > 0
                     ? "warn"
@@ -573,12 +624,22 @@ export async function runInitCommand(options) {
                 const run = await emitOnboardingRunArtifact({
                     rootDir,
                     surfaceId: resolved.surfaceId,
-                    source: "generation",
+                    source: "bootstrap",
                     status,
                     findingCodes,
                     extractionPath: artifacts.contractPath,
                     reportPath: artifacts.reportPath,
                 });
+                if (options.json) {
+                    console.log(JSON.stringify(buildInitJsonSummary({
+                        rootDir,
+                        resolved,
+                        artifacts,
+                        runId: run.runId,
+                        status,
+                    }), null, 2));
+                    return 0;
+                }
                 printWriteSummary({
                     rootDir,
                     resolved,
@@ -589,9 +650,7 @@ export async function runInitCommand(options) {
                     storageMode,
                     authProfileName: authCapture.profileName,
                 });
-                return validation.validateExitCode === 10 || validation.validateExtractedExitCode === 10
-                    ? 1
-                    : 0;
+                return 0;
             }
             finally {
                 await rm(tempDir, { recursive: true, force: true });

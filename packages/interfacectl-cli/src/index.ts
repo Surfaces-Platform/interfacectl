@@ -676,7 +676,7 @@ program
 
 program
   .command("init")
-  .description("Interactive onboarding for first-surface extraction")
+  .description("Interactive onboarding for the first governed-surface UI AST bootstrap")
   .option("--url <url>", "Surface URL for onboarding")
   .option("--surface <id>", "Surface identifier override")
   .option("--surface-name <name>", "Surface display name override")
@@ -685,13 +685,16 @@ program
   .option("--app-root <path>", "Local app root (required for local-root)")
   .option("--auth-profile <name>", "Replay or capture an auth profile for browser-session onboarding")
   .option("--non-interactive", "Run without prompts")
+  .option("--json", "Emit a machine-readable bootstrap summary")
   .option("--verbose", "Show technical onboarding detail")
   .option("--continue-on-gate", "Allow provisional output when remote onboarding resolves to a login or access-denied page")
   .option("--out-dir <path>", "Output directory for generated onboarding artifacts")
   .option("--analysis-out <path>", "Explicit output path for the analysis artifact")
   .option("--draft-out <path>", "Explicit output path for the design-system draft artifact")
-  .option("--contract-out <path>", "Explicit output path for the generated contract")
+  .option("--ast-out <path>", "Explicit output path for the canonical UI AST")
+  .option("--contract-out <path>", "Explicit output path for the derived compatibility contract")
   .option("--report-out <path>", "Explicit output path for the extraction report")
+  .option("--bundle-out-dir <path>", "Explicit output directory for the compiled bundle")
   .action(async (options) => {
     const extractMode =
       options.extractMode === "local-root"
@@ -708,13 +711,17 @@ program
       appRoot: options.appRoot,
       authProfile: options.authProfile,
       nonInteractive: options.nonInteractive === true,
+      json: options.json === true,
       verbose: options.verbose === true,
       continueOnGate: options.continueOnGate === true,
       outDir: options.outDir,
       analysisOut: options.analysisOut,
       draftOut: options.draftOut,
+      astOut: options.astOut,
       contractOut: options.contractOut,
       reportOut: options.reportOut,
+      bundleOutDir: options.bundleOutDir,
+      toolVersion: pkg.version ?? "0.0.0",
     });
     process.exitCode = exitCode;
   });
