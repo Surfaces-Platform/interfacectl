@@ -5,30 +5,15 @@ export interface PrepareRuntimeCommandOptions {
     outPath?: string;
 }
 export declare function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfaceBundle): {
-    surface: {
-        surfaceId: string;
-        displayName: string;
-        type: string;
+    governance: JsonRecord;
+    runtime: {
+        platforms?: any[] | undefined;
+        ast?: JsonRecord | undefined;
     };
-    bundle: {
-        root: string;
-        version: string;
-        manifestPath: string;
-        sourcePaths: {
-            contract: string;
-            runtime: string;
-            generation: string;
-            sections: string;
-            components: string;
-            constraints: string;
-            repairMap: string;
-        };
-    };
-    contract: {
-        id: string;
-        version: string;
-        normalizedPath: string;
-    };
+    evidenceRefs: any[];
+    observation?: JsonRecord | undefined;
+    integration?: JsonRecord | undefined;
+    lifecycle?: JsonRecord | undefined;
     summary: {
         text: string;
         requiredSectionIds: string[];
@@ -41,35 +26,52 @@ export declare function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfac
             detail: string;
         }[];
     };
-    governance: JsonRecord;
-    runtime: JsonRecord;
-    evidenceRefs: any[];
+    ast?: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    } | undefined;
+    surface: {
+        surfaceId: string;
+        displayName: string;
+        type: string;
+    };
+    bundle: {
+        root: string;
+        version: string;
+        manifestPath: string;
+        sourcePaths: {
+            runtime: string;
+            generation: string;
+            sections: string;
+            components: string;
+            constraints: string;
+            repairMap: string;
+            observation?: string | undefined;
+            integration?: string | undefined;
+            lifecycle?: string | undefined;
+            platforms?: string | undefined;
+            astSlice?: string | undefined;
+            contract: string;
+            ast?: string | undefined;
+        };
+    };
+    contract: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    };
 };
 export declare function loadPreparedRuntimePayload(bundleRoot: string, surfaceId: string, cwd?: string): {
-    surface: {
-        surfaceId: string;
-        displayName: string;
-        type: string;
+    governance: JsonRecord;
+    runtime: {
+        platforms?: any[] | undefined;
+        ast?: JsonRecord | undefined;
     };
-    bundle: {
-        root: string;
-        version: string;
-        manifestPath: string;
-        sourcePaths: {
-            contract: string;
-            runtime: string;
-            generation: string;
-            sections: string;
-            components: string;
-            constraints: string;
-            repairMap: string;
-        };
-    };
-    contract: {
-        id: string;
-        version: string;
-        normalizedPath: string;
-    };
+    evidenceRefs: any[];
+    observation?: JsonRecord | undefined;
+    integration?: JsonRecord | undefined;
+    lifecycle?: JsonRecord | undefined;
     summary: {
         text: string;
         requiredSectionIds: string[];
@@ -82,9 +84,41 @@ export declare function loadPreparedRuntimePayload(bundleRoot: string, surfaceId
             detail: string;
         }[];
     };
-    governance: JsonRecord;
-    runtime: JsonRecord;
-    evidenceRefs: any[];
+    ast?: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    } | undefined;
+    surface: {
+        surfaceId: string;
+        displayName: string;
+        type: string;
+    };
+    bundle: {
+        root: string;
+        version: string;
+        manifestPath: string;
+        sourcePaths: {
+            runtime: string;
+            generation: string;
+            sections: string;
+            components: string;
+            constraints: string;
+            repairMap: string;
+            observation?: string | undefined;
+            integration?: string | undefined;
+            lifecycle?: string | undefined;
+            platforms?: string | undefined;
+            astSlice?: string | undefined;
+            contract: string;
+            ast?: string | undefined;
+        };
+    };
+    contract: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    };
 };
 export declare function runPrepareRuntimeCommand(options: PrepareRuntimeCommandOptions): Promise<number>;
 //# sourceMappingURL=prepare-runtime.d.ts.map

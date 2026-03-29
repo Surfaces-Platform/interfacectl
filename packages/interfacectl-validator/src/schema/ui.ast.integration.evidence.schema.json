@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.integration.evidence.schema.json",
+  "title": "UiAstIntegrationEvidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "consumer",
+    "integratedAt",
+    "ast",
+    "platform",
+    "bundleVersion",
+    "projectionId",
+    "compatibilityChecks",
+    "exceptions",
+    "provenance"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.integration.evidence.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.integration.evidence@1" },
+    "consumer": { "type": "string", "minLength": 1 },
+    "integratedAt": { "type": "string", "format": "date-time" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "platform": { "type": "string", "enum": ["web", "ios", "android"] },
+    "bundleVersion": { "type": "string", "minLength": 1 },
+    "projectionId": { "type": "string", "enum": ["web", "ios", "android"] },
+    "compatibilityChecks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "status", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "status": { "type": "string", "enum": ["pass", "warn", "block"] },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "approvedBy"],
+        "properties": {
+          "code": { "type": "string" },
+          "approvedBy": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["embeddedFields"],
+      "properties": {
+        "embeddedFields": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,22 +1,14 @@
 import path from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import pc from "picocolors";
-import { validateContractStructure, evaluateContractCompliance, getBundledContractSchema, } from "@surfaces/interfacectl-validator";
+import { evaluateContractCompliance, } from "@surfaces/interfacectl-validator";
 import { collectSurfaceDescriptors, } from "../descriptors/static-analysis.js";
 import { observeRemotePage, } from "../utils/browser-session.js";
 import { getExitCodeVersion } from "../utils/exit-codes.js";
 import { classifyViolationType, getExitCodeForCategory, } from "../utils/violation-classifier.js";
+import { resolveUiAstInput } from "../utils/ui-ast.js";
 export async function runValidateCommand(options) {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
-    const contractInput = options.contractPath ?? "contracts/surfaces.web.contract.json";
-    const contractPath = path.isAbsolute(contractInput)
-        ? contractInput
-        : path.resolve(workspaceRoot, contractInput);
-    const schemaPath = options.schemaPath
-        ? path.isAbsolute(options.schemaPath)
-            ? options.schemaPath
-            : path.resolve(workspaceRoot, options.schemaPath)
-        : undefined;
     const outputFormat = options.outputFormat ?? "text";
     const isJson = outputFormat === "json";
     const outputPath = options.outputPath
@@ -33,6 +25,9 @@ export async function runValidateCommand(options) {
         capture: Boolean(outputPath) && !isJson,
         print: !isJson,
     });
+    let resultContractPath = options.astPath ??
+        options.contractPath ??
+        path.resolve(workspaceRoot, "contracts/ui.surface.ast.json");
     const findings = [];
     let surfaceRootMap = new Map();
     let flowDescriptorPathMap = new Map();
@@ -40,7 +35,7 @@ export async function runValidateCommand(options) {
     const exitCodeVersion = getExitCodeVersion({ exitCodes: options.exitCodes });
     const finalize = async (exitCode, contractVersion) => {
         if (isJson) {
-            const payload = buildJsonResult(contractPath, contractVersion ?? null, findings);
+            const payload = buildJsonResult(resultContractPath, contractVersion ?? null, findings);
             const serialized = `${JSON.stringify(payload, null, 2)}\n`;
             if (outputPath) {
                 await writeFileWithParents(outputPath, serialized);
@@ -58,24 +53,36 @@ export async function runValidateCommand(options) {
         }
         return exitCode;
     };
-    const contractSource = await loadJson(contractPath, "contract");
-    if (!contractSource.ok) {
-        const message = `Failed to read contract JSON: ${contractSource.error}`;
+    const resolvedInput = await resolveUiAstInput({
+        workspaceRoot,
+        astPath: options.astPath,
+        contractPath: options.contractPath,
+        schemaPath: options.schemaPath,
+    });
+    if ("error" in resolvedInput) {
+        const message = resolvedInput.error;
         if (!isJson) {
-            printHeader(pc.red("✖ Failed to read contract JSON"), textReporter);
-            textReporter.error(pc.red(contractSource.error));
+            printHeader(pc.red("✖ Failed to resolve UI AST input"), textReporter);
+            textReporter.error(pc.red(message));
         }
         findings.push({
-            code: "contract.read-error",
+            code: resolvedInput.code,
             severity: "error",
             category: "E0",
             message,
-            location: contractPath,
+            location: options.astPath ?? options.contractPath,
         });
         const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
         return finalize(e0ExitCode, null);
     }
-    const initialContractVersion = extractContractVersion(contractSource.value);
+    for (const warning of resolvedInput.warnings) {
+        if (!isJson) {
+            textReporter.warn(pc.yellow(warning));
+        }
+    }
+    const contractPath = resolvedInput.sourcePath;
+    resultContractPath = contractPath;
+    const initialContractVersion = resolvedInput.derivedContract.version;
     const configResult = await loadConfigFile(configPath);
     if (configResult.ok) {
         surfaceRootMap = new Map(Object.entries(configResult.config.surfaceRoots ?? {}).map(([surfaceId, surfaceRoot]) => [surfaceId, surfaceRoot]));
@@ -97,61 +104,7 @@ export async function runValidateCommand(options) {
         const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
         return finalize(e0ExitCode, initialContractVersion);
     }
-    const schemaSource = schemaPath
-        ? await loadJson(schemaPath, "schema", true)
-        : {
-            ok: true,
-            value: getBundledContractSchema(),
-        };
-    const schema = schemaSource.ok === true ? schemaSource.value : undefined;
-    if (schemaSource.ok === false && !schemaSource.optional) {
-        const message = `Failed to read contract schema: ${schemaSource.error}`;
-        if (!isJson) {
-            printHeader(pc.red("✖ Failed to read contract schema"), textReporter);
-            textReporter.error(pc.red(schemaSource.error));
-        }
-        findings.push({
-            code: "contract.schema-load-error",
-            severity: "error",
-            category: "E0",
-            message,
-            location: schemaPath,
-        });
-        const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
-        return finalize(e0ExitCode, initialContractVersion);
-    }
-    const structureResult = schema
-        ? validateContractStructure(contractSource.value, schema)
-        : {
-            ok: true,
-            errors: [],
-            contract: contractSource.value,
-        };
-    if (!structureResult.ok || !structureResult.contract) {
-        if (!isJson) {
-            printHeader(pc.red("✖ Contract schema validation failed (capability gap)"), textReporter);
-            textReporter.error(pc.dim("Schema validation errors indicate the contract structure is not supported by this version of interfacectl."));
-            for (const error of structureResult.errors) {
-                textReporter.error(pc.red(`  • ${error}`));
-            }
-        }
-        else {
-            for (const error of structureResult.errors) {
-                // Check if this is an additionalProperties error (capability gap)
-                const isCapabilityGap = error.includes("Additional property") ||
-                    error.includes("is not allowed");
-                findings.push({
-                    code: isCapabilityGap ? "contract.schema-unsupported-field" : "contract.schema-error",
-                    severity: "error",
-                    category: "E0",
-                    message: error,
-                });
-            }
-        }
-        const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
-        return finalize(e0ExitCode, initialContractVersion);
-    }
-    const contract = structureResult.contract;
+    const contract = resolvedInput.derivedContract;
     const surfaceFilters = new Set((options.surfaceFilters ?? []).map((value) => value.trim()));
     let descriptorsWithFlowArtifacts;
     if (options.descriptorOverrides && options.descriptorOverrides.length > 0) {

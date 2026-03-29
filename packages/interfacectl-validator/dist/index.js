@@ -3,6 +3,9 @@ import addFormats from "ajv-formats";
 import bundledSchema from "./schema/web.surface.contract.schema.json" with {
     type: "json"
 };
+export { getBundledUiAstSchema, validateUiAstStructure, } from "./ui-ast.js";
+export { applyUiAstChange, deriveLegacyContractFromUiAst, diffUiAst, migrateLegacyContractToUiAst, normalizeUiAst, summarizeUiAst, } from "./ui-ast-authoring.js";
+export { UI_AST_INTEGRATION_EVIDENCE_SCHEMA_URL, UI_AST_INTEGRATION_SCHEMA_URL, UI_AST_LIFECYCLE_SCHEMA_URL, UI_AST_OBSERVATION_SCHEMA_URL, UI_AST_OBSERVED_EVIDENCE_SCHEMA_URL, UI_AST_PROMOTION_SCHEMA_URL, UI_AST_PROPOSAL_REQUEST_SCHEMA_URL, UI_AST_PROPOSAL_RESPONSE_SCHEMA_URL, UI_AST_REVIEW_SCHEMA_URL, UI_AST_RUNTIME_VERDICT_SCHEMA_URL, buildUiAstIntegrationContract, buildUiAstIntegrationEvidence, buildUiAstLifecycleRecord, buildUiAstObservationContract, buildUiAstObservedEvidence, buildUiAstPromotionRecord, buildUiAstProposalContract, buildUiAstReviewArtifact, buildUiAstRuntimeVerdict, summarizeUiAstLifecycle, summarizeUiAstReview, } from "./ui-ast-control-plane.js";
 import { normalizeColorValue } from "./color-policy.js";
 import { matchTokenPolicy } from "./token-policy.js";
 const frozenBundledSchema = Object.freeze(bundledSchema);

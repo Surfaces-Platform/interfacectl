@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.integration.schema.json",
+  "title": "UiAstIntegrationContract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "ast",
+    "lifecycleStage",
+    "rendererBindings",
+    "compatibilityChecks",
+    "evidence"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.integration.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.integration@1" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "lifecycleStage": {
+      "type": "string",
+      "enum": ["draft", "validated", "approved", "published", "observed"]
+    },
+    "rendererBindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["platform", "nodeBindings", "requiredProvenanceFields"],
+        "properties": {
+          "platform": { "type": "string", "enum": ["web", "ios", "android"] },
+          "nodeBindings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["nodeKind", "primitiveFamily", "allowedDivergence"],
+              "properties": {
+                "nodeKind": { "type": "string" },
+                "primitiveFamily": { "type": "string" },
+                "allowedDivergence": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "requiredProvenanceFields": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "compatibilityChecks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "required", "description"],
+        "properties": {
+          "code": { "type": "string" },
+          "required": { "type": "boolean" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "requiredChecks"],
+      "properties": {
+        "schemaId": { "type": "string", "format": "uri" },
+        "requiredChecks": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

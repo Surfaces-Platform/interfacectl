@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.proposal.request.schema.json",
+  "title": "UiAstProposalRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["requestId", "surfaceId", "ast", "platform", "source", "proposal"],
+  "properties": {
+    "requestId": { "type": "string", "minLength": 1 },
+    "surfaceId": { "type": "string", "minLength": 1 },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "platform": { "type": "string", "enum": ["web", "ios", "android"] },
+    "source": { "type": "string", "minLength": 1 },
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeIdsStable", "actionIntentsNamed", "stateCoverage", "platformProjectionsExplicit"],
+      "properties": {
+        "nodeIdsStable": { "type": "boolean" },
+        "actionIntentsNamed": { "type": "boolean" },
+        "stateCoverage": { "type": "array", "items": { "type": "string" } },
+        "platformProjectionsExplicit": { "type": "boolean" }
+      }
+    }
+  }
+}

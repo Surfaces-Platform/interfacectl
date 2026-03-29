@@ -1,6 +1,6 @@
 # interfacectl
 
-Interface contract tooling for the Surfaces ecosystem. Validates, compares, compiles, and enforces compliance between defined interface contracts and observed implementation artifacts across checked-out surfaces and browser-observed runtime sessions.
+Governed UI AST tooling for the Surfaces ecosystem. `interfacectl` validates, compares, compiles, and enforces compliance between a semantic UI AST contract and observed implementation artifacts across checked-out surfaces and browser-observed runtime sessions.
 
 ## Planning
 
@@ -61,12 +61,18 @@ interfacectl init --url https://app.example.com --surface customer-app --auth-pr
 
 `interfacectl` replays the saved browser session in Chromium, analyzes the rendered authenticated page, and keeps auth state out of generated artifacts.
 
-For checked-out code and optional runtime observation, use `validate`:
+Compatibility note:
+
+- The canonical authored artifact is `contracts/ui.surface.ast.json`.
+- `--contract` remains supported only as a deprecated migration/compatibility input for legacy `web.surface.contract` JSON.
+- Use `interfacectl migrate-ui-ast --contract <legacy-path> --out contracts/ui.surface.ast.json` to move legacy inputs onto the canonical AST path.
+
+For checked-out code and optional runtime observation, use `validate` against the canonical UI AST:
 
 ```bash
-interfacectl validate --workspace-root . --contract ./contracts/surfaces.web.contract.json --format json --exit-codes v2
+interfacectl validate --workspace-root . --ast ./contracts/ui.surface.ast.json --format json --exit-codes v2
 
-interfacectl validate --workspace-root . --contract ./contracts/surfaces.web.contract.json \
+interfacectl validate --workspace-root . --ast ./contracts/ui.surface.ast.json \
   --surface customer-app \
   --remote-url https://app.example.com/dashboard \
   --format json \
@@ -159,12 +165,14 @@ interfacectl enforce [options]
 
 ### `compile`
 
-Compiles a validated interface contract into a deterministic generation-and-runtime bundle. The bundle includes a manifest, `contract/normalized.json`, and per-surface slices for downstream generators, runtime adapters, repair guidance, and workbench consumers.
+Compiles a validated UI AST into a deterministic generation-and-runtime bundle. The canonical bundle includes `ast/normalized.json`, per-surface AST/platform slices, and a derived contract compatibility file for downstream consumers that still need contract-shaped data.
+
+`--contract` remains available here only to import or bridge legacy inputs during migration. New consumers should compile from `--ast`.
 
 This command does **not** perform enforcement or runtime gating. It produces a stable artifact intended for inspection, tooling, or future runtime consumption.
 
 ```bash
-interfacectl compile --contract <path> --out <dir>
+interfacectl compile --ast <path> --out <dir>
 ```
 
 ### `prepare-generation`

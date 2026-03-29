@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.runtime.verdict.schema.json",
+  "title": "UiAstRuntimeVerdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "ast",
+    "platform",
+    "observedAt",
+    "source",
+    "verdict",
+    "code",
+    "policy",
+    "fallbackTaken",
+    "drift"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.runtime.verdict.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.runtime.verdict@1" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "platform": { "type": "string", "enum": ["web", "ios", "android"] },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "string",
+      "enum": ["browser-remote", "edge-runtime", "device-runtime", "server-renderer"]
+    },
+    "verdict": { "type": "string", "enum": ["allow", "warn", "block", "degrade"] },
+    "code": { "type": "string", "minLength": 1 },
+    "policy": { "type": "string", "enum": ["off", "warn", "strict"] },
+    "fallbackTaken": { "type": "string", "minLength": 1 },
+    "drift": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.observed.evidence.schema.json#/properties/drift"
+    }
+  }
+}

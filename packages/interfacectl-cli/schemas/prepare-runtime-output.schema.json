@@ -63,7 +63,31 @@
             "repairMap"
           ],
           "properties": {
+            "ast": {
+              "type": "string",
+              "minLength": 1
+            },
             "contract": {
+              "type": "string",
+              "minLength": 1
+            },
+            "astSlice": {
+              "type": "string",
+              "minLength": 1
+            },
+            "platforms": {
+              "type": "string",
+              "minLength": 1
+            },
+            "lifecycle": {
+              "type": "string",
+              "minLength": 1
+            },
+            "integration": {
+              "type": "string",
+              "minLength": 1
+            },
+            "observation": {
               "type": "string",
               "minLength": 1
             },
@@ -96,6 +120,25 @@
       }
     },
     "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "normalizedPath"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "normalizedPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ast": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "version", "normalizedPath"],
@@ -178,6 +221,15 @@
           }
         }
       }
+    },
+    "lifecycle": {
+      "type": "object"
+    },
+    "integration": {
+      "type": "object"
+    },
+    "observation": {
+      "type": "object"
     },
     "governance": {
       "type": "object"

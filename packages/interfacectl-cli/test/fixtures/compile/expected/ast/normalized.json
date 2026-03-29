@@ -1,0 +1,63 @@
+{
+  "$schema": "https://contracts.surfaces.local/ui.surface.ast.schema.json",
+  "astId": "demo-ui",
+  "color": {
+    "allowedValues": [],
+    "policy": "off"
+  },
+  "constraints": {
+    "motion": {
+      "allowedDurationsMs": [
+        120
+      ],
+      "allowedTimingFunctions": [
+        "linear"
+      ]
+    }
+  },
+  "migration": {
+    "escalations": [],
+    "sourceFormat": "web.surface.contract@1"
+  },
+  "surfaces": [
+    {
+      "displayName": "Demo Surface",
+      "id": "demo-surface",
+      "kind": "application",
+      "nodes": [
+        {
+          "children": [
+            "main.hero"
+          ],
+          "description": "Root group for Demo Surface.",
+          "id": "demo-surface.root",
+          "kind": "group",
+          "label": "Demo Surface"
+        },
+        {
+          "description": "Demo hero section",
+          "id": "main.hero",
+          "intent": "primary-intro",
+          "kind": "section",
+          "label": "primary-intro",
+          "sectionId": "main.hero"
+        }
+      ],
+      "platforms": [
+        {
+          "allowedFonts": [
+            "var(--font-demo)",
+            "Demo Sans",
+            "sans-serif"
+          ],
+          "layout": {
+            "maxContentWidth": 960
+          },
+          "platform": "web"
+        }
+      ],
+      "rootNodeId": "demo-surface.root"
+    }
+  ],
+  "version": "1.0.0"
+}

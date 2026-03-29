@@ -260,11 +260,17 @@ test("init: non-interactive remote-url writes first-run artifacts and run metada
     const draft = JSON.parse(
       await readFile(path.join(generatedDir, "customer-products.design-system.draft.json"), "utf-8"),
     );
+    const ast = JSON.parse(
+      await readFile(path.join(generatedDir, "customer-products.ui.surface.ast.json"), "utf-8"),
+    );
     const contract = JSON.parse(
       await readFile(path.join(generatedDir, "customer-products.contract.json"), "utf-8"),
     );
     const extraction = JSON.parse(
       await readFile(path.join(generatedDir, "customer-products.extraction.json"), "utf-8"),
+    );
+    const manifest = JSON.parse(
+      await readFile(path.join(generatedDir, "customer-products.bundle", "manifest.json"), "utf-8"),
     );
     const runs = JSON.parse(
       await readFile(path.join(generatedDir, "contract-runs.json"), "utf-8"),
@@ -275,20 +281,89 @@ test("init: non-interactive remote-url writes first-run artifacts and run metada
 
     assert.equal(analysis.classification.confirmedKind, "marketing");
     assert.equal(draft.webSurfaceKind, "marketing");
+    assert.equal(ast.surfaces[0].id, "customer-products");
     assert.equal(contract.surfaces[0].id, "customer-products");
     assert.equal(extraction.onboarding.extractMode, "remote-url");
     assert.equal(extraction.onboarding.authMode, "none");
     assert.equal(analysis.sourceHealth.status, "ok");
     assert.equal(extraction.sourceHealth.confidence, "full");
+    assert.equal(manifest.sourceFormat, "ui-ast");
+    assert.equal(manifest.bundleVersion, "3.0");
     const runsValidation = validateDiffOutput(runs, contractRunsSchema);
     assert.equal(runsValidation.ok, true, JSON.stringify(runsValidation.errors));
     const lineageValidation = validateDiffOutput(lineage, contractLineageSchema);
     assert.equal(lineageValidation.ok, true, JSON.stringify(lineageValidation.errors));
     assert.equal(runs.schemaVersion, 2);
-    assert.equal(runs.runs[0].source, "generation");
+    assert.equal(runs.runs[0].source, "bootstrap");
     assert.equal(runs.runs[0].workspaceId, "ws-local-default");
     assert.match(runs.runs[0].ingestedAt, /T/);
-    assert.equal(lineage.surfaces["customer-products"].lastSource, "generation");
+    assert.equal(lineage.surfaces["customer-products"].lastSource, "bootstrap");
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("init: --json emits AST-first bootstrap metadata", async () => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "interfacectl-init-json-"));
+  const server = createServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`
+      <!doctype html>
+      <html>
+        <body>
+          <main>
+            <section data-contract-section="app.settings">
+              <h1>Settings</h1>
+            </section>
+          </main>
+        </body>
+      </html>
+    `);
+  });
+  try {
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    await mkdir(path.join(cwd, "contracts"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "contracts", "surfaces.web.contract.json"),
+      JSON.stringify({
+        contractId: "test-contract",
+        version: "1.0.0",
+        surfaces: [],
+        sections: [],
+        constraints: {
+          motion: { allowedDurationsMs: [120], allowedTimingFunctions: ["linear"] },
+        },
+      }, null, 2),
+      "utf-8",
+    );
+
+    const result = await run(
+      [
+        "init",
+        "--non-interactive",
+        "--json",
+        "--url",
+        `http://127.0.0.1:${address.port}/settings`,
+        "--surface",
+        "settings-app",
+        "--surface-kind",
+        "application",
+      ],
+      { cwd, env: forceFileStorageEnv },
+    );
+    assert.equal(result.exitCode, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.state, "completed");
+    assert.equal(payload.surfaceId, "settings-app");
+    assert.equal(payload.recommendedNextStep, "review-ui-ast");
+    assert.match(payload.artifacts.astPath, /settings-app\.ui\.surface\.ast\.json$/);
+    assert.match(payload.artifacts.compatibilityContractPath, /settings-app\.contract\.json$/);
+    assert.match(payload.artifacts.bundleRoot, /settings-app\.bundle$/);
   } finally {
     server.closeAllConnections?.();
     server.close();

@@ -28,6 +28,7 @@ export interface EnforceCommandOptions {
   mode?: EnforcementMode;
   strict?: boolean;
   policyPath?: string;
+  astPath?: string;
   contractPath?: string;
   workspaceRoot?: string;
   surfaceFilters?: string[];
@@ -160,6 +161,7 @@ export async function runEnforceCommand(
   );
 
   const diffResult = await runDiffCommand({
+    astPath: options.astPath,
     contractPath: options.contractPath,
     workspaceRoot,
     surfaceFilters: options.surfaceFilters,

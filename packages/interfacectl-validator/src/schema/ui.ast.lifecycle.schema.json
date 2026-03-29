@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json",
+  "title": "UiAstLifecycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "ast",
+    "stage",
+    "governanceStatus",
+    "validation",
+    "approval",
+    "publication",
+    "observation"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.lifecycle@1" },
+    "ast": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["astId", "astVersion", "surfaceId"],
+      "properties": {
+        "astId": { "type": "string", "minLength": 1 },
+        "astVersion": { "type": "string", "minLength": 1 },
+        "surfaceId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["draft", "validated", "approved", "published", "observed"]
+    },
+    "governanceStatus": { "type": "string", "minLength": 1 },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pending", "passed", "failed"] },
+        "validatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "requiredRoles", "records"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "requiredRoles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["designer", "engineering", "product", "qa", "operations", "other"]
+          }
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "owner", "status"],
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": ["designer", "engineering", "product", "qa", "operations", "other"]
+              },
+              "owner": { "type": "string", "minLength": 1 },
+              "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+              "note": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pending", "published"] },
+        "publishedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pending", "observed"] },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "lastVerdict": { "type": "string", "enum": ["allow", "warn", "block", "degrade"] }
+      }
+    }
+  }
+}

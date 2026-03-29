@@ -236,11 +236,27 @@ test("prepare-runtime: emits resolved runtime payload with governance and enforc
     const payload = parseJsonFromOutput(result.stdout);
 
     assert.equal(payload.surface.surfaceId, "demo-surface");
+    assert.equal(payload.bundle.version, "3.0");
+    assert.equal(payload.bundle.sourcePaths.ast, path.join(bundleRoot, "ast", "normalized.json"));
+    assert.equal(payload.bundle.sourcePaths.contract, path.join(bundleRoot, "derived", "contract.normalized.json"));
+    assert.equal(payload.bundle.sourcePaths.astSlice, path.join(bundleRoot, "surfaces", "demo-surface", "ast.json"));
+    assert.equal(payload.bundle.sourcePaths.platforms, path.join(bundleRoot, "surfaces", "demo-surface", "platforms.json"));
+    assert.equal(payload.bundle.sourcePaths.lifecycle, path.join(bundleRoot, "surfaces", "demo-surface", "lifecycle.json"));
+    assert.equal(payload.bundle.sourcePaths.integration, path.join(bundleRoot, "surfaces", "demo-surface", "integration.json"));
+    assert.equal(payload.bundle.sourcePaths.observation, path.join(bundleRoot, "surfaces", "demo-surface", "observation.json"));
     assert.equal(payload.bundle.sourcePaths.runtime, path.join(bundleRoot, "surfaces", "demo-surface", "runtime.json"));
+    assert.equal(payload.contract.normalizedPath, path.join(bundleRoot, "derived", "contract.normalized.json"));
+    assert.equal(payload.ast.normalizedPath, path.join(bundleRoot, "ast", "normalized.json"));
     assert.equal(payload.summary.mutationMode, "slot-bound");
     assert.deepEqual(payload.summary.strictCategories, ["boundary", "runtime", "structure"]);
     assert.equal(payload.governance.owner, "designers@example.com");
     assert.equal(payload.governance.status, "published");
+    assert.equal(payload.lifecycle.stage, "published");
+    assert.ok(
+      payload.integration.rendererBindings.some((binding) => binding.platform === "web"),
+      "integration contract should include web bindings",
+    );
+    assert.equal(payload.observation.verdictSchemaId.endsWith("ui.ast.runtime.verdict.schema.json"), true);
     assert.equal(payload.runtime.policy, "strict");
     assert.deepEqual(payload.runtime.feedbackRecovery.requiredStateKinds, [
       "loading",

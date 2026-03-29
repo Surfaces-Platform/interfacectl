@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import pc from "picocolors";
 import pkg from "../../package.json" with { type: "json" };
-import { validateContractStructure, getBundledContractSchema, validateDiffOutput, } from "@surfaces/interfacectl-validator";
+import { validateDiffOutput, } from "@surfaces/interfacectl-validator";
 import { collectSurfaceDescriptors, } from "../descriptors/static-analysis.js";
 import { normalizeContract, normalizeDescriptor } from "../utils/normalize.js";
 import { compareContractToDescriptor, } from "../utils/compare.js";
@@ -12,6 +12,7 @@ import { getExitCodeVersion } from "../utils/exit-codes.js";
 import { getMaxSeverity } from "../utils/violation-classifier.js";
 import { applyPolicySeverityOverrides } from "../utils/apply-policy-severity.js";
 import { enrichDiffEntry } from "../utils/traceability.js";
+import { resolveUiAstInput } from "../utils/ui-ast.js";
 async function loadConfigFile(configPath) {
     try {
         const raw = await readFile(configPath, "utf-8");
@@ -219,15 +220,6 @@ function formatDiffText(output) {
 }
 export async function runDiffCommand(options) {
     const workspaceRoot = path.resolve(options.workspaceRoot ?? process.cwd());
-    const contractInput = options.contractPath ?? "contracts/surfaces.web.contract.json";
-    const contractPath = path.isAbsolute(contractInput)
-        ? contractInput
-        : path.resolve(workspaceRoot, contractInput);
-    const schemaPath = options.schemaPath
-        ? path.isAbsolute(options.schemaPath)
-            ? options.schemaPath
-            : path.resolve(workspaceRoot, options.schemaPath)
-        : undefined;
     const outputFormat = options.outputFormat ?? "text";
     const isJson = outputFormat === "json";
     const outputPath = options.outputPath
@@ -267,15 +259,19 @@ export async function runDiffCommand(options) {
         }
         return exitCode;
     };
-    // Load contract
-    const contractSource = await loadJson(contractPath, "contract");
-    if (!contractSource.ok) {
+    const resolvedInput = await resolveUiAstInput({
+        workspaceRoot,
+        astPath: options.astPath,
+        contractPath: options.contractPath,
+        schemaPath: options.schemaPath,
+    });
+    if ("error" in resolvedInput) {
         const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
         if (isJson) {
             const errorOutput = {
                 schemaVersion: "1.0.0",
                 tool: { name: "interfacectl", version: pkg.version ?? "0.0.0" },
-                contract: { path: contractPath, version: "unknown" },
+                contract: { path: options.astPath ?? options.contractPath ?? "unknown", version: "unknown" },
                 observed: { root: workspaceRoot },
                 normalization: { enabled: normalizeEnabled, reorderedPaths: [], strippedPaths: [] },
                 summary: {
@@ -288,46 +284,17 @@ export async function runDiffCommand(options) {
             await finalize(e0ExitCode, errorOutput);
         }
         else {
-            console.error(`Failed to read contract: ${contractSource.error}`);
+            console.error(resolvedInput.error);
         }
         return e0ExitCode;
     }
-    const initialContractVersion = extractContractVersion(contractSource.value);
-    // Validate contract structure
-    const schemaResult = schemaPath
-        ? await loadJson(schemaPath, "schema")
-        : { ok: false, error: "" };
-    const schema = schemaResult.ok
-        ? schemaResult.value
-        : getBundledContractSchema();
-    const structureResult = validateContractStructure(contractSource.value, schema);
-    if (!structureResult.ok || !structureResult.contract) {
-        const e0ExitCode = exitCodeVersion === "v2" ? 10 : 2;
-        if (isJson) {
-            const errorOutput = {
-                schemaVersion: "1.0.0",
-                tool: { name: "interfacectl", version: pkg.version ?? "0.0.0" },
-                contract: { path: contractPath, version: initialContractVersion ?? "unknown" },
-                observed: { root: workspaceRoot },
-                normalization: { enabled: normalizeEnabled, reorderedPaths: [], strippedPaths: [] },
-                summary: {
-                    totalChanges: 0,
-                    byType: { added: 0, removed: 0, modified: 0, renamed: 0 },
-                    bySeverity: { error: 0, warning: 0, info: 0 },
-                },
-                entries: [],
-            };
-            await finalize(e0ExitCode, errorOutput);
+    for (const warning of resolvedInput.warnings) {
+        if (!isJson) {
+            console.error(`Warning: ${warning}`);
         }
-        else {
-            console.error("Contract structure validation failed:");
-            for (const error of structureResult.errors) {
-                console.error(`  • ${error}`);
-            }
-        }
-        return e0ExitCode;
     }
-    const contract = structureResult.contract;
+    const contractPath = resolvedInput.sourcePath;
+    const contract = resolvedInput.derivedContract;
     // Load config
     const configResult = await loadConfigFile(configPath);
     const surfaceRootMap = new Map();

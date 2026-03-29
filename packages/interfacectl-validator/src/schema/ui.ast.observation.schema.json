@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.observation.schema.json",
+  "title": "UiAstObservationContract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "ast",
+    "lifecycleStage",
+    "mutationEnvelope",
+    "allowedActionIntents",
+    "requiredStateIds",
+    "allowedTransitions",
+    "fallbacks",
+    "evidence",
+    "verdictSchemaId"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.observation.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.observation@1" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "lifecycleStage": {
+      "type": "string",
+      "enum": ["draft", "validated", "approved", "published", "observed"]
+    },
+    "mutationEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "adaptableNodeIds", "immutableNodeIds"],
+      "properties": {
+        "mode": { "type": "string" },
+        "adaptableNodeIds": { "type": "array", "items": { "type": "string" } },
+        "immutableNodeIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "allowedActionIntents": { "type": "array", "items": { "type": "string" } },
+    "requiredStateIds": { "type": "array", "items": { "type": "string" } },
+    "allowedTransitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" }
+        }
+      }
+    },
+    "fallbacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["verdict", "action"],
+        "properties": {
+          "verdict": { "type": "string", "enum": ["allow", "warn", "block", "degrade"] },
+          "action": { "type": "string" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaId", "requiredNodeIds", "requiredActionIntents", "requiredStateIds", "requiredProvenanceFields"],
+      "properties": {
+        "schemaId": { "type": "string", "format": "uri" },
+        "requiredNodeIds": { "type": "array", "items": { "type": "string" } },
+        "requiredActionIntents": { "type": "array", "items": { "type": "string" } },
+        "requiredStateIds": { "type": "array", "items": { "type": "string" } },
+        "requiredProvenanceFields": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "verdictSchemaId": { "type": "string", "format": "uri" }
+  }
+}

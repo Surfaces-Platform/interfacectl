@@ -1,4 +1,4 @@
-export declare const SUPPORTED_BUNDLE_VERSION = "2.0";
+export declare const SUPPORTED_BUNDLE_VERSION = "3.0";
 export interface JsonRecord {
     [key: string]: unknown;
 }
@@ -17,16 +17,23 @@ export interface LoadedCompiledSurfaceBundle {
     contractId: string;
     contractVersion: string;
     manifest: LoadedJsonFile<BundleManifest>;
+    ast?: LoadedJsonFile;
     contract: LoadedJsonFile;
     surface: {
         id: string;
         dir: string;
+        ast?: LoadedJsonFile;
+        platforms?: LoadedJsonFile;
+        lifecycle?: LoadedJsonFile;
+        proposal?: LoadedJsonFile;
+        integration?: LoadedJsonFile;
         generation: LoadedJsonFile;
         sections: LoadedJsonFile;
         components: LoadedJsonFile;
         constraints: LoadedJsonFile;
         repairMap: LoadedJsonFile;
         runtime?: LoadedJsonFile;
+        observation?: LoadedJsonFile;
         authoring?: LoadedJsonFile;
     };
 }

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.surfaces.local/ui.ast.proposal.response.schema.json",
+  "title": "UiAstProposalResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "ast",
+    "lifecycleStage",
+    "adapter",
+    "invariants",
+    "provenance",
+    "verdicts",
+    "retryLoop",
+    "repairGuidance"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://contracts.surfaces.local/ui.ast.proposal.response.schema.json" },
+    "schemaVersion": { "type": "string", "const": "surfaces.ui.ast.proposal@1" },
+    "ast": {
+      "$ref": "https://contracts.surfaces.local/ui.ast.lifecycle.schema.json#/properties/ast"
+    },
+    "lifecycleStage": {
+      "type": "string",
+      "enum": ["draft", "validated", "approved", "published", "observed"]
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestSchemaId", "responseSchemaId"],
+      "properties": {
+        "requestSchemaId": { "type": "string", "format": "uri" },
+        "responseSchemaId": { "type": "string", "format": "uri" }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableNodeIds", "namedActionIntents", "requiredStateIds", "supportedPlatforms", "boundedVocabulary"],
+      "properties": {
+        "stableNodeIds": { "type": "string", "const": "required" },
+        "namedActionIntents": { "type": "string", "const": "required" },
+        "requiredStateIds": { "type": "array", "items": { "type": "string" } },
+        "supportedPlatforms": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["web", "ios", "android"] }
+        },
+        "boundedVocabulary": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requiredFields"],
+      "properties": {
+        "requiredFields": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "verdicts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "warn", "block"],
+      "properties": {
+        "pass": { "type": "string" },
+        "warn": { "type": "string" },
+        "block": { "type": "string" }
+      }
+    },
+    "retryLoop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guidanceSource", "deterministic"],
+      "properties": {
+        "guidanceSource": { "type": "string", "const": "repair-map" },
+        "deterministic": { "type": "boolean", "const": true }
+      }
+    },
+    "repairGuidance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "priority", "category", "actionType", "nextAction"],
+        "properties": {
+          "code": { "type": "string" },
+          "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+          "category": { "type": "string" },
+          "actionType": { "type": "string" },
+          "nextAction": { "type": "string" }
+        }
+      }
+    }
+  }
+}

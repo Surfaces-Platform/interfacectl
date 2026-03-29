@@ -5,6 +5,7 @@ export interface EnforceCommandOptions {
     mode?: EnforcementMode;
     strict?: boolean;
     policyPath?: string;
+    astPath?: string;
     contractPath?: string;
     workspaceRoot?: string;
     surfaceFilters?: string[];

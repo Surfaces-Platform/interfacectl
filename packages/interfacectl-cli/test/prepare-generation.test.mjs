@@ -232,16 +232,31 @@ test("prepare-generation: emits resolved payload with summary, provenance, autho
     const payload = JSON.parse(result.stdout);
 
     assert.equal(payload.surface.surfaceId, "demo-surface");
-    assert.equal(payload.bundle.version, "2.0");
+    assert.equal(payload.bundle.version, "3.0");
     assert.equal(payload.bundle.manifestPath, path.join(bundleRoot, "manifest.json"));
-    assert.equal(payload.bundle.sourcePaths.contract, path.join(bundleRoot, "contract", "normalized.json"));
+    assert.equal(payload.bundle.sourcePaths.ast, path.join(bundleRoot, "ast", "normalized.json"));
+    assert.equal(payload.bundle.sourcePaths.contract, path.join(bundleRoot, "derived", "contract.normalized.json"));
+    assert.equal(payload.bundle.sourcePaths.astSlice, path.join(bundleRoot, "surfaces", "demo-surface", "ast.json"));
+    assert.equal(payload.bundle.sourcePaths.platforms, path.join(bundleRoot, "surfaces", "demo-surface", "platforms.json"));
+    assert.equal(payload.bundle.sourcePaths.lifecycle, path.join(bundleRoot, "surfaces", "demo-surface", "lifecycle.json"));
+    assert.equal(payload.bundle.sourcePaths.proposal, path.join(bundleRoot, "surfaces", "demo-surface", "proposal.json"));
+    assert.equal(payload.bundle.sourcePaths.integration, path.join(bundleRoot, "surfaces", "demo-surface", "integration.json"));
     assert.equal(payload.bundle.sourcePaths.runtime, path.join(bundleRoot, "surfaces", "demo-surface", "runtime.json"));
     assert.equal(payload.contract.id, "prepare-demo");
     assert.equal(payload.contract.version, "1.0.0");
-    assert.equal(payload.contract.normalizedPath, path.join(bundleRoot, "contract", "normalized.json"));
+    assert.equal(payload.contract.normalizedPath, path.join(bundleRoot, "derived", "contract.normalized.json"));
+    assert.equal(payload.ast.id, "prepare-demo");
+    assert.equal(payload.ast.version, "1.0.0");
+    assert.equal(payload.ast.normalizedPath, path.join(bundleRoot, "ast", "normalized.json"));
     assert.equal(payload.summary.focusOrder[0], "boundary");
     assert.ok(payload.summary.text.includes("Focus on"), "summary should include human-readable text");
     assert.ok(Array.isArray(payload.summary.checklist));
+    assert.equal(payload.lifecycle.stage, "validated");
+    assert.equal(payload.proposal.adapter.requestSchemaId.endsWith("ui.ast.proposal.request.schema.json"), true);
+    assert.ok(
+      payload.integration.rendererBindings.some((binding) => binding.platform === "web"),
+      "integration contract should include web renderer bindings",
+    );
     assert.deepEqual(payload.generation.boundary.shellOwns, ["header", "footer"]);
     assert.equal(payload.generation.governance.owner, "designers@example.com");
     assert.equal(payload.generation.adaptation.mutationEnvelope.mode, "slot-bound");
@@ -313,6 +328,7 @@ test("prepare-generation: --out writes the payload file and suppresses stdout", 
     assert.equal(result.stdout, "");
     const written = JSON.parse(await fsp.readFile(outPath, "utf8"));
     assert.equal(written.surface.surfaceId, "demo-surface");
+    assert.equal(written.bundle.sourcePaths.ast, path.join(bundleRoot, "ast", "normalized.json"));
     assert.equal(written.bundle.sourcePaths.generation, path.join(bundleRoot, "surfaces", "demo-surface", "generation.json"));
     assert.equal(written.bundle.sourcePaths.runtime, path.join(bundleRoot, "surfaces", "demo-surface", "runtime.json"));
     const schemaValidation = validatePreparedGenerationOutput(written);
@@ -402,7 +418,7 @@ test("prepare-generation: rejects missing manifest, unsupported bundle versions,
     assert.match(missingSibling.stderr, /sections bundle file not found/i);
 
     await compileBundle(contractPath, bundleRoot, tempDir);
-    await fsp.writeFile(path.join(bundleRoot, "contract", "normalized.json"), "{invalid json", "utf8");
+    await fsp.writeFile(path.join(bundleRoot, "derived", "contract.normalized.json"), "{invalid json", "utf8");
     const unreadableContract = await runCli(
       ["prepare-generation", "--bundle-root", bundleRoot, "--surface", "demo-surface"],
       tempDir,

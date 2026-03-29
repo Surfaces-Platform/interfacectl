@@ -1,5 +1,6 @@
 export interface CompileCommandOptions {
-    contractPath: string;
+    astPath?: string;
+    contractPath?: string;
     outDir: string;
     schemaPath?: string;
     format?: "json";
