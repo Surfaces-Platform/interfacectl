@@ -1,6 +1,7 @@
 import { type ExitCodeVersion } from "../utils/exit-codes.js";
 type OutputFormat = "text" | "json";
 export interface DiffCommandOptions {
+    astPath?: string;
     contractPath?: string;
     schemaPath?: string;
     workspaceRoot?: string;

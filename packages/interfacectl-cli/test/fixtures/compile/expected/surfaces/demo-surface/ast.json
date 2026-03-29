@@ -1,0 +1,35 @@
+{
+  "ast": {
+    "kind": "application",
+    "migrationEscalations": [],
+    "nodes": [
+      {
+        "children": [
+          "main.hero"
+        ],
+        "description": "Root group for Demo Surface.",
+        "id": "demo-surface.root",
+        "kind": "group",
+        "label": "Demo Surface"
+      },
+      {
+        "description": "Demo hero section",
+        "id": "main.hero",
+        "intent": "primary-intro",
+        "kind": "section",
+        "label": "primary-intro",
+        "sectionId": "main.hero"
+      }
+    ],
+    "rootNodeId": "demo-surface.root",
+    "states": []
+  },
+  "provenance": {
+    "astId": "demo-ui",
+    "astVersion": "1.0.0",
+    "bundleVersion": "3.0",
+    "contractId": "demo-ui",
+    "contractVersion": "1.0.0",
+    "surfaceId": "demo-surface"
+  }
+}

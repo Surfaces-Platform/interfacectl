@@ -22,11 +22,11 @@ const fixtureDir = path.resolve(__dirname, "fixtures", "compile");
 const contractPath = path.join(fixtureDir, "contract", "ui.contract.json");
 const expectedDir = path.join(fixtureDir, "expected");
 
-async function runCompile(contract, outDir, schemaPath = undefined) {
+async function runCompile(inputPath, outDir, schemaPath = undefined, inputFlag = "--contract") {
   const args = [
     "compile",
-    "--contract",
-    contract,
+    inputFlag,
+    inputPath,
     "--out",
     outDir,
   ];
@@ -35,7 +35,7 @@ async function runCompile(contract, outDir, schemaPath = undefined) {
   }
   const child = spawn("node", [cliPath, ...args], {
     env: process.env,
-    cwd: path.dirname(contract),
+    cwd: path.dirname(inputPath),
   });
 
   let stdout = "";
@@ -67,20 +67,31 @@ test("compile: structure - required files exist and no extra files", async () =>
     assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
 
     const manifest = await readJson(path.join(outDir, "manifest.json"));
-    assert.equal(manifest.bundleVersion, "2.0");
+    assert.equal(manifest.bundleVersion, "3.0");
+    assert.equal(manifest.astId, "demo-ui");
+    assert.equal(manifest.astVersion, "1.0.0");
     assert.equal(manifest.contractId, "demo-ui");
     assert.equal(manifest.contractVersion, "1.0.0");
+    assert.equal(manifest.schemaVersion, "surfaces.ui.ast@2");
+    assert.equal(manifest.sourceFormat, "ui-ast");
     assert.ok(Array.isArray(manifest.files));
-    assert.ok(manifest.files.length >= 7);
+    assert.ok(manifest.files.length >= 10);
 
     const paths = manifest.files.map((f) => f.path);
-    assert.ok(paths.includes("contract/normalized.json"), "bundle must include contract/normalized.json");
+    assert.ok(paths.includes("ast/normalized.json"), "bundle must include ast/normalized.json");
+    assert.ok(
+      paths.includes("derived/contract.normalized.json"),
+      "bundle must include derived/contract.normalized.json",
+    );
+    assert.ok(paths.includes("surfaces/demo-surface/ast.json"), "bundle must include ast.json");
     assert.ok(paths.includes("surfaces/demo-surface/generation.json"), "bundle must include generation.json");
     assert.ok(paths.includes("surfaces/demo-surface/sections.json"), "bundle must include sections.json");
     assert.ok(paths.includes("surfaces/demo-surface/components.json"), "bundle must include components.json");
     assert.ok(paths.includes("surfaces/demo-surface/constraints.json"), "bundle must include constraints.json");
+    assert.ok(paths.includes("surfaces/demo-surface/platforms.json"), "bundle must include platforms.json");
     assert.ok(paths.includes("surfaces/demo-surface/repair-map.json"), "bundle must include repair-map.json");
     assert.ok(paths.includes("surfaces/demo-surface/runtime.json"), "bundle must include runtime.json");
+    assert.ok(!paths.includes("contract/normalized.json"), "legacy contract path must not be canonical");
     assert.ok(!paths.includes("surfaces/demo-surface/authoring.json"), "authoring.json should be omitted when authoring is absent");
 
     for (const entry of manifest.files) {
@@ -91,9 +102,9 @@ test("compile: structure - required files exist and no extra files", async () =>
     const sortedPaths = [...paths].sort();
     assert.deepEqual(paths, sortedPaths, "manifest.files must be sorted by path");
 
-    const contractNorm = path.join(outDir, "contract", "normalized.json");
+    const contractNorm = path.join(outDir, "derived", "contract.normalized.json");
     const contractStat = await stat(contractNorm);
-    assert.ok(contractStat.isFile(), "contract/normalized.json must be a file");
+    assert.ok(contractStat.isFile(), "derived/contract.normalized.json must be a file");
 
     const surfaceDir = path.join(outDir, "surfaces", "demo-surface");
     const surfaceDirStat = await stat(surfaceDir);
@@ -101,7 +112,16 @@ test("compile: structure - required files exist and no extra files", async () =>
     const surfaceFiles = await readdir(surfaceDir);
     assert.deepEqual(
       surfaceFiles.sort(),
-      ["components.json", "constraints.json", "generation.json", "repair-map.json", "runtime.json", "sections.json"],
+      [
+        "ast.json",
+        "components.json",
+        "constraints.json",
+        "generation.json",
+        "platforms.json",
+        "repair-map.json",
+        "runtime.json",
+        "sections.json",
+      ],
       "surface bundle should only include the expected generation files for the base fixture",
     );
   } finally {
@@ -138,11 +158,28 @@ test("compile: golden - generated generation bundle files match expected", async
     const result = await runCompile(contractPath, outDir);
     assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
 
-    const expectedContract = await readJson(path.join(expectedDir, "contract", "normalized.json"));
-    const generatedContract = await readJson(path.join(outDir, "contract", "normalized.json"));
-    assert.deepEqual(generatedContract, expectedContract, "contract/normalized.json must match expected");
+    const expectedAst = await readJson(path.join(expectedDir, "ast", "normalized.json"));
+    const generatedAst = await readJson(path.join(outDir, "ast", "normalized.json"));
+    assert.deepEqual(generatedAst, expectedAst, "ast/normalized.json must match expected");
 
-    for (const filename of ["generation.json", "sections.json", "components.json", "constraints.json", "repair-map.json", "runtime.json"]) {
+    const expectedContract = await readJson(path.join(expectedDir, "derived", "contract.normalized.json"));
+    const generatedContract = await readJson(path.join(outDir, "derived", "contract.normalized.json"));
+    assert.deepEqual(
+      generatedContract,
+      expectedContract,
+      "derived/contract.normalized.json must match expected",
+    );
+
+    for (const filename of [
+      "ast.json",
+      "generation.json",
+      "sections.json",
+      "components.json",
+      "constraints.json",
+      "platforms.json",
+      "repair-map.json",
+      "runtime.json",
+    ]) {
       const expected = await readJson(path.join(expectedDir, "surfaces", "demo-surface", filename));
       const generated = await readJson(path.join(outDir, "surfaces", "demo-surface", filename));
       assert.deepEqual(generated, expected, `${filename} must match expected`);
@@ -470,6 +507,92 @@ test("compile: includes component catalog refs, authoring hints, and observation
     assert.ok(
       repairMap.repairs.some((repair) => repair.action.type === "disable-pending-submit"),
       "repair map should include pending-action guidance",
+    );
+  } finally {
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("compile: AST input preserves multi-platform projections in bundle output", async () => {
+  const outDir = await mkdtemp(path.join(os.tmpdir(), "interfacectl-compile-ast-"));
+  const astPath = path.join(outDir, "ui.surface.ast.json");
+  try {
+    await writeFile(
+      astPath,
+      JSON.stringify(
+        {
+          astId: "multi-platform-demo",
+          version: "1.0.0",
+          constraints: {
+            motion: {
+              allowedDurationsMs: [120],
+              allowedTimingFunctions: ["linear"],
+            },
+          },
+          color: {
+            policy: "off",
+            allowedValues: [],
+          },
+          surfaces: [
+            {
+              id: "demo-surface",
+              displayName: "Demo Surface",
+              kind: "application",
+              rootNodeId: "demo-surface.root",
+              nodes: [
+                {
+                  id: "demo-surface.root",
+                  kind: "group",
+                  label: "Demo Surface",
+                  children: ["main.hero"],
+                },
+                {
+                  id: "main.hero",
+                  kind: "section",
+                  sectionId: "main.hero",
+                  label: "Primary Intro",
+                },
+              ],
+              platforms: [
+                {
+                  platform: "web",
+                  allowedFonts: ["Demo Sans", "sans-serif"],
+                  layout: {
+                    maxContentWidth: 960,
+                  },
+                },
+                {
+                  platform: "ios",
+                  path: "/demo",
+                  layout: {
+                    maxContentWidth: 960,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const result = await runCompile(astPath, outDir, undefined, "--ast");
+    assert.equal(result.exitCode, 0, `compile should exit 0: ${result.stderr}`);
+
+    const manifest = await readJson(path.join(outDir, "manifest.json"));
+    assert.equal(manifest.bundleVersion, "3.0");
+
+    const generation = await readJson(path.join(outDir, "surfaces", "demo-surface", "generation.json"));
+    assert.deepEqual(generation.ast.platformIds, ["web", "ios"]);
+    assert.equal(generation.refs.platforms, "./platforms.json");
+
+    const platforms = await readJson(path.join(outDir, "surfaces", "demo-surface", "platforms.json"));
+    assert.deepEqual(
+      platforms.platforms.map((projection) => projection.platform),
+      ["web", "ios"],
+      "platform bundle must preserve both projections deterministically",
     );
   } finally {
     await rm(outDir, { recursive: true, force: true });

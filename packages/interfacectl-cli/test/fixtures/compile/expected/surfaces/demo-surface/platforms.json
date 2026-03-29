@@ -1,0 +1,23 @@
+{
+  "platforms": [
+    {
+      "allowedFonts": [
+        "var(--font-demo)",
+        "Demo Sans",
+        "sans-serif"
+      ],
+      "layout": {
+        "maxContentWidth": 960
+      },
+      "platform": "web"
+    }
+  ],
+  "provenance": {
+    "astId": "demo-ui",
+    "astVersion": "1.0.0",
+    "bundleVersion": "3.0",
+    "contractId": "demo-ui",
+    "contractVersion": "1.0.0",
+    "surfaceId": "demo-surface"
+  }
+}

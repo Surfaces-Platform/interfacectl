@@ -221,6 +221,12 @@ export function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBund
   const runtimeDoc = bundle.surface.runtime
     ? asRecord(bundle.surface.runtime.value)
     : undefined;
+  const astDoc = bundle.surface.ast
+    ? asRecord(bundle.surface.ast.value)
+    : undefined;
+  const platformsDoc = bundle.surface.platforms
+    ? asRecord(bundle.surface.platforms.value)
+    : undefined;
   const authoringDoc = bundle.surface.authoring
     ? asRecord(bundle.surface.authoring.value)
     : undefined;
@@ -236,7 +242,10 @@ export function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBund
       version: bundle.version,
       manifestPath: bundle.manifest.path,
       sourcePaths: {
+        ...(bundle.ast ? { ast: bundle.ast.path } : {}),
         contract: bundle.contract.path,
+        ...(bundle.surface.ast ? { astSlice: bundle.surface.ast.path } : {}),
+        ...(bundle.surface.platforms ? { platforms: bundle.surface.platforms.path } : {}),
         generation: bundle.surface.generation.path,
         sections: bundle.surface.sections.path,
         components: bundle.surface.components.path,
@@ -251,8 +260,21 @@ export function buildPreparedGenerationPayload(bundle: LoadedCompiledSurfaceBund
       version: bundle.contractVersion,
       normalizedPath: bundle.contract.path,
     },
+    ...(bundle.ast
+      ? {
+          ast: {
+            id: asString(asRecord(bundle.ast.value).astId) ?? bundle.contractId,
+            version: asString(asRecord(bundle.ast.value).version) ?? bundle.contractVersion,
+            normalizedPath: bundle.ast.path,
+          },
+        }
+      : {}),
     summary: buildSummary(bundle),
     generation: {
+      ...(astDoc && isRecord(astDoc.ast) ? { ast: astDoc.ast } : {}),
+      ...(platformsDoc && Array.isArray(platformsDoc.platforms)
+        ? { platforms: platformsDoc.platforms }
+        : {}),
       boundary: asRecord(generation.boundary),
       structure: asRecord(generation.structure),
       layout: asRecord(generation.layout),

@@ -12,6 +12,14 @@
     },
     "policy": "strict"
   },
+  "ast": {
+    "nodeCount": 2,
+    "platformIds": [
+      "web"
+    ],
+    "rootNodeId": "demo-surface.root",
+    "stateCount": 0
+  },
   "boundary": {
     "allowSources": [],
     "contentSlot": null,
@@ -85,15 +93,20 @@
     "viewportIds": []
   },
   "provenance": {
-    "bundleVersion": "2.0",
+    "astId": "demo-ui",
+    "astVersion": "1.0.0",
+    "bundleVersion": "3.0",
     "contractId": "demo-ui",
     "contractVersion": "1.0.0",
     "surfaceId": "demo-surface"
   },
   "refs": {
+    "ast": "../../ast/normalized.json",
+    "astSlice": "./ast.json",
     "components": "./components.json",
     "constraints": "./constraints.json",
-    "contract": "../../contract/normalized.json",
+    "contract": "../../derived/contract.normalized.json",
+    "platforms": "./platforms.json",
     "repairMap": "./repair-map.json",
     "runtime": "./runtime.json",
     "sections": "./sections.json"

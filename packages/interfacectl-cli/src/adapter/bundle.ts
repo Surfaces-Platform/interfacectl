@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const SUPPORTED_BUNDLE_VERSION = "2.0";
+export const SUPPORTED_BUNDLE_VERSION = "3.0";
+const SUPPORTED_BUNDLE_VERSIONS = new Set(["2.0", "3.0"]);
 
 export interface JsonRecord {
   [key: string]: unknown;
@@ -24,10 +25,13 @@ export interface LoadedCompiledSurfaceBundle {
   contractId: string;
   contractVersion: string;
   manifest: LoadedJsonFile<BundleManifest>;
+  ast?: LoadedJsonFile;
   contract: LoadedJsonFile;
   surface: {
     id: string;
     dir: string;
+    ast?: LoadedJsonFile;
+    platforms?: LoadedJsonFile;
     generation: LoadedJsonFile;
     sections: LoadedJsonFile;
     components: LoadedJsonFile;
@@ -108,9 +112,9 @@ export function loadCompiledSurfaceBundle(
   const manifestPath = path.join(bundleRoot, "manifest.json");
   ensureReadableFile(manifestPath, "Bundle manifest");
   const manifest = readJsonFile<BundleManifest>(manifestPath, "bundle manifest");
-  if (manifest.bundleVersion !== SUPPORTED_BUNDLE_VERSION) {
+  if (!SUPPORTED_BUNDLE_VERSIONS.has(manifest.bundleVersion ?? "")) {
     throw new AdapterInputError(
-      `Unsupported bundle version "${manifest.bundleVersion ?? "unknown"}". Expected ${SUPPORTED_BUNDLE_VERSION}.`,
+      `Unsupported bundle version "${manifest.bundleVersion ?? "unknown"}". Expected one of ${[...SUPPORTED_BUNDLE_VERSIONS].join(", ")}.`,
       { code: "adapter.bundle.version-unsupported" },
     );
   }
@@ -156,10 +160,25 @@ export function loadCompiledSurfaceBundle(
   };
 
   const refs = isRecord(generation.value.refs) ? generation.value.refs : {};
+  let ast: LoadedJsonFile | undefined;
+  if (manifest.bundleVersion === "3.0") {
+    const astRef =
+      typeof refs.ast === "string" && refs.ast.trim().length > 0
+        ? refs.ast
+        : "../../ast/normalized.json";
+    const astPath = path.resolve(path.dirname(generationPath), astRef);
+    ensureReadableFile(astPath, "Compiled UI AST");
+    ast = {
+      path: astPath,
+      value: readJsonFile(astPath, "Compiled UI AST"),
+    };
+  }
   const contractRef =
     typeof refs.contract === "string" && refs.contract.trim().length > 0
       ? refs.contract
-      : "../../contract/normalized.json";
+      : manifest.bundleVersion === "3.0"
+        ? "../../derived/contract.normalized.json"
+        : "../../contract/normalized.json";
   const contractPath = path.resolve(path.dirname(generationPath), contractRef);
   ensureReadableFile(contractPath, "Compiled contract");
   const contract = {
@@ -190,6 +209,34 @@ export function loadCompiledSurfaceBundle(
     };
   }
 
+  let surfaceAst: LoadedJsonFile | undefined;
+  if (manifest.bundleVersion === "3.0") {
+    const astSliceRef =
+      typeof refs.astSlice === "string" && refs.astSlice.trim().length > 0
+        ? refs.astSlice
+        : "./ast.json";
+    const astSlicePath = path.resolve(path.dirname(generationPath), astSliceRef);
+    ensureReadableFile(astSlicePath, "Surface AST bundle");
+    surfaceAst = {
+      path: astSlicePath,
+      value: readJsonFile(astSlicePath, "Surface AST bundle"),
+    };
+  }
+
+  let platforms: LoadedJsonFile | undefined;
+  if (manifest.bundleVersion === "3.0") {
+    const platformsRef =
+      typeof refs.platforms === "string" && refs.platforms.trim().length > 0
+        ? refs.platforms
+        : "./platforms.json";
+    const platformsPath = path.resolve(path.dirname(generationPath), platformsRef);
+    ensureReadableFile(platformsPath, "Surface platform bundle");
+    platforms = {
+      path: platformsPath,
+      value: readJsonFile(platformsPath, "Surface platform bundle"),
+    };
+  }
+
   const generationProvenance = isRecord(generation.value.provenance)
     ? generation.value.provenance
     : undefined;
@@ -208,17 +255,20 @@ export function loadCompiledSurfaceBundle(
 
   return {
     root: bundleRoot,
-    version: SUPPORTED_BUNDLE_VERSION,
+    version: manifest.bundleVersion ?? SUPPORTED_BUNDLE_VERSION,
     contractId,
     contractVersion,
     manifest: {
       path: manifestPath,
       value: manifest,
     },
+    ...(ast ? { ast } : {}),
     contract,
     surface: {
       id: surfaceId,
       dir: surfaceDir,
+      ...(surfaceAst ? { ast: surfaceAst } : {}),
+      ...(platforms ? { platforms } : {}),
       generation,
       sections,
       components,

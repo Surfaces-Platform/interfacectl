@@ -11,16 +11,15 @@ import type {
   InterfaceContract,
   SurfaceRuntimeContextRule,
   TargetAcquisitionPolicy,
-} from "@surfaces/interfacectl-validator";
-import {
-  validateContractStructure,
-  getBundledContractSchema,
+  UiAstSurface,
+  UiSurfaceAst,
 } from "@surfaces/interfacectl-validator";
 import { normalizeContract } from "../utils/normalize.js";
+import { resolveUiAstInput } from "../utils/ui-ast.js";
 
-const BUNDLE_VERSION = "2.0";
+const BUNDLE_VERSION = "3.0";
 
-const SCHEMA_VERSION = "surfaces.web.contract@1";
+const SCHEMA_VERSION = "surfaces.ui.ast@2";
 const DEFAULT_TARGET_ACQUISITION_MODALITY = "touch-mouse";
 const DEFAULT_MIN_HIT_AREA_PX = 44;
 const DEFAULT_MIN_GAP_PX = 8;
@@ -29,7 +28,8 @@ const DEFAULT_DESTRUCTIVE_GAP_PX = 16;
 const DEFAULT_FEEDBACK_REQUIRED_STATE_KINDS = ["loading", "empty", "error"];
 
 export interface CompileCommandOptions {
-  contractPath: string;
+  astPath?: string;
+  contractPath?: string;
   outDir: string;
   schemaPath?: string;
   format?: "json";
@@ -47,15 +47,20 @@ interface ManifestFileEntry {
 
 interface Manifest {
   bundleVersion: string;
+  astId: string;
+  astVersion: string;
   contractId: string;
   contractVersion: string;
   schemaVersion: string;
+  sourceFormat: "ui-ast";
   tool: { name: string; version: string };
   inputs: ManifestInputs;
   files: ManifestFileEntry[];
 }
 
 interface BundleProvenance {
+  astId: string;
+  astVersion: string;
   contractId: string;
   contractVersion: string;
   bundleVersion: string;
@@ -123,10 +128,13 @@ async function writeAtomic(
 }
 
 function makeBundleProvenance(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surfaceId?: string,
 ): BundleProvenance {
   return {
+    astId: ast.astId,
+    astVersion: ast.version,
     contractId: contract.contractId,
     contractVersion: contract.version,
     bundleVersion: BUNDLE_VERSION,
@@ -461,6 +469,7 @@ function buildSectionOrderHints(
 }
 
 function buildSectionsPayload(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
   sections: ContractSection[],
@@ -468,7 +477,7 @@ function buildSectionsPayload(
   const orderHints = buildSectionOrderHints(surface);
 
   return {
-    provenance: makeBundleProvenance(contract, surface.id),
+    provenance: makeBundleProvenance(ast, contract, surface.id),
     sections: sections.map((section) => {
       const hint = orderHints.get(section.id);
       return {
@@ -524,6 +533,7 @@ function buildSectionsPayload(
 }
 
 function buildComponentsPayload(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
   components: ContractComponent[],
@@ -541,7 +551,7 @@ function buildComponentsPayload(
   }));
 
   return {
-    provenance: makeBundleProvenance(contract, surface.id),
+    provenance: makeBundleProvenance(ast, contract, surface.id),
     components: catalog,
   };
 }
@@ -555,6 +565,7 @@ function resolveProfileById<T extends { id: string }>(
 }
 
 function buildConstraintsPayload(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
 ) {
@@ -568,7 +579,7 @@ function buildConstraintsPayload(
   );
 
   return {
-    provenance: makeBundleProvenance(contract, surface.id),
+    provenance: makeBundleProvenance(ast, contract, surface.id),
     constraints: {
       motion: contract.constraints.motion,
       color: contract.color,
@@ -654,6 +665,37 @@ function buildGuidance(
   };
 }
 
+function buildAstPayload(
+  ast: UiSurfaceAst,
+  contract: InterfaceContract,
+  astSurface: UiAstSurface,
+  surface: ContractSurface,
+) {
+  return {
+    provenance: makeBundleProvenance(ast, contract, surface.id),
+    ast: {
+      kind: astSurface.kind,
+      rootNodeId: astSurface.rootNodeId,
+      nodes: astSurface.nodes,
+      states: astSurface.states ?? [],
+      migrationEscalations:
+        ast.migration?.escalations.filter((entry) => entry.surfaceId === surface.id) ?? [],
+    },
+  };
+}
+
+function buildPlatformsPayload(
+  ast: UiSurfaceAst,
+  contract: InterfaceContract,
+  astSurface: UiAstSurface,
+  surface: ContractSurface,
+) {
+  return {
+    provenance: makeBundleProvenance(ast, contract, surface.id),
+    platforms: astSurface.platforms,
+  };
+}
+
 function buildObservationRefs(contract: InterfaceContract): Array<Record<string, unknown>> {
   const refs: Array<Record<string, unknown>> = [];
   if (contract.x_extracted) {
@@ -666,9 +708,11 @@ function buildObservationRefs(contract: InterfaceContract): Array<Record<string,
 }
 
 function buildGenerationPayload(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
   sections: ContractSection[],
+  astSurface: UiAstSurface,
 ) {
   const shellOwns = contract.shell?.owns ?? [];
   const mustNotEmit = surface.mustNotEmit ?? [];
@@ -696,7 +740,13 @@ function buildGenerationPayload(
       displayName: surface.displayName,
       type: surface.type,
     },
-    provenance: makeBundleProvenance(contract, surface.id),
+    provenance: makeBundleProvenance(ast, contract, surface.id),
+    ast: {
+      rootNodeId: astSurface.rootNodeId,
+      nodeCount: astSurface.nodes.length,
+      stateCount: astSurface.states?.length ?? 0,
+      platformIds: astSurface.platforms.map((platform) => platform.platform),
+    },
     boundary: {
       shellOwns,
       contentSlot: contract.shell?.contentSlot ?? null,
@@ -751,7 +801,10 @@ function buildGenerationPayload(
     adaptation,
     guidance: buildGuidance(contract, surface, sections),
     refs: {
-      contract: "../../contract/normalized.json",
+      ast: "../../ast/normalized.json",
+      contract: "../../derived/contract.normalized.json",
+      astSlice: "./ast.json",
+      platforms: "./platforms.json",
       sections: "./sections.json",
       components: "./components.json",
       constraints: "./constraints.json",
@@ -764,13 +817,14 @@ function buildGenerationPayload(
 }
 
 function buildAuthoringPayload(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
 ) {
   if (!surface.authoring) return null;
 
   return {
-    provenance: makeBundleProvenance(contract, surface.id),
+    provenance: makeBundleProvenance(ast, contract, surface.id),
     authoring: {
       ...surface.authoring,
       sourcePriority: (surface.authoring.sourcePriority ?? []).map(
@@ -791,6 +845,7 @@ function addRepair(
 }
 
 function buildRepairMapPayload(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
   sections: ContractSection[],
@@ -1015,16 +1070,18 @@ function buildRepairMapPayload(
   }
 
   return {
-    provenance: makeBundleProvenance(contract, surface.id),
+    provenance: makeBundleProvenance(ast, contract, surface.id),
     repairs,
   };
 }
 
 function buildRuntimePayload(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
   sections: ContractSection[],
   components: ContractComponent[],
+  astSurface: UiAstSurface,
 ) {
   const policySeverities = buildPolicySeverities(contract, surface);
   const mutationEnvelope = buildMutationEnvelope(surface, sections);
@@ -1037,11 +1094,17 @@ function buildRuntimePayload(
   );
 
   return {
-    provenance: makeBundleProvenance(contract, surface.id),
+    provenance: makeBundleProvenance(ast, contract, surface.id),
     identity: {
       surfaceId: surface.id,
       displayName: surface.displayName,
       type: surface.type,
+    },
+    ast: {
+      rootNodeId: astSurface.rootNodeId,
+      nodeCount: astSurface.nodes.length,
+      stateCount: astSurface.states?.length ?? 0,
+      platformIds: astSurface.platforms.map((platform) => platform.platform),
     },
     governance: buildGovernancePayload(surface),
     runtime: {
@@ -1095,7 +1158,10 @@ function buildRuntimePayload(
         : {}),
     },
     refs: {
-      contract: "../../contract/normalized.json",
+      ast: "../../ast/normalized.json",
+      contract: "../../derived/contract.normalized.json",
+      astSlice: "./ast.json",
+      platforms: "./platforms.json",
       sections: "./sections.json",
       components: "./components.json",
       constraints: "./constraints.json",
@@ -1105,21 +1171,33 @@ function buildRuntimePayload(
 }
 
 function buildSurfaceBundleFiles(
+  ast: UiSurfaceAst,
   contract: InterfaceContract,
   surface: ContractSurface,
+  astSurface: UiAstSurface,
 ): BundleFile[] {
   const surfaceDir = `surfaces/${surface.id}`;
   const sections = resolveSurfaceSections(contract, surface);
   const components = resolveSurfaceComponents(contract, sections);
-  const constraintsPayload = buildConstraintsPayload(contract, surface);
-  const generationPayload = buildGenerationPayload(contract, surface, sections);
-  const sectionsPayload = buildSectionsPayload(contract, surface, sections);
-  const componentsPayload = buildComponentsPayload(contract, surface, components);
-  const repairMapPayload = buildRepairMapPayload(contract, surface, sections);
-  const authoringPayload = buildAuthoringPayload(contract, surface);
-  const runtimePayload = buildRuntimePayload(contract, surface, sections, components);
+  const astPayload = buildAstPayload(ast, contract, astSurface, surface);
+  const platformsPayload = buildPlatformsPayload(ast, contract, astSurface, surface);
+  const constraintsPayload = buildConstraintsPayload(ast, contract, surface);
+  const generationPayload = buildGenerationPayload(ast, contract, surface, sections, astSurface);
+  const sectionsPayload = buildSectionsPayload(ast, contract, surface, sections);
+  const componentsPayload = buildComponentsPayload(ast, contract, surface, components);
+  const repairMapPayload = buildRepairMapPayload(ast, contract, surface, sections);
+  const authoringPayload = buildAuthoringPayload(ast, contract, surface);
+  const runtimePayload = buildRuntimePayload(ast, contract, surface, sections, components, astSurface);
 
   const files: BundleFile[] = [
+    {
+      path: `${surfaceDir}/ast.json`,
+      content: stringifyDeterministic(astPayload),
+    },
+    {
+      path: `${surfaceDir}/platforms.json`,
+      content: stringifyDeterministic(platformsPayload),
+    },
     {
       path: `${surfaceDir}/generation.json`,
       content: stringifyDeterministic(generationPayload),
@@ -1161,65 +1239,84 @@ export async function runCompileCommand(
   toolVersion: string,
 ): Promise<number> {
   const outDir = path.resolve(options.outDir);
-  const contractInput = path.resolve(options.contractPath);
-  const schemaPath = options.schemaPath
-    ? path.resolve(options.schemaPath)
-    : undefined;
+  const workspaceRoot = process.cwd();
+  const resolvedInput = await resolveUiAstInput({
+    workspaceRoot,
+    astPath: options.astPath,
+    contractPath: options.contractPath,
+    schemaPath: options.schemaPath,
+  });
 
-  let contractRaw: string;
-  try {
-    contractRaw = await readFile(contractInput, "utf8");
-  } catch (err) {
-    const message = (err as NodeJS.ErrnoException).code === "ENOENT"
-      ? `Contract file not found: ${contractInput}`
-      : `Failed to read contract: ${(err as Error).message}`;
-    console.error(message);
+  if ("error" in resolvedInput) {
+    console.error(resolvedInput.error);
     return 1;
   }
 
-  let contractData: unknown;
-  try {
-    contractData = JSON.parse(contractRaw);
-  } catch (err) {
-    console.error(`Invalid contract JSON: ${(err as Error).message}`);
-    return 1;
+  for (const warning of resolvedInput.warnings) {
+    console.error(`Warning: ${warning}`);
   }
 
-  let schema: object;
-  if (schemaPath) {
-    try {
-      const raw = await readFile(schemaPath, "utf8");
-      schema = JSON.parse(raw) as object;
-    } catch (err) {
-      const message = (err as NodeJS.ErrnoException).code === "ENOENT"
-        ? `Schema file not found: ${schemaPath}`
-        : `Failed to read schema: ${(err as Error).message}`;
-      console.error(message);
-      return 1;
-    }
-  } else {
-    schema = getBundledContractSchema();
-  }
-
-  const structureResult = validateContractStructure(contractData, schema);
-  if (!structureResult.ok || !structureResult.contract) {
-    console.error("Contract schema validation failed:");
-    for (const error of structureResult.errors) {
-      console.error(`  • ${error}`);
-    }
-    return 1;
-  }
-
-  const contract = structureResult.contract;
-  const { contract: normalizedContract } = normalizeContract(contract);
+  const ast = resolvedInput.ast;
+  const { contract: normalizedContract } = normalizeContract(
+    resolvedInput.derivedContract,
+  );
+  const surfaceMap = new Map(ast.surfaces.map((surface) => [surface.id, surface]));
 
   const bundleFiles: BundleFile[] = [
     {
-      path: "contract/normalized.json",
+      path: "ast/normalized.json",
+      content: stringifyDeterministic(ast),
+    },
+    {
+      path: "derived/contract.normalized.json",
       content: stringifyDeterministic(normalizedContract),
     },
     ...normalizedContract.surfaces.flatMap((surface) =>
-      buildSurfaceBundleFiles(normalizedContract, surface),
+      buildSurfaceBundleFiles(
+        ast,
+        normalizedContract,
+        surface,
+        surfaceMap.get(surface.id) ?? {
+          id: surface.id,
+          displayName: surface.displayName,
+          kind: "application",
+          rootNodeId: `${surface.id}.root`,
+          nodes: [
+            {
+              id: `${surface.id}.root`,
+              kind: "group",
+              label: surface.displayName,
+              children: surface.requiredSections,
+            },
+            ...surface.requiredSections.map((sectionId) => ({
+              id: sectionId,
+              kind: "section" as const,
+              sectionId,
+              intent: "section",
+              label: sectionId,
+            })),
+          ],
+          platforms: [
+            {
+              platform: "web",
+              allowedFonts: surface.allowedFonts,
+              layout: {
+                maxContentWidth: surface.layout.maxContentWidth,
+                ...(surface.layout.requiredContainers
+                  ? { requiredContainers: surface.layout.requiredContainers }
+                  : {}),
+                ...(surface.layout.pageFrame ? { pageFrame: surface.layout.pageFrame } : {}),
+                ...(surface.layout.chromePolicy
+                  ? { chromePolicy: surface.layout.chromePolicy }
+                  : {}),
+                ...(surface.layout.targetAcquisition
+                  ? { targetAcquisition: surface.layout.targetAcquisition }
+                  : {}),
+              },
+            },
+          ],
+        },
+      ),
     ),
   ];
 
@@ -1233,13 +1330,16 @@ export async function runCompileCommand(
 
   const manifest: Manifest = {
     bundleVersion: BUNDLE_VERSION,
+    astId: ast.astId,
+    astVersion: ast.version,
     contractId: normalizedContract.contractId,
     contractVersion: normalizedContract.version,
     schemaVersion: SCHEMA_VERSION,
+    sourceFormat: "ui-ast",
     tool: { name: "interfacectl", version: toolVersion },
     inputs: {
-      contractPath: options.contractPath,
-      schemaPath: schemaPath ?? null,
+      contractPath: resolvedInput.sourcePath,
+      schemaPath: options.schemaPath ?? null,
     },
     files: fileEntries,
   };

@@ -1,0 +1,1 @@
+{"version":3,"file":"migrate-ui-ast.d.ts","sourceRoot":"","sources":["../../src/commands/migrate-ui-ast.ts"],"names":[],"mappings":"AAIA,MAAM,WAAW,0BAA0B;IACzC,YAAY,CAAC,EAAE,MAAM,CAAC;IACtB,OAAO,CAAC,EAAE,MAAM,CAAC;IACjB,UAAU,CAAC,EAAE,MAAM,CAAC;IACpB,MAAM,CAAC,EAAE,MAAM,GAAG,MAAM,CAAC;CAC1B;AAED,wBAAsB,sBAAsB,CAC1C,OAAO,EAAE,0BAA0B,GAClC,OAAO,CAAC,MAAM,CAAC,CA2DjB"}

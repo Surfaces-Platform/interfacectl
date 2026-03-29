@@ -23,6 +23,26 @@ import {
 import bundledSchema from "./schema/web.surface.contract.schema.json" with {
   type: "json",
 };
+export {
+  getBundledUiAstSchema,
+  validateUiAstStructure,
+  type UiAstStructureValidation,
+  type UiAstActionIntent,
+  type UiAstAlertSeverity,
+  type UiAstFieldType,
+  type UiAstMigrationEscalation,
+  type UiAstMigrationMetadata,
+  type UiAstNode,
+  type UiAstNodeKind,
+  type UiAstPlatform,
+  type UiAstPlatformProjection,
+  type UiAstSelectionMode,
+  type UiAstStateRef,
+  type UiAstSurface,
+  type UiAstSurfaceKind,
+  type UiAstTextRole,
+  type UiSurfaceAst,
+} from "./ui-ast.js";
 import { normalizeColorValue } from "./color-policy.js";
 import { matchTokenPolicy, normalizeTokenLiteralValue } from "./token-policy.js";
 

@@ -7,6 +7,7 @@ import { runEnforceCommand } from "./commands/enforce.js";
 import { runCompileCommand } from "./commands/compile.js";
 import { runGenerateContractCommand } from "./commands/generate-contract.js";
 import { runMigrateColorPolicyCommand } from "./commands/migrate-color-policy.js";
+import { runMigrateUiAstCommand } from "./commands/migrate-ui-ast.js";
 import { runValidateExtractedCommand } from "./commands/validate-extracted.js";
 import { runDescribeCommand } from "./commands/describe.js";
 import { runPrepareGenerationCommand } from "./commands/prepare-generation.js";
@@ -22,12 +23,13 @@ import pkg from "../package.json" with { type: "json" };
 const program = new Command();
 program
     .name("interfacectl")
-    .description("Interface contract tooling for Surfaces")
+    .description("Governed UI AST tooling for Surfaces")
     .version(pkg.version ?? "0.0.0");
 program
     .command("validate")
-    .description("Validate configured surfaces against the shared interface contract")
-    .option("--contract <path>", "Path to the contract JSON file")
+    .description("Validate configured surfaces against the canonical UI AST")
+    .option("--ast <path>", "Path to the UI AST JSON file")
+    .option("--contract <path>", "Deprecated migration-only legacy contract JSON path")
     .option("--schema <path>", "Optional path to the contract schema JSON file")
     .option("--config <path>", "Optional path to the interfacectl config JSON file (defaults to interfacectl.config.json)")
     .option("--root <path>", "Project root (defaults to current working directory)")
@@ -44,10 +46,8 @@ program
     const workspaceRoot = typeof requestedRoot === "string" && requestedRoot.length > 0
         ? requestedRoot
         : undefined;
+    const requestedAst = options.ast ?? env.SURFACES_AST ?? undefined;
     const requestedContract = options.contract ?? env.SURFACES_CONTRACT ?? undefined;
-    const contractPath = typeof requestedContract === "string" && requestedContract.length > 0
-        ? requestedContract
-        : "contracts/surfaces.web.contract.json";
     const requestedConfig = options.config ?? env.SURFACES_CONFIG ?? undefined;
     const formatInput = (options.format ?? (options.json ? "json" : undefined))?.toLowerCase();
     const outputFormat = formatInput === "json" ? "json" : formatInput === "text" ? "text" : "text";
@@ -62,7 +62,8 @@ program
         ? options.exitCodes
         : undefined;
     const exitCode = await runValidateCommand({
-        contractPath,
+        astPath: requestedAst,
+        contractPath: requestedContract,
         schemaPath: options.schema,
         workspaceRoot,
         surfaceFilters: options.surface ?? [],
@@ -77,8 +78,9 @@ program
 });
 program
     .command("diff")
-    .description("Compare contract against observed artifacts")
-    .option("--contract <path>", "Path to the contract JSON file")
+    .description("Compare the canonical UI AST against observed artifacts")
+    .option("--ast <path>", "Path to the UI AST JSON file")
+    .option("--contract <path>", "Deprecated migration-only legacy contract JSON path")
     .option("--schema <path>", "Optional path to the contract schema JSON file")
     .option("--config <path>", "Optional path to the interfacectl config JSON file (defaults to interfacectl.config.json)")
     .option("--root <path>", "Project root (defaults to current working directory)")
@@ -97,10 +99,8 @@ program
     const workspaceRoot = typeof requestedRoot === "string" && requestedRoot.length > 0
         ? requestedRoot
         : undefined;
+    const requestedAst = options.ast ?? env.SURFACES_AST ?? undefined;
     const requestedContract = options.contract ?? env.SURFACES_CONTRACT ?? undefined;
-    const contractPath = typeof requestedContract === "string" && requestedContract.length > 0
-        ? requestedContract
-        : "contracts/surfaces.web.contract.json";
     const requestedConfig = options.config ?? env.SURFACES_CONFIG ?? undefined;
     const formatInput = (options.format ?? (options.json ? "json" : undefined))?.toLowerCase();
     const outputFormat = formatInput === "json" ? "json" : formatInput === "text" ? "text" : "text";
@@ -115,7 +115,8 @@ program
         ? options.exitCodes
         : undefined;
     const exitCode = await runDiffCommand({
-        contractPath,
+        astPath: requestedAst,
+        contractPath: requestedContract,
         schemaPath: options.schema,
         workspaceRoot,
         surfaceFilters: options.surface ?? [],
@@ -132,11 +133,12 @@ program
 });
 program
     .command("enforce")
-    .description("Enforce policy on interface contract")
+    .description("Enforce policy on the canonical UI AST")
     .option("--mode <fail|fix|pr>", "Enforcement mode (default: fail)")
     .option("--strict", "Alias for --mode fail (strict enforcement)")
     .option("--policy <path>", "Policy JSON path (optional, uses default if not provided)")
-    .option("--contract <path>", "Contract path")
+    .option("--ast <path>", "Path to the UI AST JSON file")
+    .option("--contract <path>", "Deprecated migration-only legacy contract JSON path")
     .option("--root <path>", "Workspace root")
     .option("--config <path>", "Config path")
     .option("--surface <id...>", "Filter surfaces")
@@ -151,6 +153,7 @@ program
     const workspaceRoot = typeof requestedRoot === "string" && requestedRoot.length > 0
         ? requestedRoot
         : undefined;
+    const requestedAst = options.ast ?? env.SURFACES_AST ?? undefined;
     const requestedContract = options.contract ?? env.SURFACES_CONTRACT ?? undefined;
     const requestedConfig = options.config ?? env.SURFACES_CONFIG ?? undefined;
     const formatInput = (options.format ?? (options.json ? "json" : undefined))?.toLowerCase();
@@ -169,6 +172,7 @@ program
         mode: options.mode,
         strict: options.strict,
         policyPath: options.policy,
+        astPath: requestedAst,
         contractPath: requestedContract,
         workspaceRoot,
         surfaceFilters: options.surface ?? [],
@@ -183,19 +187,36 @@ program
 });
 program
     .command("compile")
-    .description("Produce a deterministic directory bundle for runtime consumption")
-    .requiredOption("--contract <path>", "Path to the contract JSON file")
+    .description("Produce a deterministic AST-first directory bundle for generation and runtime consumption")
+    .option("--ast <path>", "Path to the UI AST JSON file")
+    .option("--contract <path>", "Deprecated migration-only legacy contract JSON path")
     .requiredOption("--out <dir>", "Output directory for the bundle")
     .option("--schema <path>", "Optional path to the contract schema JSON file")
     .option("--format <format>", "Output format (json)")
     .action(async (options) => {
     const exitCode = await runCompileCommand({
+        astPath: options.ast,
         contractPath: options.contract,
         outDir: options.out,
         schemaPath: options.schema,
         format: options.format,
     }, pkg.version ?? "0.0.0");
     process.exitCode = exitCode;
+});
+program
+    .command("migrate-ui-ast")
+    .description("Import a legacy web surface contract into a UI AST draft")
+    .requiredOption("--contract <path>", "Path to the legacy contract JSON file")
+    .option("--out <path>", "Output path for the generated UI AST draft")
+    .option("--schema <path>", "Optional path to the legacy contract schema JSON file")
+    .option("--format <format>", "Output format (text|json)")
+    .action(async (options) => {
+    process.exitCode = await runMigrateUiAstCommand({
+        contractPath: options.contract,
+        outPath: options.out,
+        schemaPath: options.schema,
+        format: options.format,
+    });
 });
 program
     .command("prepare-generation")

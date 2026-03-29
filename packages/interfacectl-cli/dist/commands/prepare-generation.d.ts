@@ -15,31 +15,6 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
     evidenceRefs: any[];
     authoring?: JsonRecord | undefined;
     runtime?: JsonRecord | undefined;
-    surface: {
-        surfaceId: string;
-        displayName: string;
-        type: string;
-    };
-    bundle: {
-        root: string;
-        version: string;
-        manifestPath: string;
-        sourcePaths: {
-            authoring?: string | undefined;
-            runtime?: string | undefined;
-            contract: string;
-            generation: string;
-            sections: string;
-            components: string;
-            constraints: string;
-            repairMap: string;
-        };
-    };
-    contract: {
-        id: string;
-        version: string;
-        normalizedPath: string;
-    };
     summary: {
         text: string;
         focusOrder: string[];
@@ -60,41 +35,51 @@ export declare function buildPreparedGenerationPayload(bundle: LoadedCompiledSur
         governance: JsonRecord;
         adaptation: JsonRecord;
         guidance: JsonRecord;
+        platforms?: any[] | undefined;
+        ast?: JsonRecord | undefined;
     };
     sections: any[];
     components: any[];
     constraints: JsonRecord;
     repairMap: any[];
+    ast?: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    } | undefined;
+    surface: {
+        surfaceId: string;
+        displayName: string;
+        type: string;
+    };
+    bundle: {
+        root: string;
+        version: string;
+        manifestPath: string;
+        sourcePaths: {
+            authoring?: string | undefined;
+            runtime?: string | undefined;
+            generation: string;
+            sections: string;
+            components: string;
+            constraints: string;
+            repairMap: string;
+            platforms?: string | undefined;
+            astSlice?: string | undefined;
+            contract: string;
+            ast?: string | undefined;
+        };
+    };
+    contract: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    };
 };
 export declare function loadPreparedGenerationPayload(bundleRoot: string, surfaceId: string, cwd?: string): {
     evidenceRefs: any[];
     authoring?: JsonRecord | undefined;
     runtime?: JsonRecord | undefined;
-    surface: {
-        surfaceId: string;
-        displayName: string;
-        type: string;
-    };
-    bundle: {
-        root: string;
-        version: string;
-        manifestPath: string;
-        sourcePaths: {
-            authoring?: string | undefined;
-            runtime?: string | undefined;
-            contract: string;
-            generation: string;
-            sections: string;
-            components: string;
-            constraints: string;
-            repairMap: string;
-        };
-    };
-    contract: {
-        id: string;
-        version: string;
-        normalizedPath: string;
-    };
     summary: {
         text: string;
         focusOrder: string[];
@@ -115,11 +100,46 @@ export declare function loadPreparedGenerationPayload(bundleRoot: string, surfac
         governance: JsonRecord;
         adaptation: JsonRecord;
         guidance: JsonRecord;
+        platforms?: any[] | undefined;
+        ast?: JsonRecord | undefined;
     };
     sections: any[];
     components: any[];
     constraints: JsonRecord;
     repairMap: any[];
+    ast?: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    } | undefined;
+    surface: {
+        surfaceId: string;
+        displayName: string;
+        type: string;
+    };
+    bundle: {
+        root: string;
+        version: string;
+        manifestPath: string;
+        sourcePaths: {
+            authoring?: string | undefined;
+            runtime?: string | undefined;
+            generation: string;
+            sections: string;
+            components: string;
+            constraints: string;
+            repairMap: string;
+            platforms?: string | undefined;
+            astSlice?: string | undefined;
+            contract: string;
+            ast?: string | undefined;
+        };
+    };
+    contract: {
+        id: string;
+        version: string;
+        normalizedPath: string;
+    };
 };
 export declare function runPrepareGenerationCommand(options: PrepareGenerationCommandOptions): Promise<number>;
 export {};

@@ -3,6 +3,7 @@ import addFormats from "ajv-formats";
 import bundledSchema from "./schema/web.surface.contract.schema.json" with {
     type: "json"
 };
+export { getBundledUiAstSchema, validateUiAstStructure, } from "./ui-ast.js";
 import { normalizeColorValue } from "./color-policy.js";
 import { matchTokenPolicy } from "./token-policy.js";
 const frozenBundledSchema = Object.freeze(bundledSchema);

@@ -113,7 +113,7 @@ function buildDescriptor(overrides = {}) {
   ];
 }
 
-test("generation adapter: workspace mode uses contract/normalized.json from the bundle", async () => {
+test("generation adapter: workspace mode uses derived contract output from the bundle", async () => {
   const { runGenerationAdapter } = await importDist(corePath);
   const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-workspace-"));
   const contractCopyPath = path.join(tempDir, "ui.contract.json");
@@ -134,7 +134,7 @@ test("generation adapter: workspace mode uses contract/normalized.json from the 
 
     assert.equal(response.status, "pass");
     assert.equal(response.contract.id, "portable.fixture");
-    assert.equal(response.bundle.version, "2.0");
+    assert.equal(response.bundle.version, "3.0");
     assert.equal(
       response.bundle.manifestPath,
       path.join(bundleRoot, "manifest.json"),
@@ -169,7 +169,7 @@ test("generation adapter: descriptor mode loads a valid bundle and returns bundl
     assert.equal(response.status, "pass");
     assert.equal(response.contract.id, "adapter-demo");
     assert.equal(response.contract.version, "1.0.0");
-    assert.equal(response.bundle.version, "2.0");
+    assert.equal(response.bundle.version, "3.0");
     assert.equal(response.findings.length, 0);
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true });
@@ -365,7 +365,7 @@ test("generation adapter CLI maps block findings to exit code 30", async () => {
     assert.equal(result.exitCode, 30);
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.status, "block");
-    assert.equal(payload.bundle.version, "2.0");
+    assert.equal(payload.bundle.version, "3.0");
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true });
   }

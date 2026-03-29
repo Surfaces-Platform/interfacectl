@@ -106,6 +106,7 @@ export async function runEnforceCommand(options) {
     const { randomUUID } = await import("node:crypto");
     const tempDiffPath = path.join(tmpdir(), `interfacectl-diff-${randomUUID()}.json`);
     const diffResult = await runDiffCommand({
+        astPath: options.astPath,
         contractPath: options.contractPath,
         workspaceRoot,
         surfaceFilters: options.surfaceFilters,

@@ -153,6 +153,12 @@ export function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfaceBundle)
   const identity = asRecord(runtimeDoc.identity);
   const generation = asRecord(bundle.surface.generation.value);
   const generationRefs = asRecord(generation.refs);
+  const astDoc = bundle.surface.ast
+    ? asRecord(bundle.surface.ast.value)
+    : undefined;
+  const platformsDoc = bundle.surface.platforms
+    ? asRecord(bundle.surface.platforms.value)
+    : undefined;
 
   return {
     surface: {
@@ -165,7 +171,10 @@ export function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfaceBundle)
       version: bundle.version,
       manifestPath: bundle.manifest.path,
       sourcePaths: {
+        ...(bundle.ast ? { ast: bundle.ast.path } : {}),
         contract: bundle.contract.path,
+        ...(bundle.surface.ast ? { astSlice: bundle.surface.ast.path } : {}),
+        ...(bundle.surface.platforms ? { platforms: bundle.surface.platforms.path } : {}),
         runtime: bundle.surface.runtime.path,
         generation: bundle.surface.generation.path,
         sections: bundle.surface.sections.path,
@@ -179,9 +188,24 @@ export function buildPreparedRuntimePayload(bundle: LoadedCompiledSurfaceBundle)
       version: bundle.contractVersion,
       normalizedPath: bundle.contract.path,
     },
+    ...(bundle.ast
+      ? {
+          ast: {
+            id: asString(asRecord(bundle.ast.value).astId) ?? bundle.contractId,
+            version: asString(asRecord(bundle.ast.value).version) ?? bundle.contractVersion,
+            normalizedPath: bundle.ast.path,
+          },
+        }
+      : {}),
     summary: buildSummary(bundle),
     governance: asRecord(runtimeDoc.governance),
-    runtime: asRecord(runtimeDoc.runtime),
+    runtime: {
+      ...(astDoc && isRecord(astDoc.ast) ? { ast: astDoc.ast } : {}),
+      ...(platformsDoc && Array.isArray(platformsDoc.platforms)
+        ? { platforms: platformsDoc.platforms }
+        : {}),
+      ...asRecord(runtimeDoc.runtime),
+    },
     evidenceRefs: Array.isArray(generationRefs.evidence) ? generationRefs.evidence : [],
   };
 }

@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 
 const schemas = [
   "web.surface.contract.schema.json",
+  "ui.surface.ast.schema.json",
   "interfacectl.diff.schema.json",
   "interfacectl.policy.schema.json",
   "interfacectl.fix-summary.schema.json",
@@ -22,4 +23,3 @@ for (const schema of schemas) {
   const destination = path.join(destinationDir, schema);
   await cp(source, destination);
 }
-
