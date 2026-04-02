@@ -8,11 +8,67 @@
   "properties": {
     "schemaVersion": {
       "type": "number",
-      "const": 2
+      "const": 3
     },
     "generatedAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cohortId", "evaluationMode", "tool", "sourceSpecPath", "sourceRunPath", "guidanceStrategies", "attemptBudget", "model"],
+      "properties": {
+        "cohortId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluationMode": {
+          "type": "string",
+          "enum": ["zero-shot", "iterative"]
+        },
+        "tool": {
+          "type": "string",
+          "enum": ["codex", "cursor", "local-llm"]
+        },
+        "sourceSpecPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceRunPath": {
+          "type": ["string", "null"]
+        },
+        "guidanceStrategies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+          }
+        },
+        "attemptBudget": {
+          "type": "number",
+          "minimum": 1
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requestedModelLabel", "resolvedModelId", "baseUrl", "fingerprint"],
+          "properties": {
+            "requestedModelLabel": {
+              "type": ["string", "null"]
+            },
+            "resolvedModelId": {
+              "type": ["string", "null"]
+            },
+            "baseUrl": {
+              "type": ["string", "null"]
+            },
+            "fingerprint": {
+              "type": ["string", "null"]
+            }
+          }
+        }
+      }
     },
     "comparisons": {
       "type": "array",
@@ -44,16 +100,27 @@
             "type": "string",
             "minLength": 1
           },
+          "platformTarget": {
+            "type": "string",
+            "enum": ["web", "ios", "android"]
+          },
+          "consumerType": {
+            "type": "string",
+            "enum": ["web-browser", "desktop-shell", "ios-native", "android-native"]
+          },
+          "modelLabel": {
+            "type": ["string", "null"]
+          },
           "meetsGoal": {
             "type": "boolean"
           },
           "baselineGuidanceStrategy": {
             "type": "string",
-            "enum": ["prompt-summary", "json-primary", "unguided"]
+            "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
           },
           "guidedGuidanceStrategy": {
             "type": "string",
-            "enum": ["prompt-summary", "json-primary", "unguided"]
+            "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
           },
           "guidedFewerFirstAttemptBlockingFindings": {
             "type": "boolean"
@@ -65,7 +132,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["structure", "components", "boundary", "visual", "responsiveness"]
+              "enum": ["structure", "components", "boundary", "visual", "responsiveness", "platformFit"]
             }
           },
           "heuristics": {
@@ -152,6 +219,31 @@
         },
         "heuristics": {
           "$ref": "#/$defs/benchmarkHeuristicsSummary"
+        }
+      }
+    },
+    "breakdowns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["byPlatformTarget", "byConsumerType", "byModelLabel"],
+      "properties": {
+        "byPlatformTarget": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/breakdownSummary"
+          }
+        },
+        "byConsumerType": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/breakdownSummary"
+          }
+        },
+        "byModelLabel": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/breakdownSummary"
+          }
         }
       }
     }
@@ -260,6 +352,39 @@
         },
         "averageDelta": {
           "$ref": "#/$defs/benchmarkAverageDelta"
+        }
+      }
+    },
+    "breakdownSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparisonCount",
+        "surfaceCount",
+        "surfacesMeetingGoal",
+        "guidedFewerFirstAttemptBlockingFindings",
+        "guidedReachedAcceptableNoLater"
+      ],
+      "properties": {
+        "comparisonCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "surfaceCount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "surfacesMeetingGoal": {
+          "type": "number",
+          "minimum": 0
+        },
+        "guidedFewerFirstAttemptBlockingFindings": {
+          "type": "number",
+          "minimum": 0
+        },
+        "guidedReachedAcceptableNoLater": {
+          "type": "number",
+          "minimum": 0
         }
       }
     }

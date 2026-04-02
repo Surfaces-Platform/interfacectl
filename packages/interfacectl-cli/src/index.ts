@@ -21,6 +21,7 @@ import {
   runCompareGenerationSessionsCommand,
   runInitGenerationSessionCommand,
   runPrepareGenerationHandoffCommand,
+  runReplayGenerationBenchmarkCommand,
   runRecordGenerationAttemptCommand,
   runReviewContractDeltaSuggestionsCommand,
   runReviewGenerationAttemptCommand,
@@ -368,7 +369,7 @@ program
   .requiredOption("--surface <id>", "Surface identifier")
   .requiredOption("--workspace-root <path>", "Workspace root for emitted run artifacts")
   .option("--tool <tool>", "Generation tool identifier (codex|cursor|local-llm)")
-  .option("--guidance-strategy <strategy>", "Session guidance strategy (prompt-summary|json-primary|unguided)")
+  .option("--guidance-strategy <strategy>", "Session guidance strategy (prompt-summary|baseline-primary|json-primary|unguided)")
   .option("--guidance-mode <mode>", "Legacy alias for --guidance-strategy (prepared|unguided)")
   .option("--brief-file <path>", "Optional implementation brief file to freeze into the session")
   .option("--session <id>", "Optional session identifier")
@@ -391,7 +392,7 @@ program
   .command("prepare-generation-handoff")
   .description("Build one canonical strategy-aware guidance handoff artifact for a tracked generation session")
   .requiredOption("--session-dir <path>", "Path to the generation session directory")
-  .option("--guidance-strategy <strategy>", "Optional guidance strategy override (prompt-summary|json-primary|unguided)")
+  .option("--guidance-strategy <strategy>", "Optional guidance strategy override (prompt-summary|baseline-primary|json-primary|unguided)")
   .option("--accepted-suggestions <path>", "Optional accepted suggestions JSON file")
   .option("--designer-notes <path>", "Optional designer notes JSON file")
   .option("--finding-codes <codes>", "Optional comma-separated finding codes to match against repair guidance")
@@ -504,14 +505,42 @@ program
 program
   .command("summarize-generation-benchmark")
   .description("Aggregate one or more comparison and suggestion artifacts into a benchmark report")
-  .requiredOption("--comparisons <paths>", "Comma-separated generation session comparison JSON paths")
+  .option("--comparisons <paths>", "Comma-separated generation session comparison JSON paths")
   .option("--suggestions <paths>", "Comma-separated contract delta suggestion JSON paths")
+  .option("--run-path <path>", "Optional benchmark run manifest to enrich the benchmark report")
   .option("--out-dir <path>", "Output directory for the benchmark report")
   .action(async (options) => {
     process.exitCode = await runSummarizeGenerationBenchmarkCommand({
       comparisonPaths: options.comparisons,
       suggestionPaths: options.suggestions,
+      runPath: options.runPath,
       outDir: options.outDir,
+    });
+  });
+
+program
+  .command("replay-generation-benchmark")
+  .description("Freeze a benchmark spec into a new replayable benchmark run manifest")
+  .requiredOption("--spec <path>", "Path to the benchmark spec JSON file")
+  .requiredOption("--tool <tool>", "Generation tool identifier (codex|cursor|local-llm)")
+  .requiredOption("--out-dir <path>", "Output directory for the replay run")
+  .option("--cohort-id <id>", "Optional cohort id override")
+  .option("--source-run <path>", "Optional source benchmark run manifest")
+  .option("--requested-model-label <label>", "Optional requested model label")
+  .option("--resolved-model-id <id>", "Optional resolved runtime model id")
+  .option("--base-url <url>", "Optional model base URL")
+  .option("--fingerprint <value>", "Optional model/runtime fingerprint")
+  .action(async (options) => {
+    process.exitCode = await runReplayGenerationBenchmarkCommand({
+      specPath: options.spec,
+      tool: options.tool,
+      outDir: options.outDir,
+      cohortId: options.cohortId,
+      sourceRunPath: options.sourceRun,
+      requestedModelLabel: options.requestedModelLabel,
+      resolvedModelId: options.resolvedModelId,
+      baseUrl: options.baseUrl,
+      fingerprint: options.fingerprint,
     });
   });
 

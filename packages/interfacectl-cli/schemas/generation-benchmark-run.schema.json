@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-benchmark-run.schema.json",
+  "title": "GenerationBenchmarkRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "cohortId",
+    "generatedAt",
+    "evaluationMode",
+    "tool",
+    "sourceSpecPath",
+    "sourceRunPath",
+    "attemptBudget",
+    "guidanceStrategies",
+    "comparisonPairs",
+    "model",
+    "paths",
+    "fixtures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "cohortId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evaluationMode": {
+      "type": "string",
+      "enum": ["zero-shot", "iterative"]
+    },
+    "tool": {
+      "type": "string",
+      "enum": ["codex", "cursor", "local-llm"]
+    },
+    "sourceSpecPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceRunPath": {
+      "type": ["string", "null"]
+    },
+    "attemptBudget": {
+      "type": "number",
+      "minimum": 1
+    },
+    "guidanceStrategies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+      }
+    },
+    "comparisonPairs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/comparisonPair"
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestedModelLabel", "resolvedModelId", "baseUrl", "fingerprint"],
+      "properties": {
+        "requestedModelLabel": { "type": ["string", "null"] },
+        "resolvedModelId": { "type": ["string", "null"] },
+        "baseUrl": { "type": ["string", "null"] },
+        "fingerprint": { "type": ["string", "null"] }
+      }
+    },
+    "suiteId": {
+      "type": "string"
+    },
+    "suiteName": {
+      "type": "string"
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["benchmarkDir", "specPath", "runPath", "reportJsonPath", "reportMarkdownPath"],
+      "properties": {
+        "benchmarkDir": { "type": "string", "minLength": 1 },
+        "specPath": { "type": "string", "minLength": 1 },
+        "runPath": { "type": "string", "minLength": 1 },
+        "reportJsonPath": { "type": ["string", "null"] },
+        "reportMarkdownPath": { "type": ["string", "null"] }
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fixture"
+      }
+    }
+  },
+  "$defs": {
+    "comparisonPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineGuidanceStrategy", "guidedGuidanceStrategy"],
+      "properties": {
+        "baselineGuidanceStrategy": {
+          "type": "string",
+          "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+        },
+        "guidedGuidanceStrategy": {
+          "type": "string",
+          "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+        }
+      }
+    },
+    "brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fixturePaths": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fixtureDir": { "type": "string" },
+        "effectiveAstPath": { "type": "string" },
+        "preparedInputPath": { "type": "string" },
+        "acceptedSuggestionsPath": { "type": "string" },
+        "designerNotesPath": { "type": "string" },
+        "baselineValidatePath": { "type": "string" }
+      }
+    },
+    "sessionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "guidanceStrategy",
+        "sessionId",
+        "sessionDir",
+        "transcriptPath",
+        "guidanceHandoffPath",
+        "agentInputPath",
+        "explainabilityPath",
+        "summaryPath",
+        "previewPath"
+      ],
+      "properties": {
+        "guidanceStrategy": {
+          "type": "string",
+          "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+        },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "sessionDir": { "type": "string", "minLength": 1 },
+        "transcriptPath": { "type": "string", "minLength": 1 },
+        "guidanceHandoffPath": { "type": "string", "minLength": 1 },
+        "agentInputPath": { "type": "string", "minLength": 1 },
+        "explainabilityPath": { "type": "string", "minLength": 1 },
+        "summaryPath": { "type": "string", "minLength": 1 },
+        "previewPath": { "type": ["string", "null"] }
+      }
+    },
+    "comparisonRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineGuidanceStrategy", "guidedGuidanceStrategy", "comparisonDir", "comparisonPath"],
+      "properties": {
+        "baselineGuidanceStrategy": {
+          "type": "string",
+          "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+        },
+        "guidedGuidanceStrategy": {
+          "type": "string",
+          "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+        },
+        "comparisonDir": { "type": "string", "minLength": 1 },
+        "comparisonPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixtureId",
+        "surfaceId",
+        "brief",
+        "platformTarget",
+        "consumerType",
+        "capturePreset",
+        "comparisonPairs",
+        "sessions",
+        "comparisons"
+      ],
+      "properties": {
+        "fixtureId": { "type": "string", "minLength": 1 },
+        "surfaceId": { "type": "string", "minLength": 1 },
+        "brief": { "$ref": "#/$defs/brief" },
+        "platformTarget": {
+          "type": "string",
+          "enum": ["web", "ios", "android"]
+        },
+        "consumerType": {
+          "type": "string",
+          "enum": ["web-browser", "desktop-shell", "ios-native", "android-native"]
+        },
+        "capturePreset": { "type": "string", "minLength": 1 },
+        "comparisonPairs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/comparisonPair" }
+        },
+        "paths": {
+          "$ref": "#/$defs/fixturePaths"
+        },
+        "sessions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sessionRef" }
+        },
+        "comparisons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/comparisonRef" }
+        }
+      }
+    }
+  }
+}

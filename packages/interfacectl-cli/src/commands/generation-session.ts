@@ -20,13 +20,22 @@ import { stringifyDeterministicJson, writeDeterministicJsonSync } from "../utils
 type SessionTool = "codex" | "cursor" | "local-llm";
 type AssessmentGrade = "strong" | "partial" | "weak";
 type ValidateStatus = "pass" | "warn" | "block";
-type GuidanceStrategy = "prompt-summary" | "json-primary" | "unguided";
+type GuidanceStrategy = "prompt-summary" | "baseline-primary" | "json-primary" | "unguided";
 type SessionSuccessRule = "pass" | "pass-or-reviewed-warn";
 type AttemptReviewStatus = "accepted" | "rejected";
 type AttemptOutcome = ValidateStatus | "accepted-warn";
 type SuggestionStatus = "proposed" | "accepted" | "rejected";
+type EvaluationMode = "zero-shot" | "iterative";
+type PlatformTarget = "web" | "ios" | "android";
+type ConsumerType = "web-browser" | "desktop-shell" | "ios-native" | "android-native";
 
-type AssessmentDimension = "structure" | "components" | "boundary" | "visual" | "responsiveness";
+type AssessmentDimension =
+  | "structure"
+  | "components"
+  | "boundary"
+  | "visual"
+  | "responsiveness"
+  | "platformFit";
 
 export interface InitGenerationSessionCommandOptions {
   bundleRoot?: string;
@@ -93,6 +102,19 @@ export interface SummarizeGenerationBenchmarkCommandOptions {
   comparisonPaths?: string;
   suggestionPaths?: string;
   outDir?: string;
+  runPath?: string;
+}
+
+export interface ReplayGenerationBenchmarkCommandOptions {
+  specPath?: string;
+  tool?: string;
+  outDir?: string;
+  cohortId?: string;
+  sourceRunPath?: string;
+  requestedModelLabel?: string;
+  resolvedModelId?: string;
+  baseUrl?: string;
+  fingerprint?: string;
 }
 
 interface GenerationAssessment {
@@ -101,6 +123,7 @@ interface GenerationAssessment {
   boundary: AssessmentGrade;
   visual: AssessmentGrade;
   responsiveness: AssessmentGrade;
+  platformFit: AssessmentGrade;
   notes: string;
   touchedFiles?: string[];
   heuristics?: GenerationAssessmentHeuristics;
@@ -368,8 +391,23 @@ interface ContractDeltaSuggestionsArtifact {
 }
 
 interface GenerationBenchmarkReport {
-  schemaVersion: 2;
+  schemaVersion: 3;
   generatedAt: string;
+  run?: {
+    cohortId: string;
+    evaluationMode: EvaluationMode;
+    tool: SessionTool;
+    sourceSpecPath: string;
+    sourceRunPath: string | null;
+    guidanceStrategies: GuidanceStrategy[];
+    attemptBudget: number;
+    model: {
+      requestedModelLabel: string | null;
+      resolvedModelId: string | null;
+      baseUrl: string | null;
+      fingerprint: string | null;
+    };
+  };
   comparisons: Array<{
     surfaceId: string;
     tool: SessionTool;
@@ -377,6 +415,9 @@ interface GenerationBenchmarkReport {
     meetsGoal: boolean;
     baselineGuidanceStrategy: GuidanceStrategy;
     guidedGuidanceStrategy: GuidanceStrategy;
+    platformTarget?: PlatformTarget;
+    consumerType?: ConsumerType;
+    modelLabel?: string | null;
     guidedFewerFirstAttemptBlockingFindings: boolean;
     guidedReachedAcceptableNoLater: boolean;
     guidedRubricBetterDimensions: AssessmentDimension[];
@@ -400,6 +441,19 @@ interface GenerationBenchmarkReport {
     proposedSuggestionCount: number;
     heuristics: GenerationBenchmarkHeuristicsSummary;
   };
+  breakdowns?: {
+    byPlatformTarget: Record<string, GenerationBenchmarkBreakdownSummary>;
+    byConsumerType: Record<string, GenerationBenchmarkBreakdownSummary>;
+    byModelLabel: Record<string, GenerationBenchmarkBreakdownSummary>;
+  };
+}
+
+interface GenerationBenchmarkBreakdownSummary {
+  comparisonCount: number;
+  surfaceCount: number;
+  surfacesMeetingGoal: number;
+  guidedFewerFirstAttemptBlockingFindings: number;
+  guidedReachedAcceptableNoLater: number;
 }
 
 interface GenerationAssessmentHeuristics {
@@ -480,6 +534,10 @@ interface GenerationGuidanceHandoff {
     effectiveContractSummary: string;
     preparedGuidanceSummary: string;
   } | null;
+  baselinePrimary: {
+    effectiveContractSummary: string;
+    baselineContractSummary: string;
+  } | null;
   jsonPrimary: {
     surface: Record<string, unknown>;
     contract: Record<string, unknown>;
@@ -507,18 +565,111 @@ interface LoadedAttempt {
   previewMetadataPath?: string;
 }
 
+interface GenerationBenchmarkSpecFixture {
+  fixtureId: string;
+  surfaceId: string;
+  brief: GenerationBrief;
+  platformTarget: PlatformTarget;
+  consumerType: ConsumerType;
+  capturePreset: string;
+  comparisonPairs: Array<{
+    baselineGuidanceStrategy: GuidanceStrategy;
+    guidedGuidanceStrategy: GuidanceStrategy;
+  }>;
+  paths?: {
+    fixtureDir?: string;
+    effectiveAstPath?: string;
+    preparedInputPath?: string;
+    acceptedSuggestionsPath?: string;
+    designerNotesPath?: string;
+    baselineValidatePath?: string;
+  };
+}
+
+interface GenerationBenchmarkSpec {
+  schemaVersion: 1;
+  specId: string;
+  generatedAt: string;
+  evaluationMode: EvaluationMode;
+  attemptBudget: number;
+  guidanceStrategies: GuidanceStrategy[];
+  comparisonPairs: Array<{
+    baselineGuidanceStrategy: GuidanceStrategy;
+    guidedGuidanceStrategy: GuidanceStrategy;
+  }>;
+  suiteId?: string;
+  suiteName?: string;
+  fixtures: GenerationBenchmarkSpecFixture[];
+}
+
+interface GenerationBenchmarkRunFixture extends GenerationBenchmarkSpecFixture {
+  sessions: Array<{
+    guidanceStrategy: GuidanceStrategy;
+    sessionId: string;
+    sessionDir: string;
+    transcriptPath: string;
+    guidanceHandoffPath: string;
+    agentInputPath: string;
+    explainabilityPath: string;
+    summaryPath: string;
+    previewPath: string | null;
+  }>;
+  comparisons: Array<{
+    baselineGuidanceStrategy: GuidanceStrategy;
+    guidedGuidanceStrategy: GuidanceStrategy;
+    comparisonDir: string;
+    comparisonPath: string;
+  }>;
+}
+
+interface GenerationBenchmarkRun {
+  schemaVersion: 1;
+  cohortId: string;
+  generatedAt: string;
+  evaluationMode: EvaluationMode;
+  tool: SessionTool;
+  sourceSpecPath: string;
+  sourceRunPath: string | null;
+  attemptBudget: number;
+  guidanceStrategies: GuidanceStrategy[];
+  comparisonPairs: Array<{
+    baselineGuidanceStrategy: GuidanceStrategy;
+    guidedGuidanceStrategy: GuidanceStrategy;
+  }>;
+  model: {
+    requestedModelLabel: string | null;
+    resolvedModelId: string | null;
+    baseUrl: string | null;
+    fingerprint: string | null;
+  };
+  suiteId?: string;
+  suiteName?: string;
+  paths: {
+    benchmarkDir: string;
+    specPath: string;
+    runPath: string;
+    reportJsonPath: string | null;
+    reportMarkdownPath: string | null;
+  };
+  fixtures: GenerationBenchmarkRunFixture[];
+}
+
 const VALID_TOOLS = new Set<SessionTool>(["codex", "cursor", "local-llm"]);
 const VALID_GRADES = new Set<AssessmentGrade>(["strong", "partial", "weak"]);
-const VALID_GUIDANCE_STRATEGIES = new Set<GuidanceStrategy>(["prompt-summary", "json-primary", "unguided"]);
+const VALID_GUIDANCE_STRATEGIES = new Set<GuidanceStrategy>(["prompt-summary", "baseline-primary", "json-primary", "unguided"]);
 const VALID_REVIEW_STATUSES = new Set<AttemptReviewStatus>(["accepted", "rejected"]);
 const VALID_SUGGESTION_STATUSES = new Set<SuggestionStatus>(["proposed", "accepted", "rejected"]);
 const VALID_SUCCESS_RULES = new Set<SessionSuccessRule>(["pass", "pass-or-reviewed-warn"]);
+const VALID_EVALUATION_MODES = new Set<EvaluationMode>(["zero-shot", "iterative"]);
+const VALID_PLATFORM_TARGETS = new Set<PlatformTarget>(["web", "ios", "android"]);
+const VALID_CONSUMER_TYPES = new Set<ConsumerType>(["web-browser", "desktop-shell", "ios-native", "android-native"]);
 const ASSESSMENT_DIMENSIONS: AssessmentDimension[] = [
   "structure",
   "components",
   "boundary",
   "visual",
   "responsiveness",
+  "platformFit",
 ];
 
 class SessionInputError extends Error {
@@ -595,10 +746,36 @@ function ensureGuidanceStrategy(guidanceStrategy?: string): GuidanceStrategy {
   const mapped = normalized === "prepared" ? "prompt-summary" : normalized;
   if (!VALID_GUIDANCE_STRATEGIES.has(mapped as GuidanceStrategy)) {
     throw new SessionInputError(
-      `Invalid guidance strategy "${guidanceStrategy ?? ""}". Expected prompt-summary|json-primary|unguided.`,
+      `Invalid guidance strategy "${guidanceStrategy ?? ""}". Expected prompt-summary|baseline-primary|json-primary|unguided.`,
     );
   }
   return mapped as GuidanceStrategy;
+}
+
+function ensureEvaluationMode(value?: string): EvaluationMode {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "zero-shot";
+  if (!VALID_EVALUATION_MODES.has(normalized as EvaluationMode)) {
+    throw new SessionInputError(`Invalid evaluation mode "${value ?? ""}". Expected zero-shot|iterative.`);
+  }
+  return normalized as EvaluationMode;
+}
+
+function ensurePlatformTarget(value: unknown, label: string): PlatformTarget {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!VALID_PLATFORM_TARGETS.has(normalized as PlatformTarget)) {
+    throw new SessionInputError(`Invalid ${label} "${String(value ?? "")}". Expected web|ios|android.`);
+  }
+  return normalized as PlatformTarget;
+}
+
+function ensureConsumerType(value: unknown, label: string): ConsumerType {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!VALID_CONSUMER_TYPES.has(normalized as ConsumerType)) {
+    throw new SessionInputError(
+      `Invalid ${label} "${String(value ?? "")}". Expected web-browser|desktop-shell|ios-native|android-native.`,
+    );
+  }
+  return normalized as ConsumerType;
 }
 
 function buildDefaultSessionId(): string {
@@ -647,7 +824,11 @@ function normalizeAssessment(
   const structureFallback = payload.structure;
   const grade = (key: AssessmentDimension) => {
     let value = payload[key];
-    if (value === undefined && options.allowLegacyMissing && (key === "components" || key === "boundary")) {
+    if (
+      value === undefined
+      && options.allowLegacyMissing
+      && (key === "components" || key === "boundary" || key === "platformFit")
+    ) {
       value = structureFallback;
     }
     if (!VALID_GRADES.has(value as AssessmentGrade)) {
@@ -711,6 +892,7 @@ function normalizeAssessment(
     boundary: grade("boundary"),
     visual: grade("visual"),
     responsiveness: grade("responsiveness"),
+    platformFit: grade("platformFit"),
     notes,
     ...(touchedFiles && touchedFiles.length > 0 ? { touchedFiles } : {}),
     ...(heuristics ? { heuristics } : {}),
@@ -1099,6 +1281,7 @@ function renderSummaryMarkdown(summary: GenerationSessionSummary): string {
   lines.push(`- boundary: ${summary.latestAssessment?.boundary ?? "n/a"}`);
   lines.push(`- visual: ${summary.latestAssessment?.visual ?? "n/a"}`);
   lines.push(`- responsiveness: ${summary.latestAssessment?.responsiveness ?? "n/a"}`);
+  lines.push(`- platform fit: ${summary.latestAssessment?.platformFit ?? "n/a"}`);
   lines.push(`- notes: ${summary.latestAssessment?.notes ?? "n/a"}`);
 
   if (summary.latestAssessment?.touchedFiles?.length) {
@@ -1440,6 +1623,16 @@ function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport): strin
     "# Generation Benchmark Report",
     "",
     `Generated at: ${report.generatedAt}`,
+    ...(report.run
+      ? [
+          `Cohort: ${report.run.cohortId}`,
+          `Evaluation mode: ${report.run.evaluationMode}`,
+          `Tool: ${report.run.tool}`,
+          `Model label: ${report.run.model.requestedModelLabel ?? "not recorded"}`,
+          `Resolved model id: ${report.run.model.resolvedModelId ?? "not recorded"}`,
+          `Source spec: ${report.run.sourceSpecPath}`,
+        ]
+      : []),
     `Surfaces: ${report.overall.surfaceCount}`,
     `Surfaces meeting goal: ${report.overall.surfacesMeetingGoal}`,
     `Candidate fewer first-attempt blocking findings: ${report.overall.guidedFewerFirstAttemptBlockingFindings}`,
@@ -1450,7 +1643,7 @@ function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport): strin
 
   for (const comparison of report.comparisons) {
     lines.push(
-      `- ${comparison.surfaceId}: baseline=${comparison.baselineGuidanceStrategy}, candidate=${comparison.guidedGuidanceStrategy}, meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`,
+      `- ${comparison.surfaceId}: baseline=${comparison.baselineGuidanceStrategy}, candidate=${comparison.guidedGuidanceStrategy}, platform=${comparison.platformTarget ?? "unknown"}, consumer=${comparison.consumerType ?? "unknown"}, model=${comparison.modelLabel ?? "unknown"}, meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`,
     );
   }
 
@@ -1468,6 +1661,26 @@ function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport): strin
   lines.push(`- lower touched files per resolved finding: ${report.overall.heuristics.lowerTouchedFilesPerResolvedFinding}`);
   lines.push(`- lower repeated finding carryover count: ${report.overall.heuristics.lowerRepeatedFindingCarryoverCount}`);
   lines.push(`- lower reruns to acceptable outcome: ${report.overall.heuristics.lowerRerunsToAcceptableOutcome}`);
+
+  if (report.breakdowns) {
+    const renderBreakdownBlock = (title: string, entries: Record<string, GenerationBenchmarkBreakdownSummary>) => {
+      lines.push("", title);
+      const keys = Object.keys(entries).sort((left, right) => left.localeCompare(right));
+      if (keys.length === 0) {
+        lines.push("- none");
+        return;
+      }
+      for (const key of keys) {
+        const entry = entries[key];
+        lines.push(
+          `- ${key}: comparisons=${entry.comparisonCount}, surfaces=${entry.surfaceCount}, meetsGoal=${entry.surfacesMeetingGoal}, fewerBlocking=${entry.guidedFewerFirstAttemptBlockingFindings}, acceptableNoLater=${entry.guidedReachedAcceptableNoLater}`,
+        );
+      }
+    };
+    renderBreakdownBlock("## By Platform Target", report.breakdowns.byPlatformTarget);
+    renderBreakdownBlock("## By Consumer Type", report.breakdowns.byConsumerType);
+    renderBreakdownBlock("## By Model", report.breakdowns.byModelLabel);
+  }
 
   return `${lines.join("\n")}\n`;
 }
@@ -1575,6 +1788,39 @@ function buildPreparedPromptSummary(preparedPayload: ReturnType<typeof buildPrep
         : "none"
     }`,
     `Top repair priorities: ${topRepairs.join(", ") || "none"}`,
+  ].join("\n");
+}
+
+function buildBaselinePrimarySummary(preparedPayload: ReturnType<typeof buildPreparedGenerationPayload>): string {
+  const surface = asRecord(preparedPayload.surface);
+  const contract = asRecord(preparedPayload.contract);
+  const constraints = asRecord(preparedPayload.constraints);
+  const generation = asRecord(preparedPayload.generation);
+  const layout = asRecord(generation.layout);
+  const guidance = asRecord(generation.guidance);
+  const boundaryRules = Array.isArray(guidance.boundaryRules)
+    ? guidance.boundaryRules.filter((entry): entry is JsonRecord => isRecord(entry))
+    : [];
+  const sections = Array.isArray(preparedPayload.sections)
+    ? preparedPayload.sections.filter((entry): entry is JsonRecord => isRecord(entry))
+    : [];
+  const repairMap = extractRepairEntries(preparedPayload.repairMap);
+  const color = asRecord(constraints.color);
+  const motion = asRecord(constraints.motion);
+
+  return [
+    `Surface: ${asString(surface.id) ?? "unknown"} (${asString(surface.type) ?? "unspecified"})`,
+    `Contract: ${asString(contract.id) ?? "unknown"} v${asString(contract.version) ?? "0.0.0"}`,
+    `Required sections: ${sections.map((entry) => asString(entry.id) ?? "").filter(Boolean).join(", ") || "none recorded"}`,
+    `Boundary rules: ${boundaryRules.map((entry) => asString(entry.id) ?? "").filter(Boolean).join(", ") || "none recorded"}`,
+    `Max content width: ${typeof layout.maxContentWidth === "number" ? `${layout.maxContentWidth}px` : "unspecified"}`,
+    `Allowed colors: ${asStringArray(color.allowedValues).join(", ") || "none recorded"}`,
+    `Motion durations: ${
+      Array.isArray(motion.allowedDurationsMs)
+        ? motion.allowedDurationsMs.map((value) => `${String(value)}ms`).join(", ")
+        : "none recorded"
+    }`,
+    `Top repair codes: ${repairMap.slice(0, 5).map((entry) => asString(entry.code) ?? "").filter(Boolean).join(", ") || "none"}`,
   ].join("\n");
 }
 
@@ -1763,6 +2009,12 @@ function buildGuidanceHandoff(
       ? {
           effectiveContractSummary: summarizeContractForSurface(session.contractPath, session.surfaceId),
           preparedGuidanceSummary: buildPreparedPromptSummary(preparedPayload!),
+        }
+      : null,
+    baselinePrimary: guidanceStrategy === "baseline-primary"
+      ? {
+          effectiveContractSummary: summarizeContractForSurface(session.contractPath, session.surfaceId),
+          baselineContractSummary: buildBaselinePrimarySummary(preparedPayload!),
         }
       : null,
     jsonPrimary: guidanceStrategy === "json-primary"
@@ -2160,6 +2412,211 @@ function normalizeSuggestionReviewFile(filePath: string): Array<{
       rationale,
     };
   });
+}
+
+function buildDefaultBenchmarkCohortId(): string {
+  return new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+}
+
+function normalizeBenchmarkComparisonPairs(value: unknown, label: string): GenerationBenchmarkSpec["comparisonPairs"] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new SessionInputError(`${label} must be a non-empty array.`);
+  }
+  return value.map((entry, index) => {
+    const record = asRecord(entry);
+    return {
+      baselineGuidanceStrategy: ensureGuidanceStrategy(
+        asString(record.baselineGuidanceStrategy) ?? (() => {
+          throw new SessionInputError(`${label}[${index}].baselineGuidanceStrategy is required.`);
+        })(),
+      ),
+      guidedGuidanceStrategy: ensureGuidanceStrategy(
+        asString(record.guidedGuidanceStrategy) ?? (() => {
+          throw new SessionInputError(`${label}[${index}].guidedGuidanceStrategy is required.`);
+        })(),
+      ),
+    };
+  });
+}
+
+function loadGenerationBenchmarkSpec(specPath: string): GenerationBenchmarkSpec {
+  const resolvedPath = path.resolve(specPath);
+  const payload = readJsonFile<JsonRecord>(resolvedPath, "generation benchmark spec");
+  const fixturesValue = payload.fixtures;
+  if (!Array.isArray(fixturesValue) || fixturesValue.length === 0) {
+    throw new SessionInputError(`Benchmark spec must include a non-empty fixtures array: ${resolvedPath}.`);
+  }
+  const guidanceStrategies = asStringArray(payload.guidanceStrategies).map((entry) => ensureGuidanceStrategy(entry));
+  if (guidanceStrategies.length < 2) {
+    throw new SessionInputError(`Benchmark spec must freeze at least two guidance strategies: ${resolvedPath}.`);
+  }
+  const comparisonPairs = normalizeBenchmarkComparisonPairs(payload.comparisonPairs, "comparisonPairs");
+  const attemptBudget = Number(payload.attemptBudget);
+  if (!Number.isInteger(attemptBudget) || attemptBudget < 1) {
+    throw new SessionInputError(`Benchmark spec attemptBudget must be a positive integer: ${resolvedPath}.`);
+  }
+
+  return {
+    schemaVersion: 1,
+    specId: asString(payload.specId) ?? path.basename(resolvedPath, path.extname(resolvedPath)),
+    generatedAt: asString(payload.generatedAt) ?? new Date().toISOString(),
+    evaluationMode: ensureEvaluationMode(asString(payload.evaluationMode) ?? "zero-shot"),
+    attemptBudget,
+    guidanceStrategies,
+    comparisonPairs,
+    ...(asString(payload.suiteId) ? { suiteId: asString(payload.suiteId) ?? undefined } : {}),
+    ...(asString(payload.suiteName) ? { suiteName: asString(payload.suiteName) ?? undefined } : {}),
+    fixtures: fixturesValue.map((entry, index) => {
+      const record = asRecord(entry);
+      const brief = asRecord(record.brief);
+      const pathsRecord = record.paths !== undefined ? asRecord(record.paths) : null;
+      const fixtureComparisonPairs = record.comparisonPairs !== undefined
+        ? normalizeBenchmarkComparisonPairs(record.comparisonPairs, `fixtures[${index}].comparisonPairs`)
+        : comparisonPairs;
+      return {
+        fixtureId: asString(record.fixtureId) ?? (() => {
+          throw new SessionInputError(`fixtures[${index}].fixtureId is required in ${resolvedPath}.`);
+        })(),
+        surfaceId: asString(record.surfaceId) ?? (() => {
+          throw new SessionInputError(`fixtures[${index}].surfaceId is required in ${resolvedPath}.`);
+        })(),
+        brief: {
+          path: asString(brief.path) ?? (() => {
+            throw new SessionInputError(`fixtures[${index}].brief.path is required in ${resolvedPath}.`);
+          })(),
+          sha256: asString(brief.sha256) ?? (() => {
+            throw new SessionInputError(`fixtures[${index}].brief.sha256 is required in ${resolvedPath}.`);
+          })(),
+        },
+        platformTarget: ensurePlatformTarget(record.platformTarget, `fixtures[${index}].platformTarget`),
+        consumerType: ensureConsumerType(record.consumerType, `fixtures[${index}].consumerType`),
+        capturePreset: asString(record.capturePreset) ?? "web-browser",
+        comparisonPairs: fixtureComparisonPairs,
+        ...(pathsRecord
+          ? {
+              paths: {
+                ...(asString(pathsRecord.fixtureDir) ? { fixtureDir: asString(pathsRecord.fixtureDir) ?? undefined } : {}),
+                ...(asString(pathsRecord.effectiveAstPath)
+                  ? { effectiveAstPath: asString(pathsRecord.effectiveAstPath) ?? undefined }
+                  : {}),
+                ...(asString(pathsRecord.preparedInputPath)
+                  ? { preparedInputPath: asString(pathsRecord.preparedInputPath) ?? undefined }
+                  : {}),
+                ...(asString(pathsRecord.acceptedSuggestionsPath)
+                  ? { acceptedSuggestionsPath: asString(pathsRecord.acceptedSuggestionsPath) ?? undefined }
+                  : {}),
+                ...(asString(pathsRecord.designerNotesPath)
+                  ? { designerNotesPath: asString(pathsRecord.designerNotesPath) ?? undefined }
+                  : {}),
+                ...(asString(pathsRecord.baselineValidatePath)
+                  ? { baselineValidatePath: asString(pathsRecord.baselineValidatePath) ?? undefined }
+                  : {}),
+              },
+            }
+          : {}),
+      };
+    }),
+  };
+}
+
+function loadGenerationBenchmarkRun(runPath: string): GenerationBenchmarkRun {
+  return readJsonFile<JsonRecord>(path.resolve(runPath), "generation benchmark run") as unknown as GenerationBenchmarkRun;
+}
+
+function buildBreakdownSummary(entries: Array<GenerationBenchmarkReport["comparisons"][number]>): GenerationBenchmarkBreakdownSummary {
+  return {
+    comparisonCount: entries.length,
+    surfaceCount: new Set(entries.map((entry) => entry.surfaceId)).size,
+    surfacesMeetingGoal: entries.filter((entry) => entry.meetsGoal).length,
+    guidedFewerFirstAttemptBlockingFindings: entries.filter(
+      (entry) => entry.guidedFewerFirstAttemptBlockingFindings,
+    ).length,
+    guidedReachedAcceptableNoLater: entries.filter((entry) => entry.guidedReachedAcceptableNoLater).length,
+  };
+}
+
+export async function runReplayGenerationBenchmarkCommand(
+  options: ReplayGenerationBenchmarkCommandOptions,
+): Promise<number> {
+  try {
+    if (!options.specPath) {
+      throw new SessionInputError("--spec is required.");
+    }
+    if (!options.outDir) {
+      throw new SessionInputError("--out-dir is required.");
+    }
+    const tool = ensureSessionTool(options.tool);
+    const specPath = path.resolve(options.specPath);
+    const spec = loadGenerationBenchmarkSpec(specPath);
+    const benchmarkDir = path.resolve(options.outDir);
+    const cohortId = options.cohortId?.trim() || buildDefaultBenchmarkCohortId();
+    const runPath = path.join(benchmarkDir, "run.json");
+    const copiedSpecPath = path.join(benchmarkDir, "spec.json");
+    const sourceRunPath = options.sourceRunPath ? path.resolve(options.sourceRunPath) : null;
+
+    fs.mkdirSync(benchmarkDir, { recursive: true });
+    if (path.resolve(specPath) !== path.resolve(copiedSpecPath)) {
+      fs.copyFileSync(specPath, copiedSpecPath);
+    }
+
+    const run: GenerationBenchmarkRun = {
+      schemaVersion: 1,
+      cohortId,
+      generatedAt: new Date().toISOString(),
+      evaluationMode: spec.evaluationMode,
+      tool,
+      sourceSpecPath: specPath,
+      sourceRunPath,
+      attemptBudget: spec.attemptBudget,
+      guidanceStrategies: [...spec.guidanceStrategies],
+      comparisonPairs: spec.comparisonPairs.map((pair) => ({ ...pair })),
+      model: {
+        requestedModelLabel: options.requestedModelLabel?.trim() || null,
+        resolvedModelId: options.resolvedModelId?.trim() || null,
+        baseUrl: options.baseUrl?.trim() || null,
+        fingerprint: options.fingerprint?.trim() || null,
+      },
+      ...(spec.suiteId ? { suiteId: spec.suiteId } : {}),
+      ...(spec.suiteName ? { suiteName: spec.suiteName } : {}),
+      paths: {
+        benchmarkDir,
+        specPath: copiedSpecPath,
+        runPath,
+        reportJsonPath: null,
+        reportMarkdownPath: null,
+      },
+      fixtures: spec.fixtures.map((fixture) => ({
+        ...fixture,
+        sessions: [],
+        comparisons: [],
+      })),
+    };
+
+    writeDeterministicJsonSync(runPath, run);
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          run,
+          paths: {
+            specPath: copiedSpecPath,
+            runPath,
+            benchmarkDir,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return 0;
+  } catch (error) {
+    if (error instanceof SessionInputError || error instanceof AdapterInputError) {
+      writeError(error, error.code);
+      return 10;
+    }
+    writeError(error instanceof Error ? error : new Error(String(error)), "generation-session.internal");
+    return 1;
+  }
 }
 
 export async function runInitGenerationSessionCommand(
@@ -2793,7 +3250,13 @@ export async function runSummarizeGenerationBenchmarkCommand(
   options: SummarizeGenerationBenchmarkCommandOptions,
 ): Promise<number> {
   try {
+    const run = options.runPath ? loadGenerationBenchmarkRun(options.runPath) : null;
     const comparisonPaths = parseCsvPaths(options.comparisonPaths);
+    if (comparisonPaths.length === 0 && run) {
+      comparisonPaths.push(
+        ...run.fixtures.flatMap((fixture) => fixture.comparisons.map((comparison) => path.resolve(comparison.comparisonPath))),
+      );
+    }
     if (comparisonPaths.length === 0) {
       throw new SessionInputError("--comparisons must include at least one comparison artifact path.");
     }
@@ -2806,22 +3269,61 @@ export async function runSummarizeGenerationBenchmarkCommand(
       path: suggestionPath,
       value: readJsonFile<JsonRecord>(suggestionPath, "contract delta suggestions artifact") as unknown as ContractDeltaSuggestionsArtifact,
     }));
+    const fixtureMetadataByComparisonPath = new Map<string, {
+      platformTarget: PlatformTarget;
+      consumerType: ConsumerType;
+    }>();
+    if (run) {
+      for (const fixture of run.fixtures) {
+        for (const comparison of fixture.comparisons) {
+          fixtureMetadataByComparisonPath.set(path.resolve(comparison.comparisonPath), {
+            platformTarget: fixture.platformTarget,
+            consumerType: fixture.consumerType,
+          });
+        }
+      }
+    }
 
     const report: GenerationBenchmarkReport = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
-      comparisons: comparisons.map(({ path: comparisonPath, value }) => ({
-        surfaceId: value.surfaceId,
-        tool: value.tool,
-        comparisonPath,
-        meetsGoal: value.checks.meetsGoal,
-        baselineGuidanceStrategy: value.baseline.guidanceStrategy,
-        guidedGuidanceStrategy: value.guided.guidanceStrategy,
-        guidedFewerFirstAttemptBlockingFindings: value.checks.guidedFewerFirstAttemptBlockingFindings,
-        guidedReachedAcceptableNoLater: value.checks.guidedReachedAcceptableNoLater,
-        guidedRubricBetterDimensions: value.checks.guidedRubricBetterDimensions,
-        heuristics: value.heuristics.delta,
-      })),
+      ...(run
+        ? {
+            run: {
+              cohortId: run.cohortId,
+              evaluationMode: run.evaluationMode,
+              tool: run.tool,
+              sourceSpecPath: run.sourceSpecPath,
+              sourceRunPath: run.sourceRunPath,
+              guidanceStrategies: [...run.guidanceStrategies],
+              attemptBudget: run.attemptBudget,
+              model: {
+                requestedModelLabel: run.model.requestedModelLabel,
+                resolvedModelId: run.model.resolvedModelId,
+                baseUrl: run.model.baseUrl,
+                fingerprint: run.model.fingerprint,
+              },
+            },
+          }
+        : {}),
+      comparisons: comparisons.map(({ path: comparisonPath, value }) => {
+        const comparisonMetadata = fixtureMetadataByComparisonPath.get(path.resolve(comparisonPath));
+        return {
+          surfaceId: value.surfaceId,
+          tool: value.tool,
+          comparisonPath,
+          meetsGoal: value.checks.meetsGoal,
+          baselineGuidanceStrategy: value.baseline.guidanceStrategy,
+          guidedGuidanceStrategy: value.guided.guidanceStrategy,
+          ...(comparisonMetadata ? { platformTarget: comparisonMetadata.platformTarget } : {}),
+          ...(comparisonMetadata ? { consumerType: comparisonMetadata.consumerType } : {}),
+          ...(run ? { modelLabel: run.model.requestedModelLabel ?? run.model.resolvedModelId ?? "unknown" } : {}),
+          guidedFewerFirstAttemptBlockingFindings: value.checks.guidedFewerFirstAttemptBlockingFindings,
+          guidedReachedAcceptableNoLater: value.checks.guidedReachedAcceptableNoLater,
+          guidedRubricBetterDimensions: value.checks.guidedRubricBetterDimensions,
+          heuristics: value.heuristics.delta,
+        };
+      }),
       suggestions: suggestions.map(({ path: suggestionsPath, value }) => ({
         surfaceId: value.surfaceId,
         sessionId: value.sessionId,
@@ -2892,6 +3394,86 @@ export async function runSummarizeGenerationBenchmarkCommand(
           },
         },
       },
+      ...(run
+        ? {
+            breakdowns: {
+              byPlatformTarget: Object.fromEntries(
+                [...new Set(run.fixtures.map((fixture) => fixture.platformTarget))]
+                  .sort((left, right) => left.localeCompare(right))
+                  .map((platformTarget) => [
+                    platformTarget,
+                    buildBreakdownSummary(
+                      comparisons
+                        .map(({ path: comparisonPath, value }) => ({
+                          ...value,
+                          __comparisonPath: comparisonPath,
+                        }))
+                        .filter((entry) =>
+                          fixtureMetadataByComparisonPath.get(path.resolve(entry.__comparisonPath))?.platformTarget === platformTarget
+                        )
+                        .map((entry) => ({
+                          surfaceId: entry.surfaceId,
+                          tool: entry.tool,
+                          comparisonPath: entry.__comparisonPath,
+                          meetsGoal: entry.checks.meetsGoal,
+                          baselineGuidanceStrategy: entry.baseline.guidanceStrategy,
+                          guidedGuidanceStrategy: entry.guided.guidanceStrategy,
+                          guidedFewerFirstAttemptBlockingFindings: entry.checks.guidedFewerFirstAttemptBlockingFindings,
+                          guidedReachedAcceptableNoLater: entry.checks.guidedReachedAcceptableNoLater,
+                          guidedRubricBetterDimensions: entry.checks.guidedRubricBetterDimensions,
+                          heuristics: entry.heuristics.delta,
+                        })),
+                    ),
+                  ]),
+              ),
+              byConsumerType: Object.fromEntries(
+                [...new Set(run.fixtures.map((fixture) => fixture.consumerType))]
+                  .sort((left, right) => left.localeCompare(right))
+                  .map((consumerType) => [
+                    consumerType,
+                    buildBreakdownSummary(
+                      comparisons
+                        .map(({ path: comparisonPath, value }) => ({
+                          ...value,
+                          __comparisonPath: comparisonPath,
+                        }))
+                        .filter((entry) =>
+                          fixtureMetadataByComparisonPath.get(path.resolve(entry.__comparisonPath))?.consumerType === consumerType
+                        )
+                        .map((entry) => ({
+                          surfaceId: entry.surfaceId,
+                          tool: entry.tool,
+                          comparisonPath: entry.__comparisonPath,
+                          meetsGoal: entry.checks.meetsGoal,
+                          baselineGuidanceStrategy: entry.baseline.guidanceStrategy,
+                          guidedGuidanceStrategy: entry.guided.guidanceStrategy,
+                          guidedFewerFirstAttemptBlockingFindings: entry.checks.guidedFewerFirstAttemptBlockingFindings,
+                          guidedReachedAcceptableNoLater: entry.checks.guidedReachedAcceptableNoLater,
+                          guidedRubricBetterDimensions: entry.checks.guidedRubricBetterDimensions,
+                          heuristics: entry.heuristics.delta,
+                        })),
+                    ),
+                  ]),
+              ),
+              byModelLabel: {
+                [run.model.requestedModelLabel ?? run.model.resolvedModelId ?? "unknown"]: buildBreakdownSummary(
+                  comparisons.map(({ path: comparisonPath, value }) => ({
+                    surfaceId: value.surfaceId,
+                    tool: value.tool,
+                    comparisonPath,
+                    meetsGoal: value.checks.meetsGoal,
+                    baselineGuidanceStrategy: value.baseline.guidanceStrategy,
+                    guidedGuidanceStrategy: value.guided.guidanceStrategy,
+                    guidedFewerFirstAttemptBlockingFindings: value.checks.guidedFewerFirstAttemptBlockingFindings,
+                    guidedReachedAcceptableNoLater: value.checks.guidedReachedAcceptableNoLater,
+                    guidedRubricBetterDimensions: value.checks.guidedRubricBetterDimensions,
+                    heuristics: value.heuristics.delta,
+                  })),
+                ),
+              },
+            },
+          }
+        : {}),
     };
 
     const outDir = options.outDir
@@ -2902,6 +3484,16 @@ export async function runSummarizeGenerationBenchmarkCommand(
     writeDeterministicJsonSync(jsonPath, report);
     fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
     fs.writeFileSync(markdownPath, renderBenchmarkReportMarkdown(report), "utf8");
+    if (run && options.runPath) {
+      writeDeterministicJsonSync(path.resolve(options.runPath), {
+        ...run,
+        paths: {
+          ...run.paths,
+          reportJsonPath: jsonPath,
+          reportMarkdownPath: markdownPath,
+        },
+      });
+    }
 
     process.stdout.write(
       `${JSON.stringify(

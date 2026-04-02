@@ -12,6 +12,8 @@ import { validateDiffOutput } from "@surfaces/interfacectl-validator";
 import generationSessionComparisonSchema from "../schemas/generation-session-comparison.schema.json" with { type: "json" };
 import contractDeltaSuggestionsSchema from "../schemas/contract-delta-suggestions.schema.json" with { type: "json" };
 import generationBenchmarkReportSchema from "../schemas/generation-benchmark-report.schema.json" with { type: "json" };
+import generationBenchmarkSpecSchema from "../schemas/generation-benchmark-spec.schema.json" with { type: "json" };
+import generationBenchmarkRunSchema from "../schemas/generation-benchmark-run.schema.json" with { type: "json" };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,6 +151,7 @@ function buildAssessment({
   boundary,
   visual,
   responsiveness,
+  platformFit,
   notes,
   heuristics,
 }) {
@@ -158,6 +161,7 @@ function buildAssessment({
     boundary,
     visual,
     responsiveness,
+    platformFit: platformFit ?? responsiveness,
     notes,
     ...(heuristics ? { heuristics } : {}),
   };
@@ -592,6 +596,96 @@ test("strategy-aware benchmark artifacts compare sessions, emit deterministic su
     assert.equal(benchmarkReport.comparisons[0].baselineGuidanceStrategy, "prompt-summary");
     assert.equal(benchmarkReport.comparisons[0].guidedGuidanceStrategy, "json-primary");
     assert.equal(benchmarkReport.overall.heuristics.lowerRecoverableToolErrorCount, 1);
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("replay-generation-benchmark freezes a copied spec and model attribution into a new run manifest", async () => {
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-benchmark-replay-"));
+  const specPath = path.join(tempRoot, "spec.json");
+  const outDir = path.join(tempRoot, "replay-run");
+
+  try {
+    const spec = {
+      schemaVersion: 1,
+      specId: "demo-suite/spec",
+      generatedAt: "2026-04-02T00:00:00.000Z",
+      evaluationMode: "zero-shot",
+      attemptBudget: 1,
+      guidanceStrategies: ["unguided", "baseline-primary", "json-primary"],
+      comparisonPairs: [
+        {
+          baselineGuidanceStrategy: "unguided",
+          guidedGuidanceStrategy: "baseline-primary",
+        },
+        {
+          baselineGuidanceStrategy: "baseline-primary",
+          guidedGuidanceStrategy: "json-primary",
+        },
+      ],
+      suiteId: "demo-suite/default",
+      suiteName: "Demo Suite",
+      fixtures: [
+        {
+          fixtureId: "demo-surface",
+          surfaceId: "demo-surface",
+          brief: {
+            path: "/tmp/demo-brief.md",
+            sha256: "brief-hash",
+          },
+          platformTarget: "web",
+          consumerType: "desktop-shell",
+          capturePreset: "desktop-shell",
+          comparisonPairs: [
+            {
+              baselineGuidanceStrategy: "unguided",
+              guidedGuidanceStrategy: "baseline-primary",
+            },
+            {
+              baselineGuidanceStrategy: "baseline-primary",
+              guidedGuidanceStrategy: "json-primary",
+            },
+          ],
+        },
+      ],
+    };
+    await writeJson(specPath, spec);
+    validateWithSchema(spec, generationBenchmarkSpecSchema, "generation benchmark spec");
+
+    const replayResult = await runCli(
+      [
+        "replay-generation-benchmark",
+        "--spec",
+        specPath,
+        "--tool",
+        "local-llm",
+        "--out-dir",
+        outDir,
+        "--cohort-id",
+        "20260402000000",
+        "--requested-model-label",
+        "qwen3.5-9b",
+        "--resolved-model-id",
+        "qwen/qwen3.5-9b-instruct",
+        "--base-url",
+        "http://127.0.0.1:1234/v1",
+        "--fingerprint",
+        "qwen-fingerprint",
+      ],
+      tempRoot,
+    );
+    assert.equal(replayResult.exitCode, 0, replayResult.stderr);
+
+    const replayOutput = JSON.parse(replayResult.stdout);
+    const replayRun = JSON.parse(await fsp.readFile(replayOutput.paths.runPath, "utf8"));
+    validateWithSchema(replayRun, generationBenchmarkRunSchema, "generation benchmark run");
+    assert.equal(replayRun.sourceSpecPath, specPath);
+    assert.equal(replayRun.paths.specPath, path.join(outDir, "spec.json"));
+    assert.equal(replayRun.model.requestedModelLabel, "qwen3.5-9b");
+    assert.equal(replayRun.model.resolvedModelId, "qwen/qwen3.5-9b-instruct");
+    assert.equal(replayRun.fixtures[0].consumerType, "desktop-shell");
+    assert.deepEqual(replayRun.fixtures[0].comparisons, []);
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true });
   }

@@ -40,7 +40,7 @@
     },
     "guidanceStrategy": {
       "type": "string",
-      "enum": ["prompt-summary", "json-primary", "unguided"]
+      "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
     },
     "workspaceRoot": {
       "type": "string",
