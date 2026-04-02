@@ -485,6 +485,22 @@ function averageNullable(values) {
     }
     return Math.round((filtered.reduce((sum, value) => sum + value, 0) / filtered.length) * 1000) / 1000;
 }
+function readOptionalTrimmedText(filePath) {
+    if (!filePath || !fs.existsSync(filePath)) {
+        return null;
+    }
+    return fs.readFileSync(filePath, "utf8").trim();
+}
+function appendArtifactLines(lines, title, artifacts) {
+    const filtered = artifacts.filter(([, filePath]) => Boolean(filePath));
+    if (filtered.length === 0) {
+        return;
+    }
+    lines.push("", title);
+    for (const [label, filePath] of filtered) {
+        lines.push(`- ${label}: ${filePath}`);
+    }
+}
 function renderSummaryMarkdown(summary) {
     const lines = [
         "# Generation Session Summary",
@@ -814,7 +830,7 @@ function renderSuggestionsMarkdown(artifact) {
     }
     return `${lines.join("\n")}\n`;
 }
-function renderBenchmarkReportMarkdown(report) {
+function renderBenchmarkReportMarkdown(report, run) {
     const lines = [
         "# Generation Benchmark Report",
         "",
@@ -826,7 +842,10 @@ function renderBenchmarkReportMarkdown(report) {
                 `Tool: ${report.run.tool}`,
                 `Model label: ${report.run.model.requestedModelLabel ?? "not recorded"}`,
                 `Resolved model id: ${report.run.model.resolvedModelId ?? "not recorded"}`,
+                `Base URL: ${report.run.model.baseUrl ?? "not recorded"}`,
+                `Fingerprint: ${report.run.model.fingerprint ?? "not recorded"}`,
                 `Source spec: ${report.run.sourceSpecPath}`,
+                `Source run: ${report.run.sourceRunPath ?? "none"}`,
             ]
             : []),
         `Surfaces: ${report.overall.surfaceCount}`,
@@ -836,8 +855,13 @@ function renderBenchmarkReportMarkdown(report) {
         "",
         "## Comparisons",
     ];
-    for (const comparison of report.comparisons) {
-        lines.push(`- ${comparison.surfaceId}: baseline=${comparison.baselineGuidanceStrategy}, candidate=${comparison.guidedGuidanceStrategy}, platform=${comparison.platformTarget ?? "unknown"}, consumer=${comparison.consumerType ?? "unknown"}, model=${comparison.modelLabel ?? "unknown"}, meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`);
+    if (report.comparisons.length === 0) {
+        lines.push("- none");
+    }
+    else {
+        for (const comparison of report.comparisons) {
+            lines.push(`- ${comparison.surfaceId}: baseline=${comparison.baselineGuidanceStrategy}, candidate=${comparison.guidedGuidanceStrategy}, platform=${comparison.platformTarget ?? "unknown"}, consumer=${comparison.consumerType ?? "unknown"}, model=${comparison.modelLabel ?? "unknown"}, meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`);
+        }
     }
     lines.push("", "## Suggestion decisions");
     for (const suggestion of report.suggestions) {
@@ -866,6 +890,48 @@ function renderBenchmarkReportMarkdown(report) {
         renderBreakdownBlock("## By Platform Target", report.breakdowns.byPlatformTarget);
         renderBreakdownBlock("## By Consumer Type", report.breakdowns.byConsumerType);
         renderBreakdownBlock("## By Model", report.breakdowns.byModelLabel);
+    }
+    if (run) {
+        lines.push("", "## Zero-Shot Evidence");
+        for (const fixture of run.fixtures) {
+            lines.push("", `### ${fixture.surfaceId}`, `- fixture: ${fixture.fixtureId}`, `- platform target: ${fixture.platformTarget}`, `- consumer type: ${fixture.consumerType}`, `- capture preset: ${fixture.capturePreset}`, `- brief path: ${fixture.brief.path}`, `- brief sha256: ${fixture.brief.sha256}`);
+            const briefText = readOptionalTrimmedText(fixture.brief.path);
+            if (briefText) {
+                lines.push("", "#### Benchmark Brief", "", "```md", briefText, "```");
+            }
+            appendArtifactLines(lines, "#### Contract Artifacts", [
+                ["source contract", fixture.paths?.sourceContractPath],
+                ["source AST", fixture.paths?.sourceAstPath],
+                ["bundle root", fixture.paths?.bundleRoot],
+                ["compiled contract", fixture.paths?.compiledContractPath],
+                ["effective AST", fixture.paths?.effectiveAstPath],
+            ]);
+            appendArtifactLines(lines, "#### Prompt And Input Artifacts", [
+                ["prepared input", fixture.paths?.preparedInputPath],
+                ["accepted suggestions", fixture.paths?.acceptedSuggestionsPath],
+                ["designer notes", fixture.paths?.designerNotesPath],
+                ["baseline validate", fixture.paths?.baselineValidatePath],
+            ]);
+            if (fixture.comparisons.length > 0) {
+                lines.push("", "#### Fixture Comparisons");
+                for (const comparison of fixture.comparisons) {
+                    lines.push(`- ${comparison.baselineGuidanceStrategy} vs ${comparison.guidedGuidanceStrategy}: ${comparison.comparisonPath}`);
+                }
+            }
+            if (fixture.sessions.length > 0) {
+                lines.push("", "#### Session Evidence");
+                for (const session of fixture.sessions) {
+                    const summary = fs.existsSync(session.summaryPath)
+                        ? readJsonFile(session.summaryPath, "generation benchmark session summary")
+                        : null;
+                    lines.push("", `##### ${session.guidanceStrategy}`, `- session id: ${session.sessionId}`, `- session dir: ${session.sessionDir}`, `- latest status: ${asString(summary?.latestStatus) ?? "not recorded"}`, `- latest outcome: ${asString(summary?.latestOutcome) ?? "not recorded"}`, `- error: ${asString(summary?.errorMessage) ?? "none"}`, `- summary path: ${session.summaryPath}`, `- guidance handoff: ${session.guidanceHandoffPath}`, `- agent input: ${session.agentInputPath}`, `- preview: ${session.previewPath ?? "not captured"}`);
+                    const agentInput = readOptionalTrimmedText(session.agentInputPath);
+                    if (agentInput) {
+                        lines.push("", "```txt", agentInput, "```");
+                    }
+                }
+            }
+        }
     }
     return `${lines.join("\n")}\n`;
 }
@@ -1564,6 +1630,18 @@ function loadGenerationBenchmarkSpec(specPath) {
                     ? {
                         paths: {
                             ...(asString(pathsRecord.fixtureDir) ? { fixtureDir: asString(pathsRecord.fixtureDir) ?? undefined } : {}),
+                            ...(asString(pathsRecord.sourceContractPath)
+                                ? { sourceContractPath: asString(pathsRecord.sourceContractPath) ?? undefined }
+                                : {}),
+                            ...(asString(pathsRecord.sourceAstPath)
+                                ? { sourceAstPath: asString(pathsRecord.sourceAstPath) ?? undefined }
+                                : {}),
+                            ...(asString(pathsRecord.bundleRoot)
+                                ? { bundleRoot: asString(pathsRecord.bundleRoot) ?? undefined }
+                                : {}),
+                            ...(asString(pathsRecord.compiledContractPath)
+                                ? { compiledContractPath: asString(pathsRecord.compiledContractPath) ?? undefined }
+                                : {}),
                             ...(asString(pathsRecord.effectiveAstPath)
                                 ? { effectiveAstPath: asString(pathsRecord.effectiveAstPath) ?? undefined }
                                 : {}),
@@ -2203,7 +2281,7 @@ export async function runSummarizeGenerationBenchmarkCommand(options) {
         if (comparisonPaths.length === 0 && run) {
             comparisonPaths.push(...run.fixtures.flatMap((fixture) => fixture.comparisons.map((comparison) => path.resolve(comparison.comparisonPath))));
         }
-        if (comparisonPaths.length === 0) {
+        if (comparisonPaths.length === 0 && !run) {
             throw new SessionInputError("--comparisons must include at least one comparison artifact path.");
         }
         const suggestionPaths = parseCsvPaths(options.suggestionPaths);
@@ -2275,7 +2353,7 @@ export async function runSummarizeGenerationBenchmarkCommand(options) {
                 rejectedCount: value.suggestions.filter((entry) => entry.status === "rejected").length,
             })),
             overall: {
-                surfaceCount: comparisons.length,
+                surfaceCount: comparisons.length > 0 ? comparisons.length : (run?.fixtures.length ?? 0),
                 surfacesMeetingGoal: comparisons.filter(({ value }) => value.checks.meetsGoal).length,
                 guidedFewerFirstAttemptBlockingFindings: comparisons.filter(({ value }) => value.checks.guidedFewerFirstAttemptBlockingFindings).length,
                 guidedReachedAcceptableNoLater: comparisons.filter(({ value }) => value.checks.guidedReachedAcceptableNoLater).length,
@@ -2373,7 +2451,7 @@ export async function runSummarizeGenerationBenchmarkCommand(options) {
         const markdownPath = path.join(outDir, "benchmark-report.md");
         writeDeterministicJsonSync(jsonPath, report);
         fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
-        fs.writeFileSync(markdownPath, renderBenchmarkReportMarkdown(report), "utf8");
+        fs.writeFileSync(markdownPath, renderBenchmarkReportMarkdown(report, run), "utf8");
         if (run && options.runPath) {
             writeDeterministicJsonSync(path.resolve(options.runPath), {
                 ...run,

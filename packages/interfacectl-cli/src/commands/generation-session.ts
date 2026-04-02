@@ -1670,10 +1670,14 @@ function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport, run?: 
     "## Comparisons",
   ];
 
-  for (const comparison of report.comparisons) {
-    lines.push(
-      `- ${comparison.surfaceId}: baseline=${comparison.baselineGuidanceStrategy}, candidate=${comparison.guidedGuidanceStrategy}, platform=${comparison.platformTarget ?? "unknown"}, consumer=${comparison.consumerType ?? "unknown"}, model=${comparison.modelLabel ?? "unknown"}, meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`,
-    );
+  if (report.comparisons.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const comparison of report.comparisons) {
+      lines.push(
+        `- ${comparison.surfaceId}: baseline=${comparison.baselineGuidanceStrategy}, candidate=${comparison.guidedGuidanceStrategy}, platform=${comparison.platformTarget ?? "unknown"}, consumer=${comparison.consumerType ?? "unknown"}, model=${comparison.modelLabel ?? "unknown"}, meetsGoal=${comparison.meetsGoal}, improved dimensions=${comparison.guidedRubricBetterDimensions.join(", ") || "none"}`,
+      );
+    }
   }
 
   lines.push("", "## Suggestion decisions");
@@ -1767,6 +1771,7 @@ function renderBenchmarkReportMarkdown(report: GenerationBenchmarkReport, run?: 
             `- session dir: ${session.sessionDir}`,
             `- latest status: ${asString(summary?.latestStatus) ?? "not recorded"}`,
             `- latest outcome: ${asString(summary?.latestOutcome) ?? "not recorded"}`,
+            `- error: ${asString(summary?.errorMessage) ?? "none"}`,
             `- summary path: ${session.summaryPath}`,
             `- guidance handoff: ${session.guidanceHandoffPath}`,
             `- agent input: ${session.agentInputPath}`,
@@ -3368,7 +3373,7 @@ export async function runSummarizeGenerationBenchmarkCommand(
         ...run.fixtures.flatMap((fixture) => fixture.comparisons.map((comparison) => path.resolve(comparison.comparisonPath))),
       );
     }
-    if (comparisonPaths.length === 0) {
+    if (comparisonPaths.length === 0 && !run) {
       throw new SessionInputError("--comparisons must include at least one comparison artifact path.");
     }
     const suggestionPaths = parseCsvPaths(options.suggestionPaths);
@@ -3444,7 +3449,7 @@ export async function runSummarizeGenerationBenchmarkCommand(
         rejectedCount: value.suggestions.filter((entry) => entry.status === "rejected").length,
       })),
       overall: {
-        surfaceCount: comparisons.length,
+        surfaceCount: comparisons.length > 0 ? comparisons.length : (run?.fixtures.length ?? 0),
         surfacesMeetingGoal: comparisons.filter(({ value }) => value.checks.meetsGoal).length,
         guidedFewerFirstAttemptBlockingFindings: comparisons.filter(
           ({ value }) => value.checks.guidedFewerFirstAttemptBlockingFindings,
