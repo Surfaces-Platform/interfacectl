@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://surfaces.dev/schemas/generation-benchmark-spec.schema.json",
+  "title": "GenerationBenchmarkSpec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "specId",
+    "generatedAt",
+    "evaluationMode",
+    "attemptBudget",
+    "guidanceStrategies",
+    "comparisonPairs",
+    "fixtures"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "specId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evaluationMode": {
+      "type": "string",
+      "enum": ["zero-shot", "iterative"]
+    },
+    "attemptBudget": {
+      "type": "number",
+      "minimum": 1
+    },
+    "guidanceStrategies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+      }
+    },
+    "comparisonPairs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/comparisonPair"
+      }
+    },
+    "suiteId": {
+      "type": "string"
+    },
+    "suiteName": {
+      "type": "string"
+    },
+    "fixtures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fixture"
+      }
+    }
+  },
+  "$defs": {
+    "comparisonPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineGuidanceStrategy", "guidedGuidanceStrategy"],
+      "properties": {
+        "baselineGuidanceStrategy": {
+          "type": "string",
+          "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+        },
+        "guidedGuidanceStrategy": {
+          "type": "string",
+          "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
+        }
+      }
+    },
+    "brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "fixturePaths": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fixtureDir": { "type": "string" },
+        "sourceContractPath": { "type": "string" },
+        "sourceAstPath": { "type": "string" },
+        "bundleRoot": { "type": "string" },
+        "compiledContractPath": { "type": "string" },
+        "effectiveAstPath": { "type": "string" },
+        "preparedInputPath": { "type": "string" },
+        "acceptedSuggestionsPath": { "type": "string" },
+        "designerNotesPath": { "type": "string" },
+        "baselineValidatePath": { "type": "string" }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixtureId",
+        "surfaceId",
+        "brief",
+        "platformTarget",
+        "consumerType",
+        "capturePreset",
+        "comparisonPairs"
+      ],
+      "properties": {
+        "fixtureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surfaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "brief": {
+          "$ref": "#/$defs/brief"
+        },
+        "platformTarget": {
+          "type": "string",
+          "enum": ["web", "ios", "android"]
+        },
+        "consumerType": {
+          "type": "string",
+          "enum": ["web-browser", "desktop-shell", "ios-native", "android-native"]
+        },
+        "capturePreset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comparisonPairs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comparisonPair"
+          }
+        },
+        "paths": {
+          "$ref": "#/$defs/fixturePaths"
+        }
+      }
+    }
+  }
+}

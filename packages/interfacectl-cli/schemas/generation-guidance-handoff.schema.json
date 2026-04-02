@@ -15,6 +15,7 @@
     "session",
     "runtimeGuidance",
     "promptSummary",
+    "baselinePrimary",
     "jsonPrimary"
   ],
   "properties": {
@@ -36,7 +37,7 @@
     },
     "guidanceStrategy": {
       "type": "string",
-      "enum": ["prompt-summary", "json-primary", "unguided"]
+      "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
     },
     "generatedAt": {
       "type": "string",
@@ -162,6 +163,26 @@
               "type": "string"
             },
             "preparedGuidanceSummary": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "baselinePrimary": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["effectiveContractSummary", "baselineContractSummary"],
+          "properties": {
+            "effectiveContractSummary": {
+              "type": "string"
+            },
+            "baselineContractSummary": {
               "type": "string"
             }
           }

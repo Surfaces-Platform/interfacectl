@@ -54,7 +54,20 @@ export interface SummarizeGenerationBenchmarkCommandOptions {
     comparisonPaths?: string;
     suggestionPaths?: string;
     outDir?: string;
+    runPath?: string;
 }
+export interface ReplayGenerationBenchmarkCommandOptions {
+    specPath?: string;
+    tool?: string;
+    outDir?: string;
+    cohortId?: string;
+    sourceRunPath?: string;
+    requestedModelLabel?: string;
+    resolvedModelId?: string;
+    baseUrl?: string;
+    fingerprint?: string;
+}
+export declare function runReplayGenerationBenchmarkCommand(options: ReplayGenerationBenchmarkCommandOptions): Promise<number>;
 export declare function runInitGenerationSessionCommand(options: InitGenerationSessionCommandOptions): Promise<number>;
 export declare function runPrepareGenerationHandoffCommand(options: PrepareGenerationHandoffCommandOptions): Promise<number>;
 export declare function runRecordGenerationAttemptCommand(options: RecordGenerationAttemptCommandOptions): Promise<number>;

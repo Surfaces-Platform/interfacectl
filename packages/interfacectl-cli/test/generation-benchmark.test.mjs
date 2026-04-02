@@ -12,6 +12,8 @@ import { validateDiffOutput } from "@surfaces/interfacectl-validator";
 import generationSessionComparisonSchema from "../schemas/generation-session-comparison.schema.json" with { type: "json" };
 import contractDeltaSuggestionsSchema from "../schemas/contract-delta-suggestions.schema.json" with { type: "json" };
 import generationBenchmarkReportSchema from "../schemas/generation-benchmark-report.schema.json" with { type: "json" };
+import generationBenchmarkSpecSchema from "../schemas/generation-benchmark-spec.schema.json" with { type: "json" };
+import generationBenchmarkRunSchema from "../schemas/generation-benchmark-run.schema.json" with { type: "json" };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,6 +151,7 @@ function buildAssessment({
   boundary,
   visual,
   responsiveness,
+  platformFit,
   notes,
   heuristics,
 }) {
@@ -158,6 +161,7 @@ function buildAssessment({
     boundary,
     visual,
     responsiveness,
+    platformFit: platformFit ?? responsiveness,
     notes,
     ...(heuristics ? { heuristics } : {}),
   };
@@ -592,6 +596,243 @@ test("strategy-aware benchmark artifacts compare sessions, emit deterministic su
     assert.equal(benchmarkReport.comparisons[0].baselineGuidanceStrategy, "prompt-summary");
     assert.equal(benchmarkReport.comparisons[0].guidedGuidanceStrategy, "json-primary");
     assert.equal(benchmarkReport.overall.heuristics.lowerRecoverableToolErrorCount, 1);
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("replay-generation-benchmark freezes a copied spec and model attribution into a new run manifest", async () => {
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-benchmark-replay-"));
+  const specPath = path.join(tempRoot, "spec.json");
+  const outDir = path.join(tempRoot, "replay-run");
+
+  try {
+    const spec = {
+      schemaVersion: 1,
+      specId: "demo-suite/spec",
+      generatedAt: "2026-04-02T00:00:00.000Z",
+      evaluationMode: "zero-shot",
+      attemptBudget: 1,
+      guidanceStrategies: ["unguided", "baseline-primary", "json-primary"],
+      comparisonPairs: [
+        {
+          baselineGuidanceStrategy: "unguided",
+          guidedGuidanceStrategy: "baseline-primary",
+        },
+        {
+          baselineGuidanceStrategy: "baseline-primary",
+          guidedGuidanceStrategy: "json-primary",
+        },
+      ],
+      suiteId: "demo-suite/default",
+      suiteName: "Demo Suite",
+      fixtures: [
+        {
+          fixtureId: "demo-surface",
+          surfaceId: "demo-surface",
+          brief: {
+            path: "/tmp/demo-brief.md",
+            sha256: "brief-hash",
+          },
+          platformTarget: "web",
+          consumerType: "desktop-shell",
+          capturePreset: "desktop-shell",
+          comparisonPairs: [
+            {
+              baselineGuidanceStrategy: "unguided",
+              guidedGuidanceStrategy: "baseline-primary",
+            },
+            {
+              baselineGuidanceStrategy: "baseline-primary",
+              guidedGuidanceStrategy: "json-primary",
+            },
+          ],
+        },
+      ],
+    };
+    await writeJson(specPath, spec);
+    validateWithSchema(spec, generationBenchmarkSpecSchema, "generation benchmark spec");
+
+    const replayResult = await runCli(
+      [
+        "replay-generation-benchmark",
+        "--spec",
+        specPath,
+        "--tool",
+        "local-llm",
+        "--out-dir",
+        outDir,
+        "--cohort-id",
+        "20260402000000",
+        "--requested-model-label",
+        "gpt-oss-20b",
+        "--resolved-model-id",
+        "openai/gpt-oss-20b",
+        "--base-url",
+        "http://127.0.0.1:1234/v1",
+        "--fingerprint",
+        "gpt-oss-20b-fingerprint",
+      ],
+      tempRoot,
+    );
+    assert.equal(replayResult.exitCode, 0, replayResult.stderr);
+
+    const replayOutput = JSON.parse(replayResult.stdout);
+    const replayRun = JSON.parse(await fsp.readFile(replayOutput.paths.runPath, "utf8"));
+    validateWithSchema(replayRun, generationBenchmarkRunSchema, "generation benchmark run");
+    assert.equal(replayRun.sourceSpecPath, specPath);
+    assert.equal(replayRun.paths.specPath, path.join(outDir, "spec.json"));
+    assert.equal(replayRun.model.requestedModelLabel, "gpt-oss-20b");
+    assert.equal(replayRun.model.resolvedModelId, "openai/gpt-oss-20b");
+    assert.equal(replayRun.fixtures[0].consumerType, "desktop-shell");
+    assert.deepEqual(replayRun.fixtures[0].comparisons, []);
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("summarize-generation-benchmark emits a report from run evidence even when no comparisons completed", async () => {
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "interfacectl-generation-benchmark-evidence-only-"));
+  const specPath = path.join(tempRoot, "spec.json");
+  const outDir = path.join(tempRoot, "replay-run");
+  const reportDir = path.join(tempRoot, "benchmark-report");
+
+  try {
+    const spec = {
+      schemaVersion: 1,
+      specId: "demo-suite/spec",
+      generatedAt: "2026-04-02T00:00:00.000Z",
+      evaluationMode: "zero-shot",
+      attemptBudget: 1,
+      guidanceStrategies: ["unguided", "baseline-primary"],
+      comparisonPairs: [
+        {
+          baselineGuidanceStrategy: "unguided",
+          guidedGuidanceStrategy: "baseline-primary",
+        },
+      ],
+      suiteId: "demo-suite/default",
+      suiteName: "Demo Suite",
+      fixtures: [
+        {
+          fixtureId: "demo-surface",
+          surfaceId: "demo-surface",
+          brief: {
+            path: "/tmp/demo-brief.md",
+            sha256: "brief-hash",
+          },
+          platformTarget: "web",
+          consumerType: "web-browser",
+          capturePreset: "web-browser",
+          comparisonPairs: [
+            {
+              baselineGuidanceStrategy: "unguided",
+              guidedGuidanceStrategy: "baseline-primary",
+            },
+          ],
+        },
+      ],
+    };
+    await writeJson(specPath, spec);
+
+    const replayResult = await runCli(
+      [
+        "replay-generation-benchmark",
+        "--spec",
+        specPath,
+        "--tool",
+        "local-llm",
+        "--out-dir",
+        outDir,
+        "--cohort-id",
+        "20260402000001",
+        "--requested-model-label",
+        "gpt-oss-20b",
+        "--resolved-model-id",
+        "openai/gpt-oss-20b",
+        "--base-url",
+        "http://127.0.0.1:1234/v1",
+        "--fingerprint",
+        "gpt-oss-20b-fingerprint",
+      ],
+      tempRoot,
+    );
+    assert.equal(replayResult.exitCode, 0, replayResult.stderr);
+
+    const replayOutput = JSON.parse(replayResult.stdout);
+    const replayRun = JSON.parse(await fsp.readFile(replayOutput.paths.runPath, "utf8"));
+    const sessionRoot = path.join(tempRoot, "sessions");
+    const runWithSessionsPath = path.join(outDir, "run-with-sessions.json");
+    const runWithSessions = {
+      ...replayRun,
+      fixtures: replayRun.fixtures.map((fixture) => ({
+        ...fixture,
+        sessions: [
+          {
+            guidanceStrategy: "unguided",
+            sessionId: `${fixture.surfaceId}/unguided`,
+            sessionDir: path.join(sessionRoot, fixture.surfaceId, "unguided"),
+            summaryPath: path.join(sessionRoot, fixture.surfaceId, "unguided", "summary.json"),
+            guidanceHandoffPath: path.join(sessionRoot, fixture.surfaceId, "unguided", "guidance-handoff.txt"),
+            agentInputPath: path.join(sessionRoot, fixture.surfaceId, "unguided", "agent-input.txt"),
+            previewPath: null,
+          },
+          {
+            guidanceStrategy: "baseline-primary",
+            sessionId: `${fixture.surfaceId}/baseline-primary`,
+            sessionDir: path.join(sessionRoot, fixture.surfaceId, "baseline-primary"),
+            summaryPath: path.join(sessionRoot, fixture.surfaceId, "baseline-primary", "summary.json"),
+            guidanceHandoffPath: path.join(sessionRoot, fixture.surfaceId, "baseline-primary", "guidance-handoff.txt"),
+            agentInputPath: path.join(sessionRoot, fixture.surfaceId, "baseline-primary", "agent-input.txt"),
+            previewPath: null,
+          },
+        ],
+      })),
+    };
+    await writeJson(runWithSessionsPath, runWithSessions);
+    const [unguidedSession, baselineSession] = runWithSessions.fixtures[0].sessions;
+
+    await writeJson(unguidedSession.summaryPath, {
+      schemaVersion: 1,
+      sessionId: unguidedSession.sessionId,
+      surfaceId: runWithSessions.fixtures[0].surfaceId,
+      guidanceStrategy: "unguided",
+      latestStatus: "warn",
+      latestOutcome: "warn",
+      attempts: [],
+    });
+    await writeJson(baselineSession.summaryPath, {
+      schemaVersion: 1,
+      sessionId: baselineSession.sessionId,
+      surfaceId: runWithSessions.fixtures[0].surfaceId,
+      guidanceStrategy: "baseline-primary",
+      latestStatus: "block",
+      latestOutcome: "error",
+      errorMessage: "Model crashed during compile.",
+      attempts: [],
+    });
+
+    const benchmarkResult = await runCli(
+      [
+        "summarize-generation-benchmark",
+        "--run-path",
+        runWithSessionsPath,
+        "--out-dir",
+        reportDir,
+      ],
+      tempRoot,
+    );
+    assert.equal(benchmarkResult.exitCode, 0, benchmarkResult.stderr);
+
+    const benchmarkOutput = JSON.parse(benchmarkResult.stdout);
+    const benchmarkReport = JSON.parse(await fsp.readFile(benchmarkOutput.paths.jsonPath, "utf8"));
+    validateWithSchema(benchmarkReport, generationBenchmarkReportSchema, "generation benchmark report");
+    assert.equal(benchmarkReport.overall.surfaceCount, 1);
+    assert.deepEqual(benchmarkReport.comparisons, []);
+
+    const markdown = await fsp.readFile(benchmarkOutput.paths.markdownPath, "utf8");
+    assert.match(markdown, /## Comparisons\n- none/);
+    assert.match(markdown, /- error: Model crashed during compile\./);
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true });
   }

@@ -43,7 +43,7 @@
     },
     "guidanceStrategy": {
       "type": "string",
-      "enum": ["prompt-summary", "json-primary", "unguided"]
+      "enum": ["prompt-summary", "baseline-primary", "json-primary", "unguided"]
     },
     "attemptCount": {
       "type": "number",
@@ -249,7 +249,7 @@
     "assessment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["structure", "components", "boundary", "visual", "responsiveness", "notes"],
+      "required": ["structure", "components", "boundary", "visual", "responsiveness", "platformFit", "notes"],
       "properties": {
         "structure": {
           "type": "string",
@@ -268,6 +268,10 @@
           "enum": ["strong", "partial", "weak"]
         },
         "responsiveness": {
+          "type": "string",
+          "enum": ["strong", "partial", "weak"]
+        },
+        "platformFit": {
           "type": "string",
           "enum": ["strong", "partial", "weak"]
         },

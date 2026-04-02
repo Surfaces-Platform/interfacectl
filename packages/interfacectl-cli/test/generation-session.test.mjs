@@ -154,6 +154,7 @@ function buildAssessment({
   boundary,
   visual,
   responsiveness,
+  platformFit,
   notes,
   touchedFiles,
   heuristics,
@@ -164,6 +165,7 @@ function buildAssessment({
     boundary,
     visual,
     responsiveness,
+    platformFit: platformFit ?? responsiveness,
     notes,
     ...(touchedFiles ? { touchedFiles } : {}),
     ...(heuristics ? { heuristics } : {}),
@@ -820,6 +822,7 @@ test("generation session commands reject invalid bundle roots, duplicate session
       boundary: "weak",
       visual: "partial",
       responsiveness: "weak",
+      platformFit: "weak",
       notes: "Invalid assessment payload.",
     });
 
