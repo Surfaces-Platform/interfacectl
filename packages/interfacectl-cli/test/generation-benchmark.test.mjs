@@ -665,13 +665,13 @@ test("replay-generation-benchmark freezes a copied spec and model attribution in
         "--cohort-id",
         "20260402000000",
         "--requested-model-label",
-        "qwen3.5-9b",
+        "gpt-oss-20b",
         "--resolved-model-id",
-        "qwen/qwen3.5-9b-instruct",
+        "openai/gpt-oss-20b",
         "--base-url",
         "http://127.0.0.1:1234/v1",
         "--fingerprint",
-        "qwen-fingerprint",
+        "gpt-oss-20b-fingerprint",
       ],
       tempRoot,
     );
@@ -682,8 +682,8 @@ test("replay-generation-benchmark freezes a copied spec and model attribution in
     validateWithSchema(replayRun, generationBenchmarkRunSchema, "generation benchmark run");
     assert.equal(replayRun.sourceSpecPath, specPath);
     assert.equal(replayRun.paths.specPath, path.join(outDir, "spec.json"));
-    assert.equal(replayRun.model.requestedModelLabel, "qwen3.5-9b");
-    assert.equal(replayRun.model.resolvedModelId, "qwen/qwen3.5-9b-instruct");
+    assert.equal(replayRun.model.requestedModelLabel, "gpt-oss-20b");
+    assert.equal(replayRun.model.resolvedModelId, "openai/gpt-oss-20b");
     assert.equal(replayRun.fixtures[0].consumerType, "desktop-shell");
     assert.deepEqual(replayRun.fixtures[0].comparisons, []);
   } finally {

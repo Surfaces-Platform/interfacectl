@@ -130,6 +130,10 @@
       "additionalProperties": false,
       "properties": {
         "fixtureDir": { "type": "string" },
+        "sourceContractPath": { "type": "string" },
+        "sourceAstPath": { "type": "string" },
+        "bundleRoot": { "type": "string" },
+        "compiledContractPath": { "type": "string" },
         "effectiveAstPath": { "type": "string" },
         "preparedInputPath": { "type": "string" },
         "acceptedSuggestionsPath": { "type": "string" },
